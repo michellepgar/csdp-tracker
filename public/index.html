@@ -290,6 +290,14 @@
   .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
   .stat-num { font-family: "IBM Plex Mono", monospace; font-size: 1.7rem; font-weight: 600; }
   .stat-label { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
+  .stat-row-sm { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .stat-tile-sm { padding: 8px 14px; flex: 0 0 auto; min-width: 110px; }
+  .stat-tile-sm .stat-num { font-size: 1.15rem; }
+  .stat-tile-sm .stat-label { font-size: 0.7rem; }
+  .card-compact .card-body { padding-top: 6px; padding-bottom: 6px; }
+  .progress-bar-track { background: var(--border); border-radius: 999px; height: 10px; overflow: hidden; }
+  .progress-bar-fill { background: var(--accent); height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+  .progress-bar-label { font-size: 0.8rem; color: var(--ink-soft); margin-top: 8px; }
 
   @media (max-width: 900px) {
     .sidebar { position: fixed; z-index: 20; left: 0; top: 0; transform: translateX(-100%); transition: transform 0.2s ease; box-shadow: var(--shadow); }
@@ -335,6 +343,8 @@
   .sticky-note { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 120px; color: #2b2b1f; }
   .sticky-note-text { flex: 1; font-size: 0.9rem; word-break: break-word; }
   .sticky-note-text ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
+  .sticky-note-text ul.list-dash { list-style-type: "- "; }
+  .sticky-note-text ul.list-check { list-style-type: "☐ "; }
   .sticky-note-text input[type="checkbox"] { vertical-align: middle; margin-right: 2px; cursor: pointer; }
   .note-editor-area input[type="checkbox"] { vertical-align: middle; margin-right: 2px; }
   .sticky-note-meta { font-size: 0.72rem; opacity: 0.65; margin-top: 8px; }
@@ -363,6 +373,8 @@
   .note-color-swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
   .note-editor-area ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
+  .note-editor-area ul.list-dash { list-style-type: "- "; }
+  .note-editor-area ul.list-check { list-style-type: "☐ "; }
 </style>
 </head>
 <body>
@@ -530,6 +542,10 @@ function appMain() {
             while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
             child.setAttribute("type", "checkbox");
             if (wasChecked) child.setAttribute("checked", "");
+          } else if (child.tagName === "UL") {
+            var ulClass = child.getAttribute("class");
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            if (ulClass === "list-dash" || ulClass === "list-check") child.setAttribute("class", ulClass);
           } else {
             while (child.attributes && child.attributes.length) child.removeAttribute(child.attributes[0].name);
           }
@@ -541,6 +557,26 @@ function appMain() {
     })(doc.body);
     return doc.body.innerHTML;
   }
+  /* Dash and checklist buttons reuse the browser's native bullet-list
+     toggle (so Enter continues the list, clicking again removes it — same
+     behavior as the bullet button) and just tag the resulting <ul> with a
+     class that swaps the marker via CSS. Exposed on window since it's
+     called from an inline onmousedown attribute in generated HTML. */
+  window.csdpToggleNoteList = function (editorId, cls) {
+    document.execCommand("insertUnorderedList");
+    var editor = document.getElementById(editorId);
+    if (!editor) return;
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var node = sel.anchorNode;
+    while (node && node !== editor) {
+      if (node.nodeType === 1 && node.tagName === "UL") {
+        node.className = cls || "";
+        break;
+      }
+      node = node.parentNode;
+    }
+  };
   /* A checkbox's "checked" DOM attribute only reflects its *default* state —
      clicking it updates the live `.checked` property, not the attribute — so
      reading `.innerHTML` straight after a click would serialize the box back
@@ -1167,44 +1203,62 @@ function appMain() {
   }
 
   /* ---------- Home ---------- */
+  function taskProgressStats() {
+    var total = 0, done = 0;
+    state.schools.forEach(function (s) {
+      var sd = state.schoolData[s.id] || { tasks: [] };
+      (sd.tasks || []).forEach(function (t) {
+        total++;
+        if (STATUS_TIER[t.status] === "green") done++;
+      });
+    });
+    return { total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
+  }
   function homePageHtml() {
-    var tasksAttn = 0;
     var emailAttn = 0;
     var completedSchools = [];
     for (var i = 0; i < state.schools.length; i++) {
-      tasksAttn += tasksAttnCount(state.schools[i].id);
       emailAttn += emailAttnCount(state.schools[i].id);
       if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
     }
     var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div></div></div>";
-    html += "<div class=\"stat-grid\">" +
-      statTile(state.schools.length, "Schools") +
-      statTile(tasksAttn, "Tasks in progress") +
-      statTile(emailAttn, "Emails needing attention") +
-      statTile(issuesAttnCount(), "Issues & concerns pending") +
-      statTile(completedSchools.length, "Completed for the year") +
+
+    html += "<div class=\"stat-row-sm\">" +
+      statTile(state.schools.length, "Schools", true) +
+      statTile(completedSchools.length, "Completed for the year", true) +
       "</div>";
+
+    var prog = taskProgressStats();
+    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Task Progress</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"progress-bar-track\"><div class=\"progress-bar-fill\" style=\"width:" + prog.pct + "%;\"></div></div>" +
+      "<div class=\"progress-bar-label\">" + prog.pct + "% complete" + (prog.total ? " (" + prog.done + " of " + prog.total + " files done)" : " — no files added yet") + "</div>" +
+      "</div></div>";
+
+    var issuesTotal = issuesAttnCount();
+    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Alerts</div></div>" +
+      "<div class=\"card-body\"><div class=\"nav-list\">" +
+      "<div class=\"nav-item\"><span class=\"name\">Emails needing attention</span>" + (emailAttn > 0 ? "<span class=\"count-chip\">" + emailAttn + "</span>" : "") + "</div>" +
+      "<button class=\"nav-item\" data-action=\"nav-view\" data-view=\"issues\"><span class=\"name\">Issues & concerns pending</span>" + (issuesTotal > 0 ? "<span class=\"count-chip\">" + issuesTotal + "</span>" : "") + "</button>" +
+      "</div></div></div>";
+
     var breakdown = issuesStatusBreakdown();
     var breakdownRows = breakdown.map(function (row) {
       return "<button class=\"nav-item\" data-action=\"nav-issues-status\" data-status=\"" + esc(row.status) + "\">" +
         "<span class=\"name\">" + esc(row.status) + "</span>" +
         "<span class=\"count-chip\">" + row.count + "</span></button>";
     }).join("");
-    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns — Still Open</div></div>" +
+    html += "<div class=\"card card-compact\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns — Still Open" +
+      (issuesTotal > 0 ? " <span class=\"count-chip\">" + issuesTotal + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"nav-list\">" + (breakdownRows || emptyState("No open issues or concerns right now.")) + "</div></div></div>";
+
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
-    } else {
-      var completedRows = completedSchools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
-        return "<button class=\"nav-item\" data-action=\"nav-school\" data-id=\"" + s.id + "\"><span class=\"name\">✓ " + esc(s.name) + "</span></button>";
-      }).join("");
-      html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Completed for the Year</div></div>" +
-        "<div class=\"card-body\"><div class=\"nav-list\">" + (completedRows || emptyState("No schools have finished the Yearly Checklist yet — check them off on a school's page as work wraps up.")) + "</div></div></div>";
     }
     return html;
   }
-  function statTile(num, label) {
-    return "<div class=\"stat-tile\"><div class=\"stat-num mono\">" + num + "</div><div class=\"stat-label\">" + esc(label) + "</div></div>";
+  function statTile(num, label, small) {
+    return "<div class=\"stat-tile" + (small ? " stat-tile-sm" : "") + "\"><div class=\"stat-num mono\">" + num + "</div><div class=\"stat-label\">" + esc(label) + "</div></div>";
   }
 
   /* ---------- School page ---------- */
@@ -1674,9 +1728,6 @@ function appMain() {
     var textColorBtns = NOTE_TEXT_COLORS.map(function (hex) {
       return "<button type=\"button\" style=\"color:" + hex + "; font-weight:700;\" title=\"Text color\" onmousedown=\"event.preventDefault(); document.execCommand('foreColor', false, '" + hex + "');\">A</button>";
     }).join("");
-    var fontBtns = NOTE_FONTS.map(function (f) {
-      return "<button type=\"button\" style=\"font-family:" + f.family + ";\" title=\"" + esc(f.name) + "\" onmousedown=\"event.preventDefault(); document.execCommand('fontName', false, '" + f.family + "');\">" + f.label + "</button>";
-    }).join("");
     var sizeBtns = NOTE_FONT_SIZES.map(function (s) {
       return "<button type=\"button\" style=\"font-size:" + s.px + ";\" title=\"Font size\" onmousedown=\"event.preventDefault(); document.execCommand('fontSize', false, '" + s.legacy + "');\">" + s.label + "</button>";
     }).join("");
@@ -1686,9 +1737,8 @@ function appMain() {
       "<button type=\"button\" style=\"font-style:italic;\" title=\"Italic\" onmousedown=\"event.preventDefault(); document.execCommand('italic');\">I</button>" +
       "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
       "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
-      "<button type=\"button\" title=\"Dash list\" onmousedown=\"event.preventDefault(); document.execCommand('insertText', false, '- ');\">-</button>" +
-      "<button type=\"button\" title=\"Checkbox\" onmousedown=\"event.preventDefault(); document.execCommand('insertHTML', false, '<input type=&quot;checkbox&quot;>&nbsp;');\">☑</button>" +
-      "<span class=\"note-toolbar-sep\"></span>" + fontBtns +
+      "<button type=\"button\" title=\"Dash list\" onmousedown=\"event.preventDefault(); csdpToggleNoteList('" + editorId + "', 'list-dash');\">-</button>" +
+      "<button type=\"button\" title=\"Checklist\" onmousedown=\"event.preventDefault(); csdpToggleNoteList('" + editorId + "', 'list-check');\">☐</button>" +
       "<span class=\"note-toolbar-sep\"></span>" + sizeBtns +
       "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
