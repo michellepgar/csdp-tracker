@@ -933,6 +933,37 @@ function appMain() {
   }
 
   /* ---------- Issues & Concerns ---------- */
+  function issueEditFormHtml(it) {
+    var schoolOptsEdit = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (s) { return "<option value=\"" + s.id + "\"" + (s.id === it.schoolId ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
+    var vaOptsEdit = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === it.reportedBy ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
+    var editTypeId = ui.editingIssueType || it.type;
+    var editType = issueTypeById(editTypeId);
+    var typeOptsEdit = state.issueTypes.map(function (ty) {
+      return "<option value=\"" + ty.id + "\"" + (ty.id === editTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
+    }).join("");
+    var extraFieldsEditHtml = editType && editType.extraFields ?
+      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(it.studentName) + "\">" +
+      "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\" value=\"" + esc(it.schoolYear) + "\">" +
+      "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\" value=\"" + esc(it.grade) + "\">" +
+      "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(it.fileName) + "\">" +
+      "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(it.pageNumber) + "\">" +
+      "</div>" +
+      "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>" : "";
+    return "<div class=\"row-item\" style=\"flex-direction:column; align-items:stretch;\">" +
+      "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\">" +
+      "<select class=\"text-input\" name=\"schoolId\" required>" + schoolOptsEdit + "</select>" +
+      "<select class=\"text-input\" name=\"type\" data-action-change=\"select-edit-issue-type\">" + typeOptsEdit + "</select>" +
+      "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
+      "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
+      extraFieldsEditHtml +
+      "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
+      "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-issue\">Cancel</button></div>" +
+      "</form></div>";
+  }
+
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
@@ -986,6 +1017,7 @@ function appMain() {
     }
 
     var rows = list.map(function (it) {
+      if (ui.editingIssueId === it.id) return issueEditFormHtml(it);
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
@@ -1002,6 +1034,7 @@ function appMain() {
         "<div class=\"row-title\">" + esc(it.description) + "</div>" +
         "<div class=\"row-meta\">" + meta + "</div>" + detailHtml + remarksHtml + "</div>" +
         statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
+        "<button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" +
         deleteBtn("issue", it.id, "remove-issue") + "</div>";
     }).join("");
 
@@ -1151,6 +1184,14 @@ function appMain() {
           persist();
         })(); break;
       case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
+      case "edit-issue":
+        ui.editingIssueId = t.getAttribute("data-id");
+        ui.editingIssueType = null;
+        render(); break;
+      case "cancel-edit-issue":
+        ui.editingIssueId = null;
+        ui.editingIssueType = null;
+        render(); break;
       case "remove-issue-type":
         requestDelete("issue-type", t.getAttribute("data-id"), function () {
           state.issueTypes = state.issueTypes.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
@@ -1312,6 +1353,9 @@ function appMain() {
       case "select-new-issue-type":
         ui.newIssueType = t.value;
         render(); break;
+      case "select-edit-issue-type":
+        ui.editingIssueType = t.value;
+        render(); break;
       default: break;
     }
   }
@@ -1417,6 +1461,32 @@ function appMain() {
           }
           state.issues.push(issue);
           ui.newIssueType = null;
+          persist();
+        })(); break;
+      case "save-issue-edit":
+        (function () {
+          var id = form.getAttribute("data-id");
+          var issue = state.issues.find(function (x) { return x.id === id; });
+          if (!issue) return;
+          var typeId = (fd.get("type") || "").toString();
+          var typeObj = issueTypeById(typeId);
+          issue.schoolId = (fd.get("schoolId") || "").toString();
+          issue.type = typeId;
+          issue.description = (fd.get("description") || "").toString().trim();
+          issue.reportedBy = (fd.get("reportedBy") || "").toString();
+          if (typeObj && typeObj.extraFields) {
+            issue.studentName = (fd.get("studentName") || "").toString().trim();
+            issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
+            issue.grade = (fd.get("grade") || "").toString().trim();
+            issue.fileName = (fd.get("fileName") || "").toString().trim();
+            issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
+            issue.remarks = (fd.get("remarks") || "").toString().trim();
+          } else {
+            delete issue.studentName; delete issue.schoolYear; delete issue.grade;
+            delete issue.fileName; delete issue.pageNumber; delete issue.remarks;
+          }
+          ui.editingIssueId = null;
+          ui.editingIssueType = null;
           persist();
         })(); break;
       case "add-issue-type":
