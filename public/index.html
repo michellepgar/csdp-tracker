@@ -240,13 +240,15 @@
   .empty-state { padding: 22px 8px; text-align: center; color: var(--ink-faint); font-size: 0.86rem; }
 
   .checklist-note { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 12px; }
-  .checklist-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .checklist-item:last-child { border-bottom: none; }
+  .checklist-done-by { flex: none; white-space: nowrap; }
   .check-toggle {
     width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--border-strong);
     background: var(--surface); flex: none; margin-top: 1px; display: flex; align-items: center; justify-content: center;
   }
   .check-toggle.done { background: var(--done); border-color: var(--done); color: var(--done-soft); }
+  .check-toggle.confirming { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 700; }
 
   textarea.text-input { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
   .note-entry { border-bottom: 1px solid var(--border); padding: 10px 0; }
@@ -1515,11 +1517,15 @@ function appMain() {
     var rows = tmpl.map(function (item) {
       var p = state.checklistProgress[schoolId + ":" + item.id] || { status: "Open" };
       var done = p.status === "Done";
+      var pendingUncheck = isPending("checklist-uncheck", schoolId + ":" + item.id);
       return "<div class=\"checklist-item\">" +
-        "<button class=\"check-toggle" + (done ? " done" : "") + "\" data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\">" + (done ? "✓" : "") + "</button>" +
-        "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div>" +
-        (done && p.completedBy ? "<div class=\"row-meta\">Done by " + esc(p.completedBy) + "</div>" : "") +
-        "</div></div>";
+        "<button class=\"check-toggle" + (done ? " done" : "") + (pendingUncheck ? " confirming" : "") +
+        "\" data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\"" +
+        (pendingUncheck ? " title=\"Click again to confirm unchecking\"" : "") + ">" +
+        (pendingUncheck ? "?" : (done ? "✓" : "")) + "</button>" +
+        "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div></div>" +
+        (done && p.completedBy ? "<div class=\"row-meta checklist-done-by\">Done by " + esc(p.completedBy) + "</div>" : "") +
+        "</div>";
     }).join("");
 
     var editorHtml = "";
@@ -2273,6 +2279,18 @@ function appMain() {
           var key = schoolId + ":" + itemId;
           var cur = state.checklistProgress[key];
           if (cur && cur.status === "Done") {
+            /* Unchecking a completed item needs a second click to confirm —
+               same two-click pattern used for deletes — since undoing
+               "Done" can be easy to hit by accident. */
+            if (!isPending("checklist-uncheck", key)) {
+              ui.pendingDelete = { type: "checklist-uncheck", id: key };
+              render();
+              setTimeout(function () {
+                if (isPending("checklist-uncheck", key)) { ui.pendingDelete = null; render(); }
+              }, 4000);
+              return;
+            }
+            ui.pendingDelete = null;
             state.checklistProgress[key] = { status: "Open" };
           } else {
             state.checklistProgress[key] = { status: "Done", completedBy: getStoredIdentity(), completedDate: new Date().toISOString() };
