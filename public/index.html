@@ -349,11 +349,12 @@
   .note-editor-card:has(input[name="color"][value="green"]:checked) { background: #D8F0D2; }
   .note-editor-card:has(input[name="color"][value="purple"]:checked) { background: #E5D9FA; }
   .note-editor-card:has(input[name="color"][value="orange"]:checked) { background: #FCE1C6; }
+  .note-editor-card:has(input[name="color"][value="white"]:checked) { background: #FFFFFF; }
   .note-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
   .note-toolbar button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); background: rgba(255,255,255,0.55); font-size: 0.8rem; cursor: pointer; color: #2b2b1f; }
   .note-toolbar button:hover { background: rgba(255,255,255,0.85); }
   .note-toolbar-sep { width: 1px; align-self: stretch; background: rgba(0,0,0,0.15); margin: 0 4px; }
-  .note-color-swatch { width: 22px; height: 22px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; display: inline-block; }
+  .note-color-swatch { width: 22px; height: 22px; border-radius: 999px; border: 2px solid rgba(0,0,0,0.15); cursor: pointer; display: inline-block; }
   .note-color-swatch:has(input:checked) { border-color: #2b2b1f; }
   .note-color-swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
@@ -391,7 +392,8 @@ function appMain() {
     { id: "blue", hex: "#CFE3FC" },
     { id: "green", hex: "#D8F0D2" },
     { id: "purple", hex: "#E5D9FA" },
-    { id: "orange", hex: "#FCE1C6" }
+    { id: "orange", hex: "#FCE1C6" },
+    { id: "white", hex: "#FFFFFF" }
   ];
   var DEFAULT_NOTE_COLOR = "yellow";
   var NOTE_TEXT_COLORS = ["#2b2b1f", "#c0392b", "#2166ac", "#1e824c", "#8e44ad", "#b8860b"];
