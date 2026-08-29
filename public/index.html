@@ -363,6 +363,7 @@
   .va-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; font-family: Calibri, "Segoe UI", sans-serif; color: var(--ink); white-space: nowrap; }
   .va-tag-remove { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.85rem; line-height: 1; padding: 0; }
   .va-tag-remove:hover { opacity: 1; }
+  .va-tag-remove.confirming { opacity: 1; font-weight: 700; text-decoration: underline; }
   .add-va-btn {
     width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--border-strong);
     background: none; color: var(--ink-soft); font-size: 0.9rem; line-height: 1;
@@ -1670,8 +1671,10 @@ function appMain() {
   function taskVaGroupHtml(t, schoolId) {
     var names = Array.isArray(t.vaAssigned) ? t.vaAssigned : (t.vaAssigned ? [t.vaAssigned] : []);
     var chips = names.map(function (name) {
+      var pendingKey = t.id + "|" + name;
+      var pending = isPending("va-from-task", pendingKey);
       return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
-        "<button class=\"va-tag-remove\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"Remove " + esc(name) + "\">×</button>" +
+        "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"" + (pending ? "Click again to confirm" : "Remove " + esc(name)) + "\">" + (pending ? "Confirm?" : "×") + "</button>" +
         "</span>";
     }).join("");
     var me = getStoredIdentity();
@@ -2208,7 +2211,7 @@ function appMain() {
   function teamPageHtml() {
     var chips = state.vas.map(function (v) {
       return "<div class=\"va-chip\">" + esc(v.name) + (v.role === "owner" ? " <span class=\"field-mini-label\">(Owner)</span>" : "") +
-        "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
+        deleteBtn("va", v.id, "remove-va") + "</div>";
     }).join("");
     var sortedVas = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     /* Schools get assigned to VAs doing casework, not to the owner. */
@@ -2510,13 +2513,16 @@ function appMain() {
       case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
       case "remove-va-from-task":
         (function () {
-          var sd = ensureSchoolData(t.getAttribute("data-school"));
-          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (task) {
-            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
-            task.vaAssigned = names.filter(function (n) { return n !== t.getAttribute("data-va"); });
-          }
-          persist();
+          var taskId = t.getAttribute("data-id");
+          var va = t.getAttribute("data-va");
+          requestDelete("va-from-task", taskId + "|" + va, function () {
+            var sd = ensureSchoolData(t.getAttribute("data-school"));
+            var task = sd.tasks.find(function (x) { return x.id === taskId; });
+            if (task) {
+              var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
+              task.vaAssigned = names.filter(function (n) { return n !== va; });
+            }
+          });
         })(); break;
       case "remove-task-category":
         requestDelete("task-category", t.getAttribute("data-id"), function () {
@@ -2674,11 +2680,10 @@ function appMain() {
           persist();
         })(); break;
       case "remove-va":
-        (function () {
+        requestDelete("va", t.getAttribute("data-id"), function () {
           var id = t.getAttribute("data-id");
           state.vas = state.vas.filter(function (x) { return x.id !== id; });
-          persist();
-        })(); break;
+        }); break;
       case "remove-school":
         requestDelete("school", t.getAttribute("data-id"), function () {
           var id = t.getAttribute("data-id");
