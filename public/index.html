@@ -477,8 +477,10 @@ function appMain() {
 
   function saveStateToServer(newState) {
     if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
-    var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?id=eq.1" +
-      (lastKnownUpdatedAt ? "&updated_at=eq." + encodeURIComponent(lastKnownUpdatedAt) : "");
+    /* No optimistic-concurrency check here on purpose — the team works on
+       different schools/tasks at the same time, so the last save simply
+       wins rather than blocking with a conflict warning. */
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?id=eq.1";
     var nowIso = new Date().toISOString();
     return fetch(url, {
       method: "PATCH",
@@ -489,9 +491,8 @@ function appMain() {
       if (!res.ok) { var e2 = new Error("save failed: " + res.status); e2.code = "save_failed"; throw e2; }
       return res.json();
     }).then(function (rows) {
-      if (!rows || !rows.length) { var e3 = new Error("conflict"); e3.code = "conflict"; throw e3; }
-      lastKnownUpdatedAt = rows[0].updated_at;
-      return rows[0];
+      if (rows && rows.length) { lastKnownUpdatedAt = rows[0].updated_at; }
+      return rows && rows[0];
     });
   }
 
@@ -571,7 +572,6 @@ function appMain() {
     render();
     saveStoredView();
     saveStateToServer(state).catch(function (err) {
-      if (err.code === "conflict") { showToast("Someone else just saved a change — refresh the page and try again."); return; }
       if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
       if (err.code === "config_missing") { showToast("App isn't configured yet — config.js is missing or incomplete."); return; }
       showToast("Couldn't save that change" + (err && err.message ? ": " + err.message : "") + ". Please try again.");
