@@ -454,6 +454,14 @@ function appMain() {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? "1" : "0"); } catch (e) {}
   }
 
+  var IDENTITY_KEY = "csdp_identity";
+  function getStoredIdentity() {
+    try { return localStorage.getItem(IDENTITY_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setStoredIdentity(name) {
+    try { localStorage.setItem(IDENTITY_KEY, name); } catch (e) {}
+  }
+
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
     try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; }
@@ -490,6 +498,51 @@ function appMain() {
       var pw = document.getElementById("password-input").value;
       setStoredPassword(pw.trim());
       boot();
+    });
+  }
+
+  function identityPickerHtml() {
+    var names = state.vas.map(function (v) { return v.name; });
+    if (!names.length) {
+      return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
+        "<h2 class=\"display\" style=\"margin:0 0 12px;\">Who's using this device?</h2>" +
+        "<p style=\"color:var(--ink-soft);\">No team members yet — ask someone to add the team on the Team page first.</p></div>";
+    }
+    return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
+      "<h2 class=\"display\" style=\"margin:0 0 12px;\">Who's using this device?</h2>" +
+      "<div class=\"nav-list\">" + names.map(function (n) {
+        return "<button class=\"nav-item\" data-action=\"pick-identity\" data-name=\"" + esc(n) + "\">" + esc(n) + "</button>";
+      }).join("") + "</div></div>";
+  }
+  function showIdentityPicker() {
+    document.getElementById("app").innerHTML = identityPickerHtml();
+  }
+
+  function pinFormHtml(name, isNew, message) {
+    return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
+      "<h2 class=\"display\" style=\"margin:0 0 12px;\">" + (isNew ? "Create a PIN for " : "Enter your PIN for ") + esc(name) + "</h2>" +
+      (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
+      "<form data-action=\"" + (isNew ? "create-pin" : "verify-pin") + "\" data-name=\"" + esc(name) + "\">" +
+      "<input class=\"text-input\" style=\"margin-bottom:10px; width:100%; box-sizing:border-box;\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]*\" maxlength=\"4\" name=\"pin\" placeholder=\"4-digit PIN\" autofocus required>" +
+      (isNew ? "<input class=\"text-input\" style=\"margin-bottom:10px; width:100%; box-sizing:border-box;\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]*\" maxlength=\"4\" name=\"pin2\" placeholder=\"Confirm PIN\" required>" : "") +
+      "<button class=\"btn\" type=\"submit\" style=\"width:100%; margin-bottom:8px;\">" + (isNew ? "Create PIN" : "Enter") + "</button>" +
+      "<button class=\"link-btn\" type=\"button\" data-action=\"back-to-identity-picker\">Not you? Pick a different name</button>" +
+      "</form></div>";
+  }
+  function showPinForm(name, isNew, message) {
+    document.getElementById("app").innerHTML = pinFormHtml(name, isNew, message);
+  }
+
+  var identityFlowToken = 0;
+  function handleIdentityPick(name) {
+    var token = ++identityFlowToken;
+    callRpc("pin_status", { p_name: name }).then(function (hasPin) {
+      if (token !== identityFlowToken) return;
+      showPinForm(name, !hasPin, null);
+    }).catch(function (err) {
+      if (token !== identityFlowToken) return;
+      if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+      showPinForm(name, false, "Couldn't connect — check your internet connection and try again.");
     });
   }
 
@@ -547,6 +600,27 @@ function appMain() {
     });
   }
 
+  function callRpc(fnName, args) {
+    if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/rpc/" + fnName;
+    return fetch(url, {
+      method: "POST",
+      headers: supabaseHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(args)
+    }).then(function (res) {
+      if (res.status === 401 || res.status === 403) { var e = new Error("bad password"); e.code = "bad_password"; throw e; }
+      if (res.ok) { return res.json(); }
+      /* A wrong x-app-password raises a plain SQL exception inside these
+         functions, which PostgREST surfaces as a 400 (not 401/403 like the
+         RLS-based table checks elsewhere) — so it has to be told apart by
+         the error body's message instead of the status code. */
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (body && body.message === "forbidden") { var e2 = new Error("bad password"); e2.code = "bad_password"; throw e2; }
+        var e3 = new Error("rpc failed: " + res.status); e3.code = "rpc_failed"; throw e3;
+      });
+    });
+  }
+
   function saveStateToServer(newState) {
     if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
     /* No optimistic-concurrency check here on purpose — the team works on
@@ -576,21 +650,28 @@ function appMain() {
       for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
       migrateTaskFields(state);
       migrateIssueTypes(state);
-      ui = {
-        view: loadStoredView(),
-        search: "",
-        sidebarOpen: false,
-        sidebarCollapsed: loadSidebarCollapsed(),
-        templateEditorOpen: false,
-        pendingDelete: null,
-        issueFilters: { school: "", type: "", status: "" }
-      };
-      render();
+      var identity = getStoredIdentity();
+      var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
+      if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
+      startApp();
     }).catch(function (err) {
       if (err.code === "bad_password") { showPasswordPrompt("Incorrect password."); return; }
       if (err.code === "config_missing") { showPasswordPrompt("App isn't configured yet — config.js is missing or incomplete."); return; }
       showPasswordPrompt("Couldn't connect — check your internet connection and try again.");
     });
+  }
+
+  function startApp() {
+    ui = {
+      view: loadStoredView(),
+      search: "",
+      sidebarOpen: false,
+      sidebarCollapsed: loadSidebarCollapsed(),
+      templateEditorOpen: false,
+      pendingDelete: null,
+      issueFilters: { school: "", type: "", status: "" }
+    };
+    render();
   }
 
   /* ============ derived data helpers ============ */
@@ -946,6 +1027,7 @@ function appMain() {
       return "<div class=\"checklist-item\">" +
         "<button class=\"check-toggle" + (done ? " done" : "") + "\" data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\">" + (done ? "✓" : "") + "</button>" +
         "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div>" +
+        (done && p.completedBy ? "<div class=\"row-meta\">Done by " + esc(p.completedBy) + "</div>" : "") +
         "</div></div>";
     }).join("");
 
@@ -1002,7 +1084,7 @@ function appMain() {
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
         "<textarea class=\"text-input\" name=\"text\" placeholder=\"Add a note…\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
         "<div class=\"field-row\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\">" +
+        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
         "<button class=\"btn\" type=\"submit\">Add note</button></div></form>" + vaDatalist() +
       "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState("No notes yet.")) + "</div>" +
       "</div></div>";
@@ -1059,7 +1141,7 @@ function appMain() {
     var addSchoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (s) { return "<option value=\"" + s.id + "\">" + esc(s.name) + "</option>"; }).join("");
     var vaOpts = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (v) { return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>"; }).join("");
+      .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === getStoredIdentity() ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var typeFilterOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
@@ -1279,6 +1361,12 @@ function appMain() {
         setStoredTheme(currentEffectiveTheme() === "dark" ? "light" : "dark");
         applyTheme();
         render(); break;
+      case "pick-identity":
+        handleIdentityPick(t.getAttribute("data-name"));
+        break;
+      case "back-to-identity-picker":
+        showIdentityPicker();
+        break;
       case "close-sidebar": ui.sidebarOpen = false; render(); break;
       case "toggle-add-school": ui.addSchoolOpen = !ui.addSchoolOpen; render(); break;
       case "toggle-template-editor": ui.templateEditorOpen = !ui.templateEditorOpen; render(); break;
@@ -1417,8 +1505,7 @@ function appMain() {
           if (cur && cur.status === "Done") {
             state.checklistProgress[key] = { status: "Open" };
           } else {
-            var sd = ensureSchoolData(schoolId);
-            state.checklistProgress[key] = { status: "Done", completedBy: sd.vaAssigned || "", completedDate: new Date().toISOString() };
+            state.checklistProgress[key] = { status: "Done", completedBy: getStoredIdentity(), completedDate: new Date().toISOString() };
           }
           persist();
         })(); break;
@@ -1521,11 +1608,12 @@ function appMain() {
           var sid = form.getAttribute("data-school");
           var sd = ensureSchoolData(sid);
           var category = (fd.get("category") || "").toString();
+          var currentIdentity = getStoredIdentity();
           var task = {
             id: uid("task"),
             category: category,
             fileName: (fd.get("fileName") || "").toString().trim(),
-            vaAssigned: [],
+            vaAssigned: currentIdentity ? [currentIdentity] : [],
             status: ""
           };
           if (COMMUNICATION_CATEGORIES.indexOf(category) !== -1) task.communication = "";
@@ -1625,6 +1713,41 @@ function appMain() {
           ui.editingIssueId = null;
           ui.editingIssueType = null;
           persist();
+        })(); break;
+      case "create-pin":
+        (function () {
+          var name = form.getAttribute("data-name");
+          var pin = (fd.get("pin") || "").toString();
+          var pin2 = (fd.get("pin2") || "").toString();
+          if (!/^[0-9]{4}$/.test(pin)) { showPinForm(name, true, "PIN must be exactly 4 digits."); return; }
+          if (pin !== pin2) { showPinForm(name, true, "PINs don't match — try again."); return; }
+          var token = ++identityFlowToken;
+          callRpc("set_pin", { p_name: name, p_pin: pin }).then(function (ok) {
+            if (token !== identityFlowToken) return;
+            if (!ok) { showPinForm(name, false, "That name already has a PIN set — enter it instead."); return; }
+            setStoredIdentity(name);
+            startApp();
+          }).catch(function (err) {
+            if (token !== identityFlowToken) return;
+            if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+            showPinForm(name, true, "Couldn't connect — check your internet connection and try again.");
+          });
+        })(); break;
+      case "verify-pin":
+        (function () {
+          var name = form.getAttribute("data-name");
+          var pin = (fd.get("pin") || "").toString();
+          var token = ++identityFlowToken;
+          callRpc("verify_pin", { p_name: name, p_pin: pin }).then(function (ok) {
+            if (token !== identityFlowToken) return;
+            if (!ok) { showPinForm(name, false, "Incorrect PIN — try again."); return; }
+            setStoredIdentity(name);
+            startApp();
+          }).catch(function (err) {
+            if (token !== identityFlowToken) return;
+            if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+            showPinForm(name, false, "Couldn't connect — check your internet connection and try again.");
+          });
         })(); break;
       case "add-issue-type":
         (function () {
