@@ -1280,10 +1280,10 @@ function appMain() {
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Team</div>" +
       "<div class=\"nav-list\">" +
+      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
-      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>"
     );
