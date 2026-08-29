@@ -215,7 +215,7 @@
   .row-main { flex: 1; min-width: 0; }
   .row-title { font-size: 0.92rem; word-break: break-word; }
   .row-meta { font-size: 0.76rem; color: var(--ink-faint); margin-top: 2px; }
-  .row-file { font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; }
+  .row-file { font-family: Calibri, "Segoe UI", sans-serif; font-size: 0.9rem; }
   .count-input { max-width: 64px; }
   .task-file-group { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -242,12 +242,12 @@
   .checklist-note { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 12px; }
   .checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
   .checklist-item:last-child { border-bottom: none; }
-  .checklist-done-by { flex: none; white-space: nowrap; }
   .check-toggle {
     width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--border-strong);
     background: var(--surface); flex: none; margin-top: 1px; display: flex; align-items: center; justify-content: center;
   }
   .check-toggle.done { background: var(--done); border-color: var(--done); color: var(--done-soft); }
+  .check-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
   .check-toggle.confirming { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 700; }
 
   textarea.text-input { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
@@ -347,7 +347,7 @@
     display: flex; align-items: center; gap: 6px;
   }
   .va-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-  .va-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .va-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; font-family: Calibri, "Segoe UI", sans-serif; color: var(--ink); white-space: nowrap; }
   .va-tag-remove { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.85rem; line-height: 1; padding: 0; }
   .va-tag-remove:hover { opacity: 1; }
   .add-va-btn {
@@ -799,6 +799,64 @@ function appMain() {
     }
     return true;
   }
+  /* Tasks/emails/issues created before the sort feature shipped have no
+     createdAt, which made "Newest/Oldest" a no-op for them — every record
+     tied, so the sort had nothing to work with. Backfills a synthetic
+     timestamp based on each record's position in its array (their actual
+     insertion order), spaced a second apart, so date sorting works
+     immediately even for older data. Anything created after this still
+     gets a real timestamp from the moment it's added. */
+  function migrateRecordTimestamps(parsed) {
+    var base = Date.UTC(2020, 0, 1);
+    var changed = false;
+    function stamp(list) {
+      (list || []).forEach(function (item, idx) {
+        if (!item.createdAt) { item.createdAt = new Date(base + idx * 1000).toISOString(); changed = true; }
+      });
+    }
+    var sd = parsed.schoolData || {};
+    for (var schoolId in sd) {
+      stamp(sd[schoolId].tasks);
+      stamp(sd[schoolId].emailTracker);
+    }
+    stamp(parsed.issues);
+    return changed;
+  }
+  /* One-time seed of each VA's assigned Brockton Public Schools, per the
+     mapping given directly by the superadmin. Adds any school missing by
+     exact name and sets/confirms its assigned VA — for a school already
+     in this list, this is authoritative and overwrites whatever vaAssigned
+     it had; anything outside this list is left untouched. */
+  var BROCKTON_SCHOOL_VA_MAP = {
+    "Michelle": ["Gilmore Elementary School", "Angelo Elementary School", "Arnone Elementary School", "Baker Elementary School", "North Middle School"],
+    "Therese": ["Barrett Russell Early Childhood Center", "Brookfield Elementary School", "Downey Elementary School", "Plouffe Middle School", "Ashfield Middle School"],
+    "Nikki": ["Kennedy Elementary School", "Raymond Elementary School", "East Middle School", "Manthala George Jr. Global Studies School", "Hancock Elementary School"],
+    "Rexanne": ["PROMISE College and Career Academy", "Champion High School", "Brockton High School", "Brockton Therapeutic Day School", "Brockton Virtual Learning Academy", "South Middle School", "West Middle School", "Edison Academy"]
+  };
+  function migrateBrocktonSchools(parsed) {
+    if (parsed._migratedBrocktonSchools) return false;
+    parsed._migratedBrocktonSchools = true;
+    parsed.schools = parsed.schools || [];
+    parsed.schoolData = parsed.schoolData || {};
+    var existingByName = {};
+    parsed.schools.forEach(function (s) { existingByName[s.name] = s; });
+    Object.keys(BROCKTON_SCHOOL_VA_MAP).forEach(function (va) {
+      BROCKTON_SCHOOL_VA_MAP[va].forEach(function (name) {
+        var school = existingByName[name];
+        if (!school) {
+          school = { id: uid("sch"), name: name };
+          parsed.schools.push(school);
+          existingByName[name] = school;
+        }
+        if (!parsed.schoolData[school.id]) {
+          parsed.schoolData[school.id] = { vaAssigned: va, tasks: [], emailTracker: [], notes: [] };
+        } else {
+          parsed.schoolData[school.id].vaAssigned = va;
+        }
+      });
+    });
+    return true;
+  }
   /* Notes used to store plain text, escaped at render time. Now they store
      a bit of sanitized rich-text HTML, rendered directly. A note created
      before this change has no `color` yet — use that as the signal to
@@ -1040,6 +1098,8 @@ function appMain() {
       migrateIssueTypes(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
+      migrateRecordTimestamps(fresh);
+      migrateBrocktonSchools(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1095,13 +1155,15 @@ function appMain() {
          written back on the user's next unrelated change, and until then
          a fresh reload would still see the reorder as "not done yet". */
       var justMigratedCategoryOrder = migrateTaskCategoryOrder(state);
+      var justMigratedTimestamps = migrateRecordTimestamps(state);
+      var justMigratedSchools = migrateBrocktonSchools(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1286,7 +1348,7 @@ function appMain() {
       var active = ui.view.type === "school" && ui.view.id === s.id;
       var n = schoolAttnCount(s.id);
       return "<button class=\"nav-item" + (active ? " active" : "") + "\" data-action=\"nav-school\" data-id=\"" + s.id + "\">" +
-        "<span class=\"name\">" + esc(s.name) + "</span>" + (n > 0 ? "<span class=\"count-chip\">" + n + "</span>" : "") + "</button>";
+        "<span class=\"name\"" + schoolNameColorStyle(s.id) + ">" + esc(s.name) + "</span>" + (n > 0 ? "<span class=\"count-chip\">" + n + "</span>" : "") + "</button>";
     }).join("");
 
     return (
@@ -1405,10 +1467,29 @@ function appMain() {
     return "<datalist id=\"va-list\">" + state.vas.map(function (v) { return "<option value=\"" + esc(v.name) + "\">"; }).join("") + "</datalist>";
   }
 
-  function vaTagColor(name) {
+  /* Fixed "signature" colors per VA, as requested — everyone else (added
+     later, or not yet assigned one) falls back to a hash-derived hue so
+     they still get a consistent, distinct color of their own. */
+  var VA_SIGNATURE_HUES = { "Michelle": 30, "Therese": 140, "Nikki": 48, "Rexanne": 3 };
+  function vaHue(name) {
+    if (VA_SIGNATURE_HUES.hasOwnProperty(name)) return VA_SIGNATURE_HUES[name];
     var hue = 0;
     for (var i = 0; i < name.length; i++) hue = (hue * 31 + name.charCodeAt(i)) % 360;
-    return "hsla(" + hue + ",60%,50%,0.2)";
+    return hue;
+  }
+  function vaTagColor(name) {
+    return "hsla(" + vaHue(name) + ",70%,45%,0.22)";
+  }
+  function vaSolidColor(name) {
+    return "hsl(" + vaHue(name) + ",65%,45%)";
+  }
+  /* Colors a school's name to match whichever VA it's assigned to, so the
+     sidebar reads at a glance like each VA's own signature color. */
+  function schoolNameColorStyle(schoolId) {
+    var sd = state.schoolData[schoolId];
+    var assigned = sd && sd.vaAssigned;
+    if (!assigned) return "";
+    return " style=\"color:" + vaSolidColor(assigned) + ";\"";
   }
 
   function taskVaGroupHtml(t, schoolId) {
@@ -1438,7 +1519,7 @@ function appMain() {
     var sd = ensureSchoolData(schoolId);
 
     var header = "<div class=\"page-header\">" +
-      "<div><div class=\"page-title display\">" + esc(school.name) + "</div>" +
+      "<div><div class=\"page-title display\"" + schoolNameColorStyle(schoolId) + ">" + esc(school.name) + "</div>" +
       "<div class=\"field-row\" style=\"margin-top:8px;\">" +
       "<span class=\"field-label\">VA assigned</span>" +
       "<input class=\"text-input\" style=\"width:200px;\" list=\"va-list\" value=\"" + esc(sd.vaAssigned) + "\" data-action-change=\"set-va-assigned\" data-school=\"" + schoolId + "\" placeholder=\"Type a name\">" +
@@ -1582,17 +1663,22 @@ function appMain() {
       if (p && p.status === "Done") doneCount++;
     });
 
+    /* Only the VA assigned to this school (or the superadmin) can check
+       items off — with that restriction in place, a "Done by" label
+       doesn't add anything anymore, so it's gone. */
+    var checklistSd = state.schoolData[schoolId] || {};
+    var canCheckOff = isSuperAdmin() || (checklistSd.vaAssigned && checklistSd.vaAssigned === getStoredIdentity());
     var rows = tmpl.map(function (item) {
       var p = state.checklistProgress[schoolId + ":" + item.id] || { status: "Open" };
       var done = p.status === "Done";
       var pendingUncheck = isPending("checklist-uncheck", schoolId + ":" + item.id);
+      var toggleAttrs = canCheckOff
+        ? " data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\"" + (pendingUncheck ? " title=\"Click again to confirm unchecking\"" : "")
+        : " disabled title=\"Only " + esc(checklistSd.vaAssigned || "the assigned VA") + " can check this off\"";
       return "<div class=\"checklist-item\">" +
-        "<button class=\"check-toggle" + (done ? " done" : "") + (pendingUncheck ? " confirming" : "") +
-        "\" data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\"" +
-        (pendingUncheck ? " title=\"Click again to confirm unchecking\"" : "") + ">" +
+        "<button class=\"check-toggle" + (done ? " done" : "") + (pendingUncheck ? " confirming" : "") + "\"" + toggleAttrs + ">" +
         (pendingUncheck ? "?" : (done ? "✓" : "")) + "</button>" +
         "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div></div>" +
-        (done && p.completedBy ? "<div class=\"row-meta checklist-done-by\">Done by " + esc(p.completedBy) + "</div>" : "") +
         "</div>";
     }).join("");
 
@@ -2347,6 +2433,10 @@ function appMain() {
       case "toggle-checklist":
         (function () {
           var schoolId = t.getAttribute("data-school"), itemId = t.getAttribute("data-item");
+          if (!schoolId || !itemId) return;
+          var toggleSd = state.schoolData[schoolId] || {};
+          var canCheckOff = isSuperAdmin() || (toggleSd.vaAssigned && toggleSd.vaAssigned === getStoredIdentity());
+          if (!canCheckOff) return;
           var key = schoolId + ":" + itemId;
           var cur = state.checklistProgress[key];
           if (cur && cur.status === "Done") {
@@ -2502,12 +2592,14 @@ function appMain() {
           var sid = form.getAttribute("data-school");
           var sd = ensureSchoolData(sid);
           var category = (fd.get("category") || "").toString();
-          var currentIdentity = getStoredIdentity();
+          /* No auto-assignment here on purpose — a VA only gets attached
+             to a file once someone deliberately clicks "+" on it, like a
+             signature that they're the one working on it. */
           var task = {
             id: uid("task"),
             category: category,
             fileName: (fd.get("fileName") || "").toString().trim(),
-            vaAssigned: currentIdentity ? [currentIdentity] : [],
+            vaAssigned: [],
             status: "",
             createdAt: new Date().toISOString()
           };
