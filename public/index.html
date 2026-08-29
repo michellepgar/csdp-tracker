@@ -411,6 +411,23 @@
   .va-add-select { max-width: 150px; }
   .field-mini-label { font-size: 0.7rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 
+  /* Schools Contact Information: every cell is a plain-looking input until
+     hovered/focused, so the table reads like a spreadsheet rather than a
+     form, but is fully editable in place. */
+  .contact-cell-input {
+    width: 100%; min-width: 120px; border: 1px solid transparent; background: none; color: var(--ink);
+    font: inherit; font-size: 0.83rem; padding: 4px 6px; border-radius: var(--radius);
+  }
+  .contact-cell-input:hover { background: var(--surface-2); }
+  .contact-cell-input:focus { background: var(--surface-2); border-color: var(--border-strong); outline: none; }
+  .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .contact-leader-row .text-input { max-width: 260px; }
+  .contact-group-title-input {
+    font-size: 1.05rem; font-weight: 600; border: 1px solid transparent; background: none; color: var(--ink);
+    font-family: inherit; padding: 4px 6px; border-radius: var(--radius); flex: 1; min-width: 120px;
+  }
+  .contact-group-title-input:hover, .contact-group-title-input:focus { background: var(--surface-2); border-color: var(--border-strong); outline: none; }
+
   .table-scroll { overflow-x: auto; }
   .data-table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
   .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
@@ -553,7 +570,8 @@ function appMain() {
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
-    emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: []
+    emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
+    contactGroups: [], nurseLeader: { name: "", email: "" }
   };
 
   /* ============ helpers ============ */
@@ -993,6 +1011,82 @@ function appMain() {
     });
     return true;
   }
+  /* One-time seed of the school staff directory (principals, front desk,
+     nurses) the superadmin pasted in — organized the same way it was
+     given: grouped by grade band, one row per school. Fully editable
+     afterward from the Schools Contact Information page; this only ever
+     runs once so later edits are never overwritten. */
+  function contactRow(school, principal, principalEmail, asstPrincipal, asstPrincipalEmail, frontDesk, frontDeskEmail, nurseName, nurseEmail, notes) {
+    return {
+      id: uid("contact"), school: school || "",
+      principal: principal || "", principalEmail: principalEmail || "",
+      asstPrincipal: asstPrincipal || "", asstPrincipalEmail: asstPrincipalEmail || "",
+      frontDesk: frontDesk || "", frontDeskEmail: frontDeskEmail || "",
+      nurseName: nurseName || "", nurseEmail: nurseEmail || "",
+      notes: notes || ""
+    };
+  }
+  function buildDefaultContactGroups() {
+    return [
+      {
+        id: uid("cgrp"), name: "PRE K",
+        rows: [
+          contactRow("Barrett Russell Early Childhood Center", "Marybeth Callanan", "marybethcallanan@bpsma.org", "Kelly Dunham", "kellyldunham@bpsma.org", "Denice Hatch", "denicehatch@bpsma.org", "❗️ Alyssa Hogan", "alyssahogan@bpsma.org", "")
+        ]
+      },
+      {
+        id: uid("cgrp"), name: "PRE K - 5",
+        rows: [
+          contactRow("Angelo Elementary School", "John Kelly", "johnlkelly@bpsma.org", "Adriena Newhalen", "adriennewhalen@bpsma.org", "❗️Kat Porzelt", "kathleenporzelt@bpsma.org", "❗️Amanda Phillips / Laurie Abban", "amandaphillips@bpsma.org / laurieabban@bpsma.org", ""),
+          contactRow("Arnone Elementary School", "Carolyn Copp", "carolynacopp@bpsma.org", "Nicole Ford", "nicolejford@bpsma.org", "Princesse Bouzi", "princessebouzi@bpsma.org", "❗️Casey Dimitri", "caseydimitri@bpsma.org", "Ask if there's another nurse also at the front desk — Ayla moved to a new school."),
+          contactRow("Baker Elementary School", "Jane Werb", "janeewerb@bpsma.org", "Valerie Brower-Foote", "valerieabrower@bpsma.org", "Diane Golding", "dianegolding@bpsma.org", "❗️Lynn Adams", "lynnadams@bpsma.org", ""),
+          contactRow("Brookfield Elementary School", "Michael Smith", "michaelasmith@bpsma.org", "Mike McKenna", "michaelcmckenna@bpsma.org", "❗️Vera Morris", "veramorris@bpsma.org", "Melissa Hughes", "melissahughes@bpsma.org", ""),
+          contactRow("Downey Elementary School", "Yolanda Difalco", "yolandadifalco@bpsma.org", "Jennifer Colburn", "jennifercolburn@bpsma.org", "❗️Tina Kusick", "TINAMARIEKUSICK@bpsma.org", "Doreen Allen Kellum", "doreenallenkellum@bpsma.org", "Ask Tina for their email address. New nurses: Jacinta Tribou and Kendra DaCosta."),
+          contactRow("George Global Studies School", "Natalie L. Pohl", "natalielpohl@bpsma.org", "Ines Enos", "inesenos@bpsma.org", "Laura Rodriguez", "laurarodriguez@bpsma.org", "❗️Denice Lewis / Krista Morselli", "denicelewis@bpsma.org / kristamorselli@bpsma.org", ""),
+          contactRow("Gilmore Elementary School", "Colleen Proudler", "-", "Adam St. Peter", "adamrstpeter@bpsma.org", "Grace", "?", "❗️Diane Sloane", "dianesloane@bpsma.org", ""),
+          contactRow("Hancock Elementary School", "Stephen Shaw-Lyon", "stephenpshaw@bpsma.org", "Gina Greedon", "ginacreedon@bpsma.org", "Gyannah Devine", "gyannahdevine@bpsma.org", "Guirlin Remy", "GUIRLINEREMY@bpsma.org", ""),
+          contactRow("Kennedy Elementary School", "Kelly Kistler", "kellykistler@bpsma.org", "Whitney Skinner", "whitneyskinner@bpsma.org", "Ronise Vieira", "ronisedvieira@bpsma.org", "❗️Regina Papp, Bs, M.Ed., Rn", "reginapapp@bpsma.org", ""),
+          contactRow("Raymond Elementary School", "Leah Blake Mcketty", "leahmcketty@bpsma.org", "Renee Sanger", "reneeasanger@bpsma.org", "Michelle Sheehan / Jane Ponder", "MICHELLEDSHEEHAN@bpsma.org / janeponder@bpsma.org", "Ana Carpenter", "Anacarpenter@bpsma.org", "Previous principal: Mark Prince (markprince@bpsma.org)")
+        ]
+      },
+      {
+        id: uid("cgrp"), name: "MIDDLE SCHOOL",
+        rows: [
+          contactRow("Ashfield Middle School", "Barbara Lovell", "barbarajlovell@bpsma.org", "Troy Kieltyka / Charlene Mont-Rond", "troykieltyka@bpsma.org / charlenemontrond@bpsma.org", "Kristin Miett", "KRISTINMIETT@bpsma.org", "❗️Rachel Furman / Marleine Rosembert", "rachelfurman@bpsma.org / MARLEINEROSEMBERT@bpsma.org", ""),
+          contactRow("East Middle School", "Tracy Culta-Monteiro", "?", "Denise Glennon", "JONGARCEA@bpsma.org", "John Lynch", "JOHNLYNCH@bpsma.org / LISAGREIN@bpsma.org", "❗️Ann Nardelli", "ANNNARDELLI@bpsma.org", "No contact details listed for the new Assistant Principal on the school website. (Note: the Asst Principal email as given matches South Middle's principal — may be a copy-paste mix-up, worth double-checking.)"),
+          contactRow("Brockton Therapeutic Day School", "Meghann Bottome", "?", "-", "-", "", "", "❗️Astride Jeune", "ASTRIDEJEUNE@bpsma.org", ""),
+          contactRow("North Middle School", "Alison Ramsay", "alisonaramsay@bpsma.org", "Susan Cole", "susanecole@bpsma.org", "Nicole Bethnomey", "nicolebethomey@bpsma.com", "❗️Kimberly Baldi", "kimberlybaldi@bpsma.org", ""),
+          contactRow("South Middle School", "Lisa G. Thomas", "lisathomas@bpsma.org", "Jon Garcea", "jongarcea@bpsma.org", "Xashary Sabater", "xasharysabater@bpsma.com / xasharysabater@bpsma.org", "❗️Kerry Rodrick", "KERRYRODRICK@bpsma.org", ""),
+          contactRow("Plouffe Middle School", "Sean Ahern", "seanahern@bpsma.org", "Eric Wescott", "ericwescott@bpsma.org", "Jaime Estee", "jaimebestee@bpsma.org", "❗️Francisca Andrade / ❗️Nancy White / Colleen Elchami", "franciscaandrade@bpsma.org / nancywhite@bpsma.org / COLLEENELCHAMI@bpsma.org", "From website: Sean Ahern – Principal, Jaime Estee – Associate Principal."),
+          contactRow("West Middle School", "Carlton Campbell", "carltonlcampbell@bpsma.org", "Carolyn MacKinnon", "carolynmmackinnon@bpsma.org", "❗️Tanya Lincoln", "tanyalincoln@bpsma.org", "❗️Lisa Jezaed", "lisajezard@bpsma.org", "")
+        ]
+      },
+      {
+        id: uid("cgrp"), name: "HIGH SCHOOL",
+        rows: [
+          contactRow("Davis K-8 School", "Kevin Rooney", "KEVINROONEY@bpsma.org", "Joanna Hrenko", "JOANNAHRENKO@bpsma.org", "", "", "Noel Lefoye", "Noellefoye@bpsma.org", ""),
+          contactRow("Champion High School", "Cynthia Burns", "CYNTHIAEBURNS@bpsma.org", "-", "-", "Danina Rodrigues", "DANINARODRIGUES@bpsma.org", "❗️Darcie Edwards", "DARCIEEDWARDS@bpsma.org", "Jennifer Buckley — JENNIFERBUCKLEY@bpsma.org"),
+          contactRow("Edison Academy", "Dr. Soraya Calixte", "", "", "", "", "?", "", "?", ""),
+          contactRow("Promise College and Career Academy", "Dr. Kelly A. Silva", "kellyasilva@bpsma.org", "Michael Robinson", "-", "-", "-", "❗️Allison Smith", "allisonsmith@bpsma.org", "Stephanie Spillane — Academic Associate Principal"),
+          contactRow("Brockton Virtual Learning Academy", "Diane J. Lynch", "dianejlynch@bpsma.org", "-", "-", "Marti Gustin", "martigustin@bpsma.org", "Dianne Davis", "diannedavis@bpsma.org", ""),
+          contactRow("Adult Learning Center", "", "?", "-", "-", "", "", "", "", ""),
+          contactRow("Brockton High School", "Kevin Mccaskill", "kevinmccaskill@bpsma.org", "Rachael Umbrianna", "RACHAELUMBRIANNA@bpsma.org", "-", "-", "❗️Rachael Nazon", "RACHELNAZON@bpsma.org", "Listed as \"BROCKTON HC\" in the source list — please confirm this is Brockton High School.")
+        ]
+      }
+    ];
+  }
+  function migrateSchoolContacts(parsed) {
+    if (parsed._migratedSchoolContacts) return false;
+    parsed._migratedSchoolContacts = true;
+    if (!Array.isArray(parsed.contactGroups) || parsed.contactGroups.length === 0) {
+      parsed.contactGroups = buildDefaultContactGroups();
+    }
+    if (!parsed.nurseLeader) parsed.nurseLeader = { name: "", email: "" };
+    if (!parsed.nurseLeader.name && !parsed.nurseLeader.email) {
+      parsed.nurseLeader = { name: "Tracy Politano", email: "tracypolitano@bpsma.org" };
+    }
+    return true;
+  }
   /* Seeds each VA's chosen color once, matching the fixed colors that were
      hardcoded before this became editable from the Team page — same
      colors, just now stored per-VA instead of baked into the code. */
@@ -1316,6 +1410,7 @@ function appMain() {
       migrateVaAdminField(fresh);
       migrateFaithOwner(fresh);
       migrateIssueStatusUniform(fresh);
+      migrateSchoolContacts(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1379,13 +1474,14 @@ function appMain() {
       var justMigratedVaAdminField = migrateVaAdminField(state);
       var justMigratedFaithOwner = migrateFaithOwner(state);
       var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
+      var justMigratedContacts = migrateSchoolContacts(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1555,7 +1651,7 @@ function appMain() {
       "<button class=\"theme-toggle\" data-action=\"toggle-theme\" title=\"Switch to " + (currentEffectiveTheme() === "dark" ? "light" : "dark") + " mode\">" + (currentEffectiveTheme() === "dark" ? "☀" : "🌙") + "</button>" +
       "<div class=\"main\">" +
       "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
-      "<div class=\"content" + (ui.view.type === "issues" ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
+      "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
       "</div></div>"
     );
   }
@@ -1630,11 +1726,60 @@ function appMain() {
     );
   }
 
+  /* Column order/labels for the school directory table — shared by the
+     header row and every data row so they can never drift out of sync. */
+  var CONTACT_FIELDS = [
+    { key: "school", label: "School" },
+    { key: "principal", label: "Principal" },
+    { key: "principalEmail", label: "Email" },
+    { key: "asstPrincipal", label: "Asst Principal" },
+    { key: "asstPrincipalEmail", label: "Asst Principal Email" },
+    { key: "frontDesk", label: "Front Desk" },
+    { key: "frontDeskEmail", label: "Front Desk Email" },
+    { key: "nurseName", label: "Nurse Name" },
+    { key: "nurseEmail", label: "Nurse Email" },
+    { key: "notes", label: "Notes" }
+  ];
   function contactsPageHtml() {
+    var groups = state.contactGroups || [];
+    var leader = state.nurseLeader || { name: "", email: "" };
+    var leaderHtml = "<div class=\"card\"><div class=\"card-body\">" +
+      "<div class=\"contact-leader-row\">" +
+      "<span class=\"field-mini-label\">Nurse Leader</span>" +
+      "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-name\" placeholder=\"Name\" value=\"" + esc(leader.name) + "\">" +
+      "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-email\" placeholder=\"Email\" value=\"" + esc(leader.email) + "\">" +
+      "</div></div></div>";
+
+    var groupsHtml = groups.map(function (g) {
+      var headerCells = CONTACT_FIELDS.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") + "<th></th>";
+      var rowsHtml = (g.rows || []).map(function (r) {
+        var cells = CONTACT_FIELDS.map(function (f) {
+          return "<td><input class=\"contact-cell-input\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\" value=\"" + esc(r[f.key]) + "\"></td>";
+        }).join("");
+        var pendingRow = isPending("contact-row", r.id);
+        return "<tr>" + cells + "<td><button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td></tr>";
+      }).join("");
+      var pendingGroup = isPending("contact-group", g.id);
+      return "<div class=\"card\"><div class=\"card-head\">" +
+        "<input class=\"contact-group-title-input\" data-action-change=\"set-contact-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">" +
+        "<div class=\"card-actions\"><button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-contact-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button></div>" +
+        "</div><div class=\"card-body\">" +
+        "<div class=\"table-scroll\"><table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+        (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
+        "</tbody></table></div>" +
+        "<form class=\"add-row-form\" data-action=\"add-contact-row\" data-group=\"" + g.id + "\">" +
+        "<input class=\"text-input\" name=\"school\" placeholder=\"School name\" required>" +
+        "<button class=\"btn small\" type=\"submit\">+ Add school</button></form>" +
+        "</div></div>";
+    }).join("");
+
+    var addGroupForm = "<div class=\"card\"><div class=\"card-body\">" +
+      "<form class=\"add-row-form\" data-action=\"add-contact-group\">" +
+      "<input class=\"text-input\" name=\"name\" placeholder=\"New group name (e.g. ELEMENTARY)\" required>" +
+      "<button class=\"btn\" type=\"submit\">+ Add group</button></form></div></div>";
+
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div></div>" +
-      "<div class=\"card\"><div class=\"card-body\">" +
-      "<p style=\"margin:0;\">Contact details for each school will go here — coming soon.</p>" +
-      "</div></div>";
+      leaderHtml + groupsHtml + addGroupForm;
   }
 
   function pageHtml() {
@@ -2650,6 +2795,18 @@ function appMain() {
         requestDelete("task-category", t.getAttribute("data-id"), function () {
           state.taskCategories = state.taskCategories.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
+      case "remove-contact-row":
+        (function () {
+          var groupId = t.getAttribute("data-group"), rowId = t.getAttribute("data-id");
+          requestDelete("contact-row", rowId, function () {
+            var g = state.contactGroups.find(function (x) { return x.id === groupId; });
+            if (g) g.rows = g.rows.filter(function (r) { return r.id !== rowId; });
+          });
+        })(); break;
+      case "remove-contact-group":
+        requestDelete("contact-group", t.getAttribute("data-id"), function () {
+          state.contactGroups = state.contactGroups.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
       case "move-task-category":
         (function () {
           var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
@@ -2861,6 +3018,27 @@ function appMain() {
         ensureSchoolData(t.getAttribute("data-school")).vaAssigned = t.value.trim();
         addVaIfNew(t.value);
         persist(); break;
+      case "set-contact-field":
+        (function () {
+          var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
+          if (r) r[t.getAttribute("data-field")] = t.value;
+          persist();
+        })(); break;
+      case "set-contact-group-name":
+        (function () {
+          var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          if (g) g.name = t.value;
+          persist();
+        })(); break;
+      case "set-nurse-leader-name":
+        state.nurseLeader = state.nurseLeader || { name: "", email: "" };
+        state.nurseLeader.name = t.value;
+        persist(); break;
+      case "set-nurse-leader-email":
+        state.nurseLeader = state.nurseLeader || { name: "", email: "" };
+        state.nurseLeader.email = t.value;
+        persist(); break;
       case "set-va-color":
         (function () {
           var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
@@ -3027,6 +3205,25 @@ function appMain() {
           var name = (fd.get("name") || "").toString().trim();
           if (!name) return;
           state.taskCategories.push({ id: uid("cat"), name: name });
+          persist();
+        })(); break;
+      case "add-contact-row":
+        (function () {
+          var groupId = form.getAttribute("data-group");
+          var school = (fd.get("school") || "").toString().trim();
+          if (!school) return;
+          var g = state.contactGroups.find(function (x) { return x.id === groupId; });
+          if (!g) return;
+          g.rows = g.rows || [];
+          g.rows.push(contactRow(school));
+          persist();
+        })(); break;
+      case "add-contact-group":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          if (!name) return;
+          state.contactGroups = state.contactGroups || [];
+          state.contactGroups.push({ id: uid("cgrp"), name: name, rows: [] });
           persist();
         })(); break;
       case "add-email-item":
