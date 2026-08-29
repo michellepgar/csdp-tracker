@@ -217,6 +217,7 @@
   .row-meta { font-size: 0.76rem; color: var(--ink-faint); margin-top: 2px; }
   .row-file { font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; }
   .count-input { max-width: 64px; }
+  .task-file-group { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
   .pill {
     display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 600;
@@ -1364,8 +1365,9 @@ function appMain() {
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
     var needsCount = COUNT_CATEGORIES.indexOf(t.category) !== -1;
-    return "<div class=\"row-item\"><div class=\"row-main\"><span class=\"row-file mono\">" + esc(t.fileName) + "</span></div>" +
+    return "<div class=\"row-item\"><div class=\"row-main\"><span class=\"task-file-group\"><span class=\"row-file mono\">" + esc(t.fileName) + "</span>" +
       (needsCount ? "<span class=\"field-mini-label\">Count</span><input class=\"text-input count-input\" type=\"number\" min=\"0\" value=\"" + esc(t.count || "") + "\" placeholder=\"0\" data-action-change=\"set-task-count\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" : "") +
+      "</span></div>" +
       taskVaGroupHtml(t, schoolId) +
       statusControl("task", t.id, t.status, "toggle-task-status", schoolId) +
       (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId) : "") +
