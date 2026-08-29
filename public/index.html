@@ -1044,7 +1044,7 @@ function appMain() {
         deleteBtn("issue", it.id, "remove-issue") + "</div>";
     }).join("");
 
-    var recordTableCols = 12;
+    var recordTableCols = 13;
     var recordRows = recordList.map(function (it) {
       if (ui.editingIssueId === it.id) {
         return "<tr><td colspan=\"" + recordTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
@@ -1062,6 +1062,7 @@ function appMain() {
         "<td>" + esc(it.pageNumber) + "</td>" +
         "<td class=\"wrap\">" + esc(it.description) + "</td>" +
         "<td class=\"wrap\">" + esc(it.remarks) + "</td>" +
+        "<td>" + esc(it.reportedBy) + "</td>" +
         "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
         "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
@@ -1071,7 +1072,7 @@ function appMain() {
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
       "<th>Student</th><th>School</th><th>School year</th><th>Grade</th><th>DOB</th><th>Insurance #</th>" +
-      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Remarks</th><th>Status</th><th></th>" +
+      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
