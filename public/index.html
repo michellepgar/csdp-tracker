@@ -415,11 +415,16 @@
      hovered/focused, so the table reads like a spreadsheet rather than a
      form, but is fully editable in place. */
   .contact-cell-input {
-    width: 100%; min-width: 120px; border: 1px solid transparent; background: none; color: var(--ink);
+    display: block; width: 100%; min-width: 140px; border: 1px solid transparent; background: none; color: var(--ink);
     font: inherit; font-size: 0.83rem; padding: 4px 6px; border-radius: var(--radius);
+    resize: vertical; line-height: 1.35;
   }
   .contact-cell-input:hover { background: var(--surface-2); }
   .contact-cell-input:focus { background: var(--surface-2); border-color: var(--border-strong); outline: none; }
+  /* Read-only view: plain multi-line text, so a school with two or three
+     nurses/front-desk staff shows one name/email per line and a single
+     click-drag selects and copies just that one line. */
+  .contact-cell-view { padding: 4px 6px; font-size: 0.83rem; line-height: 1.35; white-space: normal; min-width: 140px; }
   .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .contact-leader-row .text-input { max-width: 260px; }
   .contact-group-title-input {
@@ -1087,6 +1092,25 @@ function appMain() {
     }
     return true;
   }
+  /* Contact rows that originally packed multiple people into one cell
+     separated by " / " (e.g. two nurses, two front-desk staff) are hard to
+     copy cleanly — one-time reflow onto separate lines within the same
+     cell instead, so each person's name/email can be selected on its own. */
+  var CONTACT_MULTI_LINE_FIELDS = ["principal", "principalEmail", "asstPrincipal", "asstPrincipalEmail", "frontDesk", "frontDeskEmail", "nurseName", "nurseEmail"];
+  function migrateContactMultiLineFields(parsed) {
+    if (parsed._migratedContactMultiLine) return false;
+    parsed._migratedContactMultiLine = true;
+    (parsed.contactGroups || []).forEach(function (g) {
+      (g.rows || []).forEach(function (r) {
+        CONTACT_MULTI_LINE_FIELDS.forEach(function (f) {
+          if (typeof r[f] === "string" && r[f].indexOf(" / ") !== -1) {
+            r[f] = r[f].split(" / ").join("\n");
+          }
+        });
+      });
+    });
+    return true;
+  }
   /* Seeds each VA's chosen color once, matching the fixed colors that were
      hardcoded before this became editable from the Team page — same
      colors, just now stored per-VA instead of baked into the code. */
@@ -1411,6 +1435,7 @@ function appMain() {
       migrateFaithOwner(fresh);
       migrateIssueStatusUniform(fresh);
       migrateSchoolContacts(fresh);
+      migrateContactMultiLineFields(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1475,13 +1500,14 @@ function appMain() {
       var justMigratedFaithOwner = migrateFaithOwner(state);
       var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
       var justMigratedContacts = migrateSchoolContacts(state);
+      var justMigratedContactMultiLine = migrateContactMultiLineFields(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1498,6 +1524,7 @@ function appMain() {
       sidebarOpen: false,
       sidebarCollapsed: loadSidebarCollapsed(),
       templateEditorOpen: false,
+      contactsEditMode: false,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "" },
       eodFilterAuthor: "",
@@ -1740,45 +1767,68 @@ function appMain() {
     { key: "nurseEmail", label: "Nurse Email" },
     { key: "notes", label: "Notes" }
   ];
+  /* Multi-line-safe text-to-HTML for the read-only view — keeps line
+     breaks (so a school with two nurses shows one per line) while still
+     escaping everything else. */
+  function contactCellViewHtml(v) { return esc(v).replace(/\n/g, "<br>"); }
+  /* Auto-sized so a cell with 2-3 people (one per line) doesn't clip in
+     edit mode — grows with however many lines are already in the value. */
+  function contactTextareaRows(v) { return Math.max(1, String(v || "").split("\n").length); }
   function contactsPageHtml() {
     var groups = state.contactGroups || [];
     var leader = state.nurseLeader || { name: "", email: "" };
+    var editing = !!ui.contactsEditMode;
     var leaderHtml = "<div class=\"card\"><div class=\"card-body\">" +
       "<div class=\"contact-leader-row\">" +
       "<span class=\"field-mini-label\">Nurse Leader</span>" +
-      "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-name\" placeholder=\"Name\" value=\"" + esc(leader.name) + "\">" +
-      "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-email\" placeholder=\"Email\" value=\"" + esc(leader.email) + "\">" +
+      (editing
+        ? "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-name\" placeholder=\"Name\" value=\"" + esc(leader.name) + "\">" +
+          "<input class=\"text-input contact-cell-input\" data-action-change=\"set-nurse-leader-email\" placeholder=\"Email\" value=\"" + esc(leader.email) + "\">"
+        : "<span class=\"contact-cell-view\">" + esc(leader.name) + (leader.name && leader.email ? " — " : "") + esc(leader.email) + "</span>") +
       "</div></div></div>";
 
     var groupsHtml = groups.map(function (g) {
-      var headerCells = CONTACT_FIELDS.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") + "<th></th>";
+      var headerCells = CONTACT_FIELDS.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") + (editing ? "<th></th>" : "");
       var rowsHtml = (g.rows || []).map(function (r) {
         var cells = CONTACT_FIELDS.map(function (f) {
-          return "<td><input class=\"contact-cell-input\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\" value=\"" + esc(r[f.key]) + "\"></td>";
+          if (editing) {
+            return "<td><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r[f.key]) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\">" + esc(r[f.key]) + "</textarea></td>";
+          }
+          return "<td><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
         }).join("");
         var pendingRow = isPending("contact-row", r.id);
-        return "<tr>" + cells + "<td><button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td></tr>";
+        var removeCell = editing ? "<td><button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td>" : "";
+        return "<tr>" + cells + removeCell + "</tr>";
       }).join("");
       var pendingGroup = isPending("contact-group", g.id);
+      var titleHtml = editing
+        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-contact-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
       return "<div class=\"card\"><div class=\"card-head\">" +
-        "<input class=\"contact-group-title-input\" data-action-change=\"set-contact-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">" +
-        "<div class=\"card-actions\"><button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-contact-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button></div>" +
+        titleHtml +
+        (editing ? "<div class=\"card-actions\"><button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-contact-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button></div>" : "") +
         "</div><div class=\"card-body\">" +
         "<div class=\"table-scroll\"><table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
-        "<form class=\"add-row-form\" data-action=\"add-contact-row\" data-group=\"" + g.id + "\">" +
-        "<input class=\"text-input\" name=\"school\" placeholder=\"School name\" required>" +
-        "<button class=\"btn small\" type=\"submit\">+ Add school</button></form>" +
+        (editing
+          ? "<form class=\"add-row-form\" data-action=\"add-contact-row\" data-group=\"" + g.id + "\">" +
+            "<input class=\"text-input\" name=\"school\" placeholder=\"School name\" required>" +
+            "<button class=\"btn small\" type=\"submit\">+ Add school</button></form>"
+          : "") +
         "</div></div>";
     }).join("");
 
-    var addGroupForm = "<div class=\"card\"><div class=\"card-body\">" +
-      "<form class=\"add-row-form\" data-action=\"add-contact-group\">" +
-      "<input class=\"text-input\" name=\"name\" placeholder=\"New group name (e.g. ELEMENTARY)\" required>" +
-      "<button class=\"btn\" type=\"submit\">+ Add group</button></form></div></div>";
+    var addGroupForm = editing
+      ? "<div class=\"card\"><div class=\"card-body\">" +
+        "<form class=\"add-row-form\" data-action=\"add-contact-group\">" +
+        "<input class=\"text-input\" name=\"name\" placeholder=\"New group name (e.g. ELEMENTARY)\" required>" +
+        "<button class=\"btn\" type=\"submit\">+ Add group</button></form></div></div>"
+      : "";
 
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div>" +
+      "<button class=\"btn" + (editing ? "" : " ghost") + "\" data-action=\"toggle-contacts-edit\">" + (editing ? "Done editing" : "Edit") + "</button>" +
+      "</div>" +
       leaderHtml + groupsHtml + addGroupForm;
   }
 
@@ -2820,6 +2870,7 @@ function appMain() {
         })(); break;
       case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
       case "toggle-issue-field-editor": ui.issueFieldEditorOpen = !ui.issueFieldEditorOpen; render(); break;
+      case "toggle-contacts-edit": ui.contactsEditMode = !ui.contactsEditMode; render(); break;
       case "remove-issue-field-pool":
         requestDelete("issue-field-pool", t.getAttribute("data-id"), function () {
           state.issueFieldPool = (state.issueFieldPool || []).filter(function (x) { return x.key !== t.getAttribute("data-id"); });
