@@ -2136,11 +2136,15 @@ function appMain() {
         "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button></div></div>" +
         "<div class=\"card-body\">" + typeEditorHtml +
         "<form class=\"add-row-form\" data-action=\"add-issue\">" +
-        "<select class=\"text-input\" name=\"schoolId\" required><option value=\"\" disabled selected>School…</option>" + addSchoolOpts + "</select>" +
+        /* A plain issue (software issue, etc.) isn't tied to a school, so
+           it doesn't need one — only Record Update and Record Needs
+           Rechecking do. */
+        (newFieldSet ? "<select class=\"text-input\" name=\"schoolId\" required><option value=\"\" disabled selected>School…</option>" + addSchoolOpts + "</select>" : "") +
         "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"" + esc(issueDescriptionLabel(newFieldSet)) + "\" required style=\"flex:2;\">" +
         "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
         extraFieldsHtml +
+        (!newFieldSet ? "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / notes (optional)\" style=\"margin-top:8px; min-height:56px; width:100%; box-sizing:border-box;\"></textarea>" : "") +
         "<button class=\"btn\" type=\"submit\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
         "</div></div>" +
@@ -3006,7 +3010,7 @@ function appMain() {
             description: (fd.get("description") || "").toString().trim(),
             reportedBy: (fd.get("reportedBy") || "").toString(),
             status: statusOpts[0] || "Open",
-            remarks: "",
+            remarks: !fieldSet ? (fd.get("remarks") || "").toString().trim() : "",
             createdAt: new Date().toISOString()
           };
           if (fieldSet === "record_update") {
