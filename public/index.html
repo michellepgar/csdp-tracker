@@ -972,9 +972,15 @@ function appMain() {
      UI gate only (like Private Notes' author filter) — it hides the page
      from everyone else, but doesn't lock the underlying shared data down
      at the database level. */
+  /* Michelle is always superadmin, no matter what — a permanent safety net
+     so the team can never end up with nobody able to reach the Team page.
+     Beyond that, any VA can be promoted from the Team page itself. */
   var SUPERADMIN_NAME = "Michelle";
   function isSuperAdmin() {
-    return getStoredIdentity() === SUPERADMIN_NAME;
+    var name = getStoredIdentity();
+    if (name === SUPERADMIN_NAME) return true;
+    var va = state.vas.find(function (v) { return v.name === name; });
+    return !!(va && va.superAdmin);
   }
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
@@ -2150,7 +2156,13 @@ function appMain() {
     var sortedVas = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     var assignmentRows = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
       var sd = state.schoolData[s.id] || {};
+      var currentIsKnown = !sd.vaAssigned || sortedVas.some(function (v) { return v.name === sd.vaAssigned; });
       var opts = "<option value=\"\"" + (!sd.vaAssigned ? " selected" : "") + ">Unassigned</option>" +
+        /* If whoever's assigned was since removed from Team, keep showing
+           their name (rather than silently defaulting to "Unassigned") —
+           the record still says it's theirs until someone deliberately
+           reassigns it. */
+        (!currentIsKnown ? "<option value=\"" + esc(sd.vaAssigned) + "\" selected>" + esc(sd.vaAssigned) + " (removed)</option>" : "") +
         sortedVas.map(function (v) {
           return "<option value=\"" + esc(v.name) + "\"" + (sd.vaAssigned === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>";
         }).join("");
@@ -2160,6 +2172,13 @@ function appMain() {
     var colorRows = sortedVas.map(function (v) {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"color:" + vaSolidColor(v.name) + "; font-weight:600;\">" + esc(v.name) + "</div>" +
         "<input type=\"color\" class=\"va-color-input\" value=\"" + esc(v.color || "#888888") + "\" data-action-change=\"set-va-color\" data-id=\"" + v.id + "\" title=\"Pick " + esc(v.name) + "'s color\"></div>";
+    }).join("");
+    var promotableVas = sortedVas.filter(function (v) { return v.name !== SUPERADMIN_NAME; });
+    var superAdminRows = promotableVas.map(function (v) {
+      return "<div class=\"row-item\"><div class=\"row-main\" style=\"font-weight:600;\">" + esc(v.name) + "</div>" +
+        "<label class=\"field-row\" style=\"gap:6px; cursor:pointer;\">" +
+        "<input type=\"checkbox\" data-action-change=\"toggle-va-superadmin\" data-id=\"" + v.id + "\"" + (v.superAdmin ? " checked" : "") + "> Superadmin" +
+        "</label></div>";
     }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
@@ -2171,6 +2190,11 @@ function appMain() {
       "<div class=\"card-body\">" +
       "<div class=\"checklist-note\">Pick a color for each VA — used for their signature on files and for their assigned schools' names. New VAs default to an auto-picked color until you set one here.</div>" +
       "<div class=\"row-list\" style=\"margin-top:10px;\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Superadmin Access</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"checklist-note\">Michelle is always superadmin as a permanent safety net. Check anyone else here to give them the same full access — Team page, EOD Reports for everyone, and everything below.</div>" +
+      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (superAdminRows || emptyState("No other VAs yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
       "<div class=\"card-body\">" +
@@ -2649,6 +2673,13 @@ function appMain() {
         (function () {
           var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (va) va.color = t.value;
+          persist();
+        })(); break;
+      case "toggle-va-superadmin":
+        (function () {
+          if (!isSuperAdmin()) return;
+          var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (va) va.superAdmin = !!t.checked;
           persist();
         })(); break;
       case "toggle-task-status":
