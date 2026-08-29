@@ -860,8 +860,7 @@ function appMain() {
       emailAttn += emailAttnCount(state.schools[i].id);
       if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
     }
-    var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div>" +
-      "<div class=\"page-sub\">Pick a school on the left, or jump into a shared workspace page.</div></div></div>";
+    var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div></div></div>";
     html += "<div class=\"stat-grid\">" +
       statTile(state.schools.length, "Schools") +
       statTile(tasksAttn, "Tasks in progress") +
@@ -1244,8 +1243,7 @@ function appMain() {
       (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
 
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div>" +
-      "<div class=\"page-sub\">Software issues and recheck items across all schools, in one place. Fields here will grow as the workflow gets detailed further.</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div></div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Add an issue</div>" +
         "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button></div></div>" +
         "<div class=\"card-body\">" + typeEditorHtml +
@@ -1292,8 +1290,7 @@ function appMain() {
       return body + "</div>";
     }).join("");
 
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Email Templates</div>" +
-      "<div class=\"page-sub\">Reference text to copy into your own email client. Not connected to any inbox.</div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Email Templates</div></div>" +
       "<button class=\"btn\" data-action=\"new-template\">" + (ui.editingTemplateId === "new" ? "Cancel" : "+ New template") + "</button>" +
       "</div>" +
       (ui.editingTemplateId === "new" ? "<div class=\"tmpl-item\">" + templateFormHtml(null) + "</div>" : "") +
@@ -1321,8 +1318,7 @@ function appMain() {
       return "<div class=\"va-chip\">" + esc(v.name) +
         "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
     }).join("");
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div>" +
-      "<div class=\"page-sub\">VA names used across the app. Removing one here only removes it from the suggestion list — past entries keep their name.</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-va\">" +
         "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
@@ -1332,15 +1328,13 @@ function appMain() {
 
   /* ---------- General notes ---------- */
   function generalNotesPageHtml() {
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div>" +
-      "<div class=\"page-sub\">Team-wide notes, not tied to any school.</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div></div></div>" +
       notesCardHtml("general", null, state.generalNotes);
   }
 
   /* ---------- Suggestions ---------- */
   function suggestionsPageHtml() {
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div>" +
-      "<div class=\"page-sub\">What should we add or change on this page? Drop your ideas here.</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
       notesCardHtml("suggestion", null, state.suggestions);
   }
 
