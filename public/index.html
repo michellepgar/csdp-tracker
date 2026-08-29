@@ -1306,7 +1306,8 @@ function appMain() {
       taskSort: { field: "date", dir: "desc" },
       emailSort: { field: "date", dir: "desc" },
       issuesSort: { field: "date", dir: "desc" },
-      schoolVaFilter: ""
+      schoolVaFilter: "",
+      addingVaForTask: null
     };
     render();
     startPollingForUpdates();
@@ -1661,6 +1662,10 @@ function appMain() {
   /* The "+" is a signature, not a picker: clicking it adds whoever is
      currently logged in, on this device, to the file — not a name chosen
      from a list. It only shows up for someone who hasn't signed yet. */
+  /* Two ways to add a name to a file: "✍" is your own signature (adds
+     whoever's logged in, one click, no picking) and "+" is for noting a
+     coworker who's on the file with you but isn't the one clicking — it
+     opens a small picker instead of guessing who you mean. */
   function taskVaGroupHtml(t, schoolId) {
     var names = Array.isArray(t.vaAssigned) ? t.vaAssigned : (t.vaAssigned ? [t.vaAssigned] : []);
     var chips = names.map(function (name) {
@@ -1669,10 +1674,21 @@ function appMain() {
         "</span>";
     }).join("");
     var me = getStoredIdentity();
-    var control = (me && names.indexOf(me) === -1)
-      ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
+    var signBtn = (me && names.indexOf(me) === -1)
+      ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">✍</button>"
       : "";
-    return "<span class=\"va-group\">" + chips + control + "</span>";
+    var otherControl = "";
+    if (ui.addingVaForTask === t.id) {
+      var available = state.vas.filter(function (v) { return names.indexOf(v.name) === -1; });
+      var opts = "<option value=\"\" disabled selected>Add someone…</option>" + available.map(function (v) {
+        return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
+      }).join("");
+      otherControl = "<select class=\"text-input va-add-select\" data-action-change=\"add-va-to-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" + opts + "</select>" +
+        "<button class=\"link-btn\" data-action=\"cancel-add-va-for-task\">Cancel</button>";
+    } else {
+      otherControl = "<button class=\"add-va-btn\" data-action=\"toggle-add-va-for-task\" data-id=\"" + t.id + "\" title=\"Add someone else working on this file\">+</button>";
+    }
+    return "<span class=\"va-group\">" + chips + signBtn + otherControl + "</span>";
   }
 
   function schoolPageHtml(schoolId) {
@@ -2482,6 +2498,8 @@ function appMain() {
           }
           persist();
         })(); break;
+      case "toggle-add-va-for-task": ui.addingVaForTask = t.getAttribute("data-id"); render(); break;
+      case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
       case "remove-va-from-task":
         (function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
@@ -2735,6 +2753,18 @@ function appMain() {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
           var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (task) task.count = t.value;
+          persist();
+        })(); break;
+      case "add-va-to-task":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (task && t.value) {
+            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
+            if (names.indexOf(t.value) === -1) names.push(t.value);
+            task.vaAssigned = names;
+          }
+          ui.addingVaForTask = null;
           persist();
         })(); break;
       case "change-email-status":
