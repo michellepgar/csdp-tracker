@@ -1021,6 +1021,42 @@ function appMain() {
       return fresh;
     });
   }
+  /* Live-updating without a manual refresh: every few seconds, ask the
+     server for just its updated_at timestamp (cheap) and only pull the
+     full state down when it's actually changed since our last known copy.
+     Skipped entirely while the viewer is mid-edit (typing in a field or a
+     rich-text note) so a background sync never yanks their cursor away or
+     clobbers what they're in the middle of writing — it'll pick up their
+     change on the next successful save instead. */
+  function isEditingSomething() {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+  function checkForRemoteUpdates() {
+    if (!hasSupabaseConfig() || !state || isEditingSomething()) return;
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?select=updated_at&id=eq.1";
+    fetch(url, { headers: supabaseHeaders() }).then(function (res) {
+      return res.ok ? res.json() : null;
+    }).then(function (rows) {
+      if (!rows || !rows.length) return;
+      var remoteUpdatedAt = rows[0].updated_at;
+      if (!remoteUpdatedAt || remoteUpdatedAt === lastKnownUpdatedAt) return;
+      if (isEditingSomething()) return;
+      refreshStateFromServer().then(function (fresh) {
+        if (isEditingSomething()) return;
+        state = fresh;
+        lastKnownUpdatedAt = remoteUpdatedAt;
+        render();
+      }).catch(function () {});
+    }).catch(function () {});
+  }
+  function startPollingForUpdates() {
+    setInterval(checkForRemoteUpdates, 12000);
+  }
   function boot() {
     var pw = getStoredPassword();
     if (!pw) { showPasswordPrompt(); return; }
@@ -1057,6 +1093,7 @@ function appMain() {
       editingNoteId: null
     };
     render();
+    startPollingForUpdates();
   }
 
   /* ============ derived data helpers ============ */
