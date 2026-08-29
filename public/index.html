@@ -188,6 +188,10 @@
   .sidebar.collapsed ~ .main .content { max-width: 1800px; }
 
   .page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 22px; }
+  /* Keeps the school's name pinned at the top while its Tasks/Checklist/
+     Email Tracker scroll underneath, so it's always clear which school
+     you're on. Solid background so scrolled content doesn't show through. */
+  .school-page-header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
   .page-title { font-size: 1.9rem; font-weight: 600; }
   .overview-nav-item { font-size: 1rem; font-weight: 700; color: var(--accent); }
   .overview-nav-item.active { color: var(--accent-soft-ink); }
@@ -496,11 +500,11 @@ function appMain() {
      own status vocabulary. "Record Update" carries its own extra fields, including
      what's being corrected (category + correct info), shown in a table view. */
   var DEFAULT_ISSUE_TYPES = [
-    { id: "software_issue", name: "Software issue", statusOptions: ["Open", "In Progress", "Resolved"] },
-    { id: "recheck", name: "Record Needs Rechecking", statusOptions: ["Pending", "Rechecked", "Needs Re-check"], fieldSet: "recheck" },
-    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], fieldSet: "record_update" }
+    { id: "software_issue", name: "Software issue", statusOptions: ["Pending", "Resolved"] },
+    { id: "recheck", name: "Record Needs Rechecking", statusOptions: ["Pending", "Resolved"], fieldSet: "recheck" },
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "Resolved"], fieldSet: "record_update" }
   ];
-  var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
+  var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Pending", "Resolved"];
 
   var DEFAULT_TASK_CATEGORIES = [
     "Encoding & Uploading (Consent & SDF)", "Transactions", "Initial", "Photos",
@@ -974,6 +978,20 @@ function appMain() {
     });
     return true;
   }
+  /* Every issue type now shares the same two statuses instead of each
+     having its own vocabulary — forces existing types to the new set, and
+     remaps every already-saved issue's status onto Pending/Resolved using
+     the same red/orange/green tiering the rest of the app already uses to
+     tell "still needs action" from "done". */
+  function migrateIssueStatusUniform(parsed) {
+    if (parsed._migratedIssueStatusUniform) return false;
+    parsed._migratedIssueStatusUniform = true;
+    (parsed.issueTypes || []).forEach(function (ty) { ty.statusOptions = ["Pending", "Resolved"]; });
+    (parsed.issues || []).forEach(function (it) {
+      it.status = STATUS_TIER[it.status] === "green" ? "Resolved" : "Pending";
+    });
+    return true;
+  }
   /* Faith is the owner, not a VA doing casework — she still logs in with
      her own name + PIN like everyone else, but gets full access and is
      left out of VA-only lists (school assignment, etc.). */
@@ -1259,6 +1277,7 @@ function appMain() {
       migrateVaColors(fresh);
       migrateVaAdminField(fresh);
       migrateFaithOwner(fresh);
+      migrateIssueStatusUniform(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1321,13 +1340,14 @@ function appMain() {
       var justMigratedVaColors = migrateVaColors(state);
       var justMigratedVaAdminField = migrateVaAdminField(state);
       var justMigratedFaithOwner = migrateFaithOwner(state);
+      var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1541,8 +1561,8 @@ function appMain() {
       "<input class=\"search-input\" placeholder=\"Search schools…\" value=\"" + esc(ui.search) + "\" data-role=\"school-search\">" +
       "<select class=\"text-input\" style=\"margin-top:6px; font-size:0.8rem;\" data-action-change=\"set-school-va-filter\">" +
       "<option value=\"\">All VAs</option>" +
-      state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (v) {
-        return "<option value=\"" + esc(v.name) + "\"" + (vaFilter === v.name ? " selected" : "") + ">" + esc(v.name) + "'s schools</option>";
+      state.vas.filter(function (v) { return v.role !== "owner"; }).sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (v) {
+        return "<option value=\"" + esc(v.name) + "\"" + (vaFilter === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>";
       }).join("") +
       "</select>" +
       "<div class=\"school-list nav-list\">" + (schoolRows || "<div class=\"empty-state\" style=\"padding:10px 4px;\">No schools match.</div>") + "</div>" +
@@ -1563,7 +1583,7 @@ function appMain() {
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Team</div>" +
       "<div class=\"nav-list\">" +
-      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
+      navItem("notes", "General Notes/Announcements", state.generalNotes.length, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
@@ -1701,6 +1721,14 @@ function appMain() {
     var assigned = sd && sd.vaAssigned;
     return assigned ? "color:" + vaSolidColor(assigned) + ";" : "";
   }
+  /* A soft background tint (same VA color as the school name) for the
+     Tasks/Checklist/Email Tracker cards, so it's obvious at a glance whose
+     school's page you're looking at. */
+  function schoolCardBgCss(schoolId) {
+    var sd = state.schoolData[schoolId];
+    var assigned = sd && sd.vaAssigned;
+    return assigned ? "background:" + vaColorCss(assigned, 0.08) + ";" : "";
+  }
   function schoolNameColorStyle(schoolId) {
     var css = schoolNameColorCss(schoolId);
     return css ? " style=\"" + css + "\"" : "";
@@ -1749,7 +1777,7 @@ function appMain() {
     if (!school) { ui.view = { type: "home" }; return homePageHtml(); }
     var sd = ensureSchoolData(schoolId);
 
-    var header = "<div class=\"page-header\">" +
+    var header = "<div class=\"page-header school-page-header\">" +
       "<div><div class=\"page-title display\"" + schoolNameColorStyle(schoolId) + ">" + esc(school.name) + "</div>" +
       "<div class=\"field-row\" style=\"margin-top:8px;\">" +
       "<span class=\"field-label\">VA assigned</span>" +
@@ -1818,7 +1846,7 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    return "<div class=\"card\"><div class=\"card-head\">" +
+    return "<div class=\"card\" style=\"" + schoolCardBgCss(schoolId) + "\"><div class=\"card-head\">" +
       "<div class=\"card-title\">Tasks" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.taskSort, "set-task-sort") +
       "<button class=\"link-btn\" data-action=\"toggle-task-category-editor\">" + (ui.taskCategoryEditorOpen ? "Close editor" : "Edit categories") + "</button></div>" +
@@ -1934,7 +1962,7 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    return "<div class=\"card\"><div class=\"card-head\">" +
+    return "<div class=\"card\" style=\"" + schoolCardBgCss(schoolId) + "\"><div class=\"card-head\">" +
       "<div class=\"card-title\">Yearly Checklist" + (tmpl.length > 0 ? " <span class=\"count-chip\" style=\"background:var(--done-soft); color:var(--done);\">" + doneCount + "/" + tmpl.length + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-template-editor\">" + (ui.templateEditorOpen ? "Close editor" : "Edit template") + "</button></div>" +
       "</div><div class=\"card-body\">" + editorHtml +
@@ -1950,7 +1978,7 @@ function appMain() {
         statusControl("email_followup", e.id, e.status, "change-email-status", schoolId) +
         deleteBtn("email-item", e.id, "remove-email-item", schoolId) + "</div>";
     }).join("");
-    return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
+    return "<div class=\"card\" id=\"email-tracker-card\" style=\"" + schoolCardBgCss(schoolId) + "\"><div class=\"card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-email-item\" data-school=\"" + schoolId + "\">" +
