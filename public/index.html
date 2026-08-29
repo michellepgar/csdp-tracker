@@ -921,6 +921,19 @@ function appMain() {
     for (var i = 0; i < state.issues.length; i++) if (STATUS_TIER[state.issues[i].status] !== "green") n++;
     return n;
   }
+  function issuesStatusBreakdown() {
+    var counts = {};
+    state.issues.forEach(function (it) {
+      if (STATUS_TIER[it.status] !== "green") {
+        counts[it.status] = (counts[it.status] || 0) + 1;
+      }
+    });
+    return Object.keys(counts).map(function (status) {
+      return { status: status, count: counts[status] };
+    }).sort(function (a, b) {
+      return b.count - a.count || a.status.localeCompare(b.status);
+    });
+  }
   function issueTypeById(id) {
     for (var i = 0; i < state.issueTypes.length; i++) if (state.issueTypes[i].id === id) return state.issueTypes[i];
     return null;
@@ -1079,8 +1092,17 @@ function appMain() {
       statTile(state.schools.length, "Schools") +
       statTile(tasksAttn, "Tasks in progress") +
       statTile(emailAttn, "Emails needing attention") +
+      statTile(issuesAttnCount(), "Issues & concerns pending") +
       statTile(completedSchools.length, "Completed for the year") +
       "</div>";
+    var breakdown = issuesStatusBreakdown();
+    var breakdownRows = breakdown.map(function (row) {
+      return "<button class=\"nav-item\" data-action=\"nav-issues-status\" data-status=\"" + esc(row.status) + "\">" +
+        "<span class=\"name\">" + esc(row.status) + "</span>" +
+        "<span class=\"count-chip\">" + row.count + "</span></button>";
+    }).join("");
+    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns — Still Open</div></div>" +
+      "<div class=\"card-body\"><div class=\"nav-list\">" + (breakdownRows || emptyState("No open issues or concerns right now.")) + "</div></div></div>";
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
     } else {
@@ -1688,6 +1710,10 @@ function appMain() {
         render(); break;
       case "nav-view":
         goTo({ type: t.getAttribute("data-view") });
+        render(); break;
+      case "nav-issues-status":
+        ui.issueFilters = { school: "", type: "", status: t.getAttribute("data-status") };
+        goTo({ type: "issues" });
         render(); break;
       case "toggle-sidebar": ui.sidebarOpen = !ui.sidebarOpen; render(); break;
       case "toggle-sidebar-collapse":
