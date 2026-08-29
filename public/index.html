@@ -2616,6 +2616,18 @@ function appMain() {
             }
           });
         })(); break;
+      case "sign-issue-fixed":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          var me = getStoredIdentity();
+          if (issue && me && !issue.fixedBy) issue.fixedBy = me;
+          persist();
+        })(); break;
+      case "clear-issue-fixed-by":
+        requestDelete("issue-fixedby", t.getAttribute("data-id"), function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) delete issue.fixedBy;
+        }); break;
       case "remove-task-category":
         requestDelete("task-category", t.getAttribute("data-id"), function () {
           state.taskCategories = state.taskCategories.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
@@ -3137,18 +3149,6 @@ function appMain() {
           ui.editingIssueType = null;
           persist();
         })(); break;
-      case "sign-issue-fixed":
-        (function () {
-          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          var me = getStoredIdentity();
-          if (issue && me && !issue.fixedBy) issue.fixedBy = me;
-          persist();
-        })(); break;
-      case "clear-issue-fixed-by":
-        requestDelete("issue-fixedby", t.getAttribute("data-id"), function () {
-          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (issue) delete issue.fixedBy;
-        }); break;
       case "create-pin":
         (function () {
           var name = form.getAttribute("data-name");
