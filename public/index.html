@@ -334,6 +334,8 @@
   .sticky-note { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 120px; color: #2b2b1f; }
   .sticky-note-text { flex: 1; font-size: 0.9rem; word-break: break-word; }
   .sticky-note-text ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
+  .sticky-note-text input[type="checkbox"] { vertical-align: middle; margin-right: 2px; cursor: pointer; }
+  .note-editor-area input[type="checkbox"] { vertical-align: middle; margin-right: 2px; }
   .sticky-note-meta { font-size: 0.72rem; opacity: 0.65; margin-top: 8px; }
   .sticky-note-actions { display: flex; gap: 10px; margin-top: 6px; }
   .sticky-note-actions button { font-size: 0.76rem; background: none; border: none; text-decoration: underline; cursor: pointer; color: inherit; opacity: 0.75; padding: 0; }
@@ -453,7 +455,7 @@ function appMain() {
      for comments/etc., removed outright. Parsed via DOMParser rather than a
      live element's innerHTML, since DOMParser documents don't fetch
      resources or run scripts even transiently during parsing. */
-  var ALLOWED_NOTE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, BR: 1, DIV: 1, P: 1, SPAN: 1, FONT: 1 };
+  var ALLOWED_NOTE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, BR: 1, DIV: 1, P: 1, SPAN: 1, FONT: 1, INPUT: 1 };
   /* Only `color` and `font-family` survive, and only in a safe, validated
      form — this is what actually stops something like `url(...)` or a
      javascript: scheme sneaking in via a crafted style value, not just the
@@ -498,6 +500,13 @@ function appMain() {
             var cleaned = sanitizeStyleDecl(child.getAttribute("style"));
             while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
             if (cleaned) child.setAttribute("style", cleaned);
+          } else if (child.tagName === "INPUT") {
+            var isCheckbox = (child.getAttribute("type") || "").toLowerCase() === "checkbox";
+            if (!isCheckbox) { node.removeChild(child); return; }
+            var wasChecked = child.hasAttribute("checked");
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            child.setAttribute("type", "checkbox");
+            if (wasChecked) child.setAttribute("checked", "");
           } else {
             while (child.attributes && child.attributes.length) child.removeAttribute(child.attributes[0].name);
           }
@@ -507,6 +516,31 @@ function appMain() {
         }
       });
     })(doc.body);
+    return doc.body.innerHTML;
+  }
+  /* A checkbox's "checked" DOM attribute only reflects its *default* state —
+     clicking it updates the live `.checked` property, not the attribute — so
+     reading `.innerHTML` straight after a click would serialize the box back
+     to its original state. Sync attribute from property first. */
+  function syncNoteCheckboxAttrs(editorEl) {
+    if (!editorEl) return;
+    var boxes = editorEl.querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].checked) boxes[i].setAttribute("checked", ""); else boxes[i].removeAttribute("checked");
+    }
+  }
+  /* For display (read-only) rendering only: tags each checkbox in a note's
+     already-sanitized HTML with the data-* attributes the delegated change
+     handler needs to toggle it in place. Never applied to what gets saved. */
+  function renderNoteCheckboxes(html, id, scope) {
+    var doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+    var boxes = doc.querySelectorAll("input[type=checkbox]");
+    for (var i = 0; i < boxes.length; i++) {
+      boxes[i].setAttribute("data-action-change", "toggle-note-checkbox");
+      boxes[i].setAttribute("data-id", id);
+      boxes[i].setAttribute("data-scope", scope);
+      boxes[i].setAttribute("data-cb-index", String(i));
+    }
     return doc.body.innerHTML;
   }
   function fmtDate(iso) {
@@ -1540,7 +1574,7 @@ function appMain() {
       "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
       "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
       "<button type=\"button\" title=\"Dash list\" onmousedown=\"event.preventDefault(); document.execCommand('insertText', false, '- ');\">-</button>" +
-      "<button type=\"button\" title=\"Checkbox\" onmousedown=\"event.preventDefault(); document.execCommand('insertText', false, '☐ ');\">☐</button>" +
+      "<button type=\"button\" title=\"Checkbox\" onmousedown=\"event.preventDefault(); document.execCommand('insertHTML', false, '<input type=&quot;checkbox&quot;>&nbsp;');\">☑</button>" +
       "<span class=\"note-toolbar-sep\"></span>" + fontBtns +
       "<span class=\"note-toolbar-sep\"></span>" + sizeBtns +
       "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
@@ -1566,7 +1600,7 @@ function appMain() {
       }
       var pendingDelete = isPending("note", n.id);
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
-        "<div class=\"sticky-note-text\">" + (n.text || "") + "</div>" +
+        "<div class=\"sticky-note-text\">" + renderNoteCheckboxes(n.text, n.id, scope) + "</div>" +
         "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
         "<div class=\"sticky-note-actions\">" +
         "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
@@ -1893,6 +1927,22 @@ function appMain() {
       case "select-edit-issue-type":
         ui.editingIssueType = t.value;
         render(); break;
+      case "toggle-note-checkbox":
+        (function () {
+          var id = t.getAttribute("data-id");
+          var scope = t.getAttribute("data-scope");
+          var idx = parseInt(t.getAttribute("data-cb-index"), 10);
+          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+          var note = arr.find(function (x) { return x.id === id; });
+          if (!note) return;
+          var doc = new DOMParser().parseFromString(note.text || "", "text/html");
+          var boxes = doc.querySelectorAll("input[type=checkbox]");
+          var box = boxes[idx];
+          if (!box) return;
+          if (t.checked) box.setAttribute("checked", ""); else box.removeAttribute("checked");
+          note.text = sanitizeNoteHtml(doc.body.innerHTML);
+          persist();
+        })(); break;
       default: break;
     }
   }
@@ -1983,6 +2033,7 @@ function appMain() {
       case "add-general-note":
         (function () {
           var editorEl = form.querySelector("[contenteditable]");
+          syncNoteCheckboxAttrs(editorEl);
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           if (!html || html === "<br>") return;
           var author = (fd.get("author") || "").toString().trim();
@@ -1994,6 +2045,7 @@ function appMain() {
       case "add-private-note":
         (function () {
           var editorEl = form.querySelector("[contenteditable]");
+          syncNoteCheckboxAttrs(editorEl);
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           if (!html || html === "<br>") return;
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
@@ -2005,6 +2057,7 @@ function appMain() {
           var id = form.getAttribute("data-id");
           var scope = form.getAttribute("data-scope");
           var editorEl = form.querySelector("[contenteditable]");
+          syncNoteCheckboxAttrs(editorEl);
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
