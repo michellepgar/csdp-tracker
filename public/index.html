@@ -383,7 +383,9 @@ function appMain() {
   var COUNT_CATEGORIES = ["Encoding & Uploading (Consent & SDF)", "Initial", "Recheck"];
   var DEFAULT_CHECKLIST_ITEMS = [
     "BEGINNING OF YEAR EMAIL", "DROP OFF EMAIL", "PICK UP FORM EMAIL",
-    "INITIAL VISIT EMAIL", "TALLY", "CLEANUP DROPBOX", "FOLLOW UP VISIT EMAIL"
+    "INITIAL VISIT EMAIL", "TALLY", "CLEANUP DROPBOX", "FOLLOW UP VISIT EMAIL",
+    "Encoding & Uploading (Consent & SDF)", "Transactions", "Initial", "Photos",
+    "Recheck", "Insurance", "Eligibility", "Billing"
   ];
   /* Status color tiers: red = still needs action, orange = paused/waiting,
      green = done, neutral = blank/no status yet. */
@@ -675,7 +677,7 @@ function appMain() {
     });
     DEFAULT_CHECKLIST_ITEMS.forEach(function (desc) {
       if (existingDesc.indexOf(desc.trim().toLowerCase()) === -1) {
-        parsed.checklistTemplate.push({ id: uid("tmpl"), description: desc, category: "" });
+        parsed.checklistTemplate.push({ id: uid("tmpl"), description: desc });
       }
     });
   }
@@ -1316,7 +1318,7 @@ function appMain() {
       if (p && p.status === "Done") doneCount++;
     });
 
-    function checklistItemRowHtml(item) {
+    var rows = tmpl.map(function (item) {
       var p = state.checklistProgress[schoolId + ":" + item.id] || { status: "Open" };
       var done = p.status === "Done";
       return "<div class=\"checklist-item\">" +
@@ -1324,28 +1326,12 @@ function appMain() {
         "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div>" +
         (done && p.completedBy ? "<div class=\"row-meta\">Done by " + esc(p.completedBy) + "</div>" : "") +
         "</div></div>";
-    }
-
-    var cats = state.taskCategories;
-    var catNames = cats.map(function (c) { return c.name; });
-    var rows = cats.map(function (c) {
-      var items = tmpl.filter(function (item) { return item.category === c.name; });
-      if (!items.length) return "";
-      return "<div class=\"task-group\"><div class=\"task-group-title\"><span>" + esc(c.name) + "</span></div>" +
-        "<div class=\"row-list\">" + items.map(checklistItemRowHtml).join("") + "</div></div>";
     }).join("");
-    var uncategorized = tmpl.filter(function (item) { return catNames.indexOf(item.category) === -1; });
-    if (uncategorized.length) {
-      rows += "<div class=\"task-group\"><div class=\"task-group-title\"><span>Other</span></div>" +
-        "<div class=\"row-list\">" + uncategorized.map(checklistItemRowHtml).join("") + "</div></div>";
-    }
 
     var editorHtml = "";
     if (ui.templateEditorOpen) {
-      var catOptions = cats.map(function (c) { return "<option value=\"" + esc(c.name) + "\">" + esc(c.name) + "</option>"; }).join("");
       var tmplRows = tmpl.map(function (item, idx) {
-        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(item.description) +
-          (item.category ? " <span class=\"field-mini-label\">(" + esc(item.category) + ")</span>" : "") + "</div>" +
+        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(item.description) + "</div>" +
           "<div class=\"stack-btns\">" +
           "<button" + (idx === 0 ? " disabled" : "") + " data-action=\"move-template-item\" data-id=\"" + item.id + "\" data-dir=\"up\">▲</button>" +
           "<button" + (idx === tmpl.length - 1 ? " disabled" : "") + " data-action=\"move-template-item\" data-id=\"" + item.id + "\" data-dir=\"down\">▼</button>" +
@@ -1357,7 +1343,6 @@ function appMain() {
         tmplRows +
         "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-template-item\">" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"New checklist item\" required>" +
-        "<select class=\"text-input\" name=\"category\"><option value=\"\">No category</option>" + catOptions + "</select>" +
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
@@ -2308,8 +2293,7 @@ function appMain() {
         (function () {
           var desc = (fd.get("description") || "").toString().trim();
           if (!desc) return;
-          var category = (fd.get("category") || "").toString();
-          state.checklistTemplate.push({ id: uid("tmpl"), description: desc, category: category });
+          state.checklistTemplate.push({ id: uid("tmpl"), description: desc });
           persist();
         })(); break;
       case "add-va":
