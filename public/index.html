@@ -1577,6 +1577,9 @@ function appMain() {
     return css ? " style=\"" + css + "\"" : "";
   }
 
+  /* The "+" is a signature, not a picker: clicking it adds whoever is
+     currently logged in, on this device, to the file — not a name chosen
+     from a list. It only shows up for someone who hasn't signed yet. */
   function taskVaGroupHtml(t, schoolId) {
     var names = Array.isArray(t.vaAssigned) ? t.vaAssigned : (t.vaAssigned ? [t.vaAssigned] : []);
     var chips = names.map(function (name) {
@@ -1584,17 +1587,10 @@ function appMain() {
         "<button class=\"va-tag-remove\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"Remove " + esc(name) + "\">×</button>" +
         "</span>";
     }).join("");
-    var control = "";
-    if (ui.addingVaForTask === t.id) {
-      var available = state.vas.filter(function (v) { return names.indexOf(v.name) === -1; });
-      var opts = "<option value=\"\" disabled selected>Add VA…</option>" + available.map(function (v) {
-        return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
-      }).join("");
-      control = "<select class=\"text-input va-add-select\" data-action-change=\"add-va-to-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" + opts + "</select>" +
-        "<button class=\"link-btn\" data-action=\"cancel-add-va-for-task\">Cancel</button>";
-    } else {
-      control = "<button class=\"add-va-btn\" data-action=\"toggle-add-va-for-task\" data-id=\"" + t.id + "\" title=\"Add a VA\">+</button>";
-    }
+    var me = getStoredIdentity();
+    var control = (me && names.indexOf(me) === -1)
+      ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
+      : "";
     return "<span class=\"va-group\">" + chips + control + "</span>";
   }
 
@@ -2348,8 +2344,18 @@ function appMain() {
       case "toggle-add-school": ui.addSchoolOpen = !ui.addSchoolOpen; render(); break;
       case "toggle-template-editor": ui.templateEditorOpen = !ui.templateEditorOpen; render(); break;
       case "toggle-task-category-editor": ui.taskCategoryEditorOpen = !ui.taskCategoryEditorOpen; render(); break;
-      case "toggle-add-va-for-task": ui.addingVaForTask = t.getAttribute("data-id"); render(); break;
-      case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
+      case "sign-task":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          var me = getStoredIdentity();
+          if (task && me) {
+            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
+            if (names.indexOf(me) === -1) names.push(me);
+            task.vaAssigned = names;
+          }
+          persist();
+        })(); break;
       case "remove-va-from-task":
         (function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
@@ -2590,18 +2596,6 @@ function appMain() {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
           var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (task) task.count = t.value;
-          persist();
-        })(); break;
-      case "add-va-to-task":
-        (function () {
-          var sd = ensureSchoolData(t.getAttribute("data-school"));
-          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (task && t.value) {
-            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
-            if (names.indexOf(t.value) === -1) names.push(t.value);
-            task.vaAssigned = names;
-          }
-          ui.addingVaForTask = null;
           persist();
         })(); break;
       case "change-email-status":
