@@ -1307,7 +1307,8 @@ function appMain() {
       emailSort: { field: "date", dir: "desc" },
       issuesSort: { field: "date", dir: "desc" },
       schoolVaFilter: "",
-      addingVaForTask: null
+      addingVaForTask: null,
+      lastTaskCategory: {}
     };
     render();
     startPollingForUpdates();
@@ -1675,18 +1676,22 @@ function appMain() {
     }).join("");
     var me = getStoredIdentity();
     var signBtn = (me && names.indexOf(me) === -1)
-      ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">✍</button>"
+      ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
       : "";
+    /* Only Owner/Superadmin/Admin can assign a file to someone else — a
+       regular VA can only add themselves, via the button above. */
     var otherControl = "";
-    if (ui.addingVaForTask === t.id) {
-      var available = state.vas.filter(function (v) { return names.indexOf(v.name) === -1; });
-      var opts = "<option value=\"\" disabled selected>Add someone…</option>" + available.map(function (v) {
-        return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
-      }).join("");
-      otherControl = "<select class=\"text-input va-add-select\" data-action-change=\"add-va-to-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" + opts + "</select>" +
-        "<button class=\"link-btn\" data-action=\"cancel-add-va-for-task\">Cancel</button>";
-    } else {
-      otherControl = "<button class=\"add-va-btn\" data-action=\"toggle-add-va-for-task\" data-id=\"" + t.id + "\" title=\"Add someone else working on this file\">+</button>";
+    if (isSuperAdmin()) {
+      if (ui.addingVaForTask === t.id) {
+        var available = state.vas.filter(function (v) { return names.indexOf(v.name) === -1; });
+        var opts = "<option value=\"\" disabled selected>Add someone…</option>" + available.map(function (v) {
+          return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
+        }).join("");
+        otherControl = "<select class=\"text-input va-add-select\" data-action-change=\"add-va-to-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" + opts + "</select>" +
+          "<button class=\"link-btn\" data-action=\"cancel-add-va-for-task\">Cancel</button>";
+      } else {
+        otherControl = "<button class=\"add-va-btn\" data-action=\"toggle-add-va-for-task\" data-id=\"" + t.id + "\" title=\"Assign someone else to this file\">+</button>";
+      }
     }
     return "<span class=\"va-group\">" + chips + signBtn + otherControl + "</span>";
   }
@@ -1742,7 +1747,10 @@ function appMain() {
         "<div class=\"row-list\">" + orphaned.map(function (t) { return taskRowHtml(t, schoolId); }).join("") + "</div></div>";
     }
 
-    var catOptions = cats.map(function (c) { return "<option value=\"" + esc(c.name) + "\">" + esc(c.name) + "</option>"; }).join("");
+    var lastCat = (ui.lastTaskCategory || {})[schoolId];
+    var catOptions = cats.map(function (c) {
+      return "<option value=\"" + esc(c.name) + "\"" + (c.name === lastCat ? " selected" : "") + ">" + esc(c.name) + "</option>";
+    }).join("");
 
     var editorHtml = "";
     if (ui.taskCategoryEditorOpen) {
@@ -1769,7 +1777,7 @@ function appMain() {
       "</div><div class=\"card-body\">" + editorHtml +
       "<form class=\"add-row-form\" data-action=\"add-task\" data-school=\"" + schoolId + "\">" +
         "<select class=\"text-input\" name=\"category\">" + catOptions + "</select>" +
-        "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name, e.g. Q3-enrollment-report.xlsx\" required style=\"flex:2;\">" +
+        "<input class=\"text-input mono\" name=\"fileName\" data-role=\"task-filename-input\" placeholder=\"File name, e.g. Q3-enrollment-report.xlsx\" required style=\"flex:2;\">" +
         "<button class=\"btn\" type=\"submit\">Add</button></form>" +
       groupsHtml +
       "</div></div>";
@@ -2834,6 +2842,12 @@ function appMain() {
     var el = document.querySelector("[data-role='school-search']");
     if (el) { el.focus(); var v = el.value; el.value = ""; el.value = v; }
   }
+  /* Keeps the cursor in the file-name box after adding a task, so files
+     can be typed and added one after another without re-clicking in. */
+  function focusTaskFileName() {
+    var el = document.querySelector("[data-role='task-filename-input']");
+    if (el) el.focus();
+  }
 
   function onSubmit(e) {
     var form = e.target.closest("form[data-action]");
@@ -2870,8 +2884,11 @@ function appMain() {
             createdAt: new Date().toISOString()
           };
           if (COMMUNICATION_CATEGORIES.indexOf(category) !== -1) task.communication = "";
+          ui.lastTaskCategory = ui.lastTaskCategory || {};
+          ui.lastTaskCategory[sid] = category;
           sd.tasks.push(task);
           persist();
+          focusTaskFileName();
         })(); break;
       case "add-task-category":
         (function () {
