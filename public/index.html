@@ -1002,6 +1002,25 @@ function appMain() {
     });
   }
 
+  /* Re-fetches the latest saved state (with the same shape fixes boot()
+     applies) without touching identity/view. Used right before a delete
+     that's especially prone to the "resurrected after reload" bug — this
+     app keeps state in memory for the whole session and saves the entire
+     blob back on every change with no conflict check, so a tab left open
+     since before someone else's delete would otherwise silently undo it
+     the next time this tab saves anything. */
+  function refreshStateFromServer() {
+    return loadStateFromServer().then(function (data) {
+      var fresh = data || {};
+      for (var k in DEFAULT_STATE) { if (!(k in fresh)) fresh[k] = DEFAULT_STATE[k]; }
+      migrateTaskFields(fresh);
+      migrateIssueTypes(fresh);
+      migrateChecklistTemplate(fresh);
+      migrateNotesToHtml(fresh.generalNotes);
+      migrateNotesToHtml(fresh.privateNotes);
+      return fresh;
+    });
+  }
   function boot() {
     var pw = getStoredPassword();
     if (!pw) { showPasswordPrompt(); return; }
@@ -2082,9 +2101,29 @@ function appMain() {
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
           var note = arr.find(function (x) { return x.id === id; });
           if (!note || note.author !== getStoredIdentity()) return;
-          requestDelete("note", id, function () {
-            var idx = arr.findIndex(function (x) { return x.id === id; });
-            if (idx !== -1) arr.splice(idx, 1);
+          if (!isPending("note", id)) {
+            ui.pendingDelete = { type: "note", id: id };
+            render();
+            setTimeout(function () {
+              if (isPending("note", id)) { ui.pendingDelete = null; render(); }
+            }, 4000);
+            return;
+          }
+          ui.pendingDelete = null;
+          render();
+          /* Re-fetch the latest saved state right before deleting, rather
+             than deleting from whatever this tab has been holding in
+             memory — otherwise a tab left open since before someone else's
+             own change would resave its stale copy of this note the next
+             time it saves anything, silently bringing a deleted note back. */
+          refreshStateFromServer().then(function (fresh) {
+            var freshArr = scope === "private" ? fresh.privateNotes : fresh.generalNotes;
+            var idx = freshArr.findIndex(function (x) { return x.id === id; });
+            if (idx !== -1) freshArr.splice(idx, 1);
+            state = fresh;
+            persist();
+          }).catch(function () {
+            showToast("Couldn't delete — please check your connection and try again.");
           });
         })(); break;
       case "ack-note":
