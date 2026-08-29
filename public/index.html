@@ -385,6 +385,12 @@ function appMain() {
     { id: "orange", hex: "#FCE1C6" }
   ];
   var DEFAULT_NOTE_COLOR = "yellow";
+  var NOTE_TEXT_COLORS = ["#2b2b1f", "#c0392b", "#2166ac", "#1e824c", "#8e44ad", "#b8860b"];
+  var NOTE_FONTS = [
+    { label: "Aa", family: "'Public Sans', sans-serif", style: "font-family:'Public Sans',sans-serif;" },
+    { label: "Aa", family: "Georgia, serif", style: "font-family:Georgia,serif;" },
+    { label: "Aa", family: "'IBM Plex Mono', monospace", style: "font-family:'IBM Plex Mono',monospace;" }
+  ];
   /* Issue types are a shared, editable list (like task categories) — each carries its
      own status vocabulary. "Record Update" carries its own extra fields, including
      what's being corrected (category + correct info), shown in a table view. */
@@ -426,7 +432,25 @@ function appMain() {
      for comments/etc., removed outright. Parsed via DOMParser rather than a
      live element's innerHTML, since DOMParser documents don't fetch
      resources or run scripts even transiently during parsing. */
-  var ALLOWED_NOTE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, BR: 1, DIV: 1, P: 1 };
+  var ALLOWED_NOTE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, BR: 1, DIV: 1, P: 1, SPAN: 1, FONT: 1 };
+  /* Only `color` and `font-family` survive, and only in a safe, validated
+     form — this is what actually stops something like `url(...)` or a
+     javascript: scheme sneaking in via a crafted style value, not just the
+     tag allowlist above. */
+  var SAFE_COLOR_RE = /^#[0-9a-fA-F]{3,8}$|^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/;
+  var SAFE_NOTE_FONT_FAMILIES = NOTE_FONTS.map(function (f) { return f.family; });
+  function sanitizeStyleDecl(styleText) {
+    var out = [];
+    String(styleText || "").split(";").forEach(function (decl) {
+      var idx = decl.indexOf(":");
+      if (idx === -1) return;
+      var prop = decl.slice(0, idx).trim().toLowerCase();
+      var val = decl.slice(idx + 1).trim();
+      if (prop === "color" && SAFE_COLOR_RE.test(val)) out.push("color:" + val);
+      if (prop === "font-family" && SAFE_NOTE_FONT_FAMILIES.indexOf(val) !== -1) out.push("font-family:" + val);
+    });
+    return out.join("; ");
+  }
   function sanitizeNoteHtml(html) {
     var doc = new DOMParser().parseFromString(String(html == null ? "" : html), "text/html");
     (function clean(node) {
@@ -438,7 +462,21 @@ function appMain() {
             node.removeChild(child);
             return;
           }
-          while (child.attributes && child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          if (child.tagName === "FONT") {
+            var colorAttr = child.getAttribute("color");
+            var faceAttr = child.getAttribute("face");
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            var parts = [];
+            if (colorAttr && SAFE_COLOR_RE.test(colorAttr)) parts.push("color:" + colorAttr);
+            if (faceAttr && SAFE_NOTE_FONT_FAMILIES.indexOf(faceAttr) !== -1) parts.push("font-family:" + faceAttr);
+            if (parts.length) child.setAttribute("style", parts.join("; "));
+          } else if (child.tagName === "SPAN") {
+            var cleaned = sanitizeStyleDecl(child.getAttribute("style"));
+            while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
+            if (cleaned) child.setAttribute("style", cleaned);
+          } else {
+            while (child.attributes && child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          }
           clean(child);
         } else if (child.nodeType !== 3) {
           node.removeChild(child);
@@ -1462,12 +1500,20 @@ function appMain() {
       return "<label class=\"note-color-swatch\" style=\"background:" + c.hex + ";\" title=\"" + c.id + "\">" +
         "<input type=\"radio\" name=\"color\" value=\"" + c.id + "\"" + (c.id === (initialColor || DEFAULT_NOTE_COLOR) ? " checked" : "") + "></label>";
     }).join("");
+    var textColorBtns = NOTE_TEXT_COLORS.map(function (hex) {
+      return "<button type=\"button\" style=\"color:" + hex + "; font-weight:700;\" title=\"Text color\" onmousedown=\"event.preventDefault(); document.execCommand('foreColor', false, '" + hex + "');\">A</button>";
+    }).join("");
+    var fontBtns = NOTE_FONTS.map(function (f) {
+      return "<button type=\"button\" style=\"" + f.style + "\" title=\"Font\" onmousedown=\"event.preventDefault(); document.execCommand('fontName', false, '" + f.family + "');\">" + f.label + "</button>";
+    }).join("");
     var formInner =
       "<div class=\"note-toolbar\">" +
       "<button type=\"button\" style=\"font-weight:700;\" title=\"Bold\" onmousedown=\"event.preventDefault(); document.execCommand('bold');\">B</button>" +
       "<button type=\"button\" style=\"font-style:italic;\" title=\"Italic\" onmousedown=\"event.preventDefault(); document.execCommand('italic');\">I</button>" +
       "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
       "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
+      "<span class=\"note-toolbar-sep\"></span>" + fontBtns +
+      "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
       "</div>" +
       "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\">" + (initialHtml || "") + "</div>" +
