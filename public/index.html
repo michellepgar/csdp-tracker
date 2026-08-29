@@ -382,8 +382,8 @@ function appMain() {
   var COMMUNICATION_CATEGORIES = ["Initial", "Recheck"];
   var COUNT_CATEGORIES = ["Encoding & Uploading (Consent & SDF)", "Initial", "Recheck"];
   var DEFAULT_CHECKLIST_ITEMS = [
-    "BEGINNING OF YEAR EMAIL", "DROP OFF EMAIL", "PICK UP FORM EMAIL",
-    "INITIAL VISIT EMAIL", "TALLY", "CLEANUP DROPBOX", "FOLLOW UP VISIT EMAIL",
+    "Beginning Of Year Email", "Drop Off Email", "Pick Up Form Email",
+    "Initial Visit Email", "Tally", "Cleanup Dropbox", "Follow Up Visit Email",
     "Encoding & Uploading (Consent & SDF)", "Transactions", "Initial", "Photos",
     "Recheck", "Insurance", "Eligibility", "Billing"
   ];
@@ -408,11 +408,13 @@ function appMain() {
   ];
   var DEFAULT_NOTE_COLOR = "white";
   var NOTE_TEXT_COLORS = ["#2b2b1f", "#c0392b", "#2166ac", "#1e824c", "#8e44ad", "#b8860b"];
+  /* Plain system fonts on purpose — every device already has these
+     installed, so there's no dependency on a web font finishing its load
+     (which was the likely cause of fonts appearing "not to work"). */
   var NOTE_FONTS = [
-    { label: "Aa", family: "'Public Sans', sans-serif", style: "font-family:'Public Sans',sans-serif;" },
-    { label: "Aa", family: "Georgia, serif", style: "font-family:Georgia,serif;" },
-    { label: "Aa", family: "'IBM Plex Mono', monospace", style: "font-family:'IBM Plex Mono',monospace;" },
-    { label: "Aa", family: "'Poppins', sans-serif", style: "font-family:'Poppins',sans-serif; font-weight:600;" }
+    { name: "Arial", label: "Aa", family: "Arial, Helvetica, sans-serif" },
+    { name: "Comic Sans", label: "Aa", family: "'Comic Sans MS', 'Comic Sans', cursive" },
+    { name: "Calibri", label: "Aa", family: "Calibri, 'Segoe UI', sans-serif" }
   ];
   var NOTE_FONT_SIZES = [
     { label: "S", legacy: "2", px: "12px" },
@@ -469,7 +471,16 @@ function appMain() {
      javascript: scheme sneaking in via a crafted style value, not just the
      tag allowlist above. */
   var SAFE_COLOR_RE = /^#[0-9a-fA-F]{3,8}$|^rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)$/;
-  var SAFE_NOTE_FONT_FAMILIES = NOTE_FONTS.map(function (f) { return f.family; });
+  /* Different browsers write a font-family list back slightly differently
+     (extra spaces, dropped/added quotes) after execCommand — comparing the
+     raw value against the exact source string was silently rejecting valid
+     fonts. Normalize both sides before comparing, and always write back the
+     canonical string so storage stays consistent regardless of browser. */
+  function normalizeFontFamilyValue(v) {
+    return String(v || "").replace(/['"]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+  var NOTE_FONT_FAMILY_BY_NORMALIZED = {};
+  NOTE_FONTS.forEach(function (f) { NOTE_FONT_FAMILY_BY_NORMALIZED[normalizeFontFamilyValue(f.family)] = f.family; });
   function sanitizeStyleDecl(styleText) {
     var out = [];
     String(styleText || "").split(";").forEach(function (decl) {
@@ -478,7 +489,10 @@ function appMain() {
       var prop = decl.slice(0, idx).trim().toLowerCase();
       var val = decl.slice(idx + 1).trim();
       if (prop === "color" && SAFE_COLOR_RE.test(val)) out.push("color:" + val);
-      if (prop === "font-family" && SAFE_NOTE_FONT_FAMILIES.indexOf(val) !== -1) out.push("font-family:" + val);
+      if (prop === "font-family") {
+        var canonical = NOTE_FONT_FAMILY_BY_NORMALIZED[normalizeFontFamilyValue(val)];
+        if (canonical) out.push("font-family:" + canonical);
+      }
       if (prop === "font-size" && SAFE_NOTE_FONT_SIZE_PX.indexOf(val) !== -1) out.push("font-size:" + val);
     });
     return out.join("; ");
@@ -501,7 +515,8 @@ function appMain() {
             while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
             var parts = [];
             if (colorAttr && SAFE_COLOR_RE.test(colorAttr)) parts.push("color:" + colorAttr);
-            if (faceAttr && SAFE_NOTE_FONT_FAMILIES.indexOf(faceAttr) !== -1) parts.push("font-family:" + faceAttr);
+            var faceCanonical = faceAttr && NOTE_FONT_FAMILY_BY_NORMALIZED[normalizeFontFamilyValue(faceAttr)];
+            if (faceCanonical) parts.push("font-family:" + faceCanonical);
             if (sizeAttr && NOTE_FONT_SIZE_PX_BY_LEGACY[sizeAttr]) parts.push("font-size:" + NOTE_FONT_SIZE_PX_BY_LEGACY[sizeAttr]);
             if (parts.length) child.setAttribute("style", parts.join("; "));
           } else if (child.tagName === "SPAN") {
@@ -672,6 +687,14 @@ function appMain() {
      added themselves. */
   function migrateChecklistTemplate(parsed) {
     parsed.checklistTemplate = parsed.checklistTemplate || [];
+    /* Re-cases any item that already matches a standard item by text (e.g.
+       an earlier ALL-CAPS default) to the current canonical casing, so the
+       list stays uniform without creating a duplicate. */
+    parsed.checklistTemplate.forEach(function (item) {
+      var lower = (item.description || "").trim().toLowerCase();
+      var canonical = DEFAULT_CHECKLIST_ITEMS.filter(function (desc) { return desc.toLowerCase() === lower; })[0];
+      if (canonical) item.description = canonical;
+    });
     var existingDesc = parsed.checklistTemplate.map(function (item) {
       return (item.description || "").trim().toLowerCase();
     });
@@ -718,6 +741,14 @@ function appMain() {
   }
   function setStoredIdentity(name) {
     try { localStorage.setItem(IDENTITY_KEY, name); } catch (e) {}
+  }
+  /* Team-page access is limited to the superadmin. This is a client-side
+     UI gate only (like Private Notes' author filter) — it hides the page
+     from everyone else, but doesn't lock the underlying shared data down
+     at the database level. */
+  var SUPERADMIN_NAME = "Michelle";
+  function isSuperAdmin() {
+    return getStoredIdentity() === SUPERADMIN_NAME;
   }
 
   var THEME_KEY = "csdp_theme";
@@ -1113,7 +1144,7 @@ function appMain() {
       "<div class=\"nav-list\">" +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
-      navItem("team", "Team", 0, function (v) { return v.type === "team"; }) +
+      (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
       navItem("notes", "General Notes", 0, function (v) { return v.type === "notes"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
@@ -1126,7 +1157,7 @@ function appMain() {
       case "school": return schoolPageHtml(ui.view.id);
       case "issues": return issuesPageHtml();
       case "templates": return templatesPageHtml();
-      case "team": return teamPageHtml();
+      case "team": return isSuperAdmin() ? teamPageHtml() : homePageHtml();
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
       case "eod": return eodPageHtml();
@@ -1644,7 +1675,7 @@ function appMain() {
       return "<button type=\"button\" style=\"color:" + hex + "; font-weight:700;\" title=\"Text color\" onmousedown=\"event.preventDefault(); document.execCommand('foreColor', false, '" + hex + "');\">A</button>";
     }).join("");
     var fontBtns = NOTE_FONTS.map(function (f) {
-      return "<button type=\"button\" style=\"" + f.style + "\" title=\"Font\" onmousedown=\"event.preventDefault(); document.execCommand('fontName', false, '" + f.family + "');\">" + f.label + "</button>";
+      return "<button type=\"button\" style=\"font-family:" + f.family + ";\" title=\"" + esc(f.name) + "\" onmousedown=\"event.preventDefault(); document.execCommand('fontName', false, '" + f.family + "');\">" + f.label + "</button>";
     }).join("");
     var sizeBtns = NOTE_FONT_SIZES.map(function (s) {
       return "<button type=\"button\" style=\"font-size:" + s.px + ";\" title=\"Font size\" onmousedown=\"event.preventDefault(); document.execCommand('fontSize', false, '" + s.legacy + "');\">" + s.label + "</button>";
