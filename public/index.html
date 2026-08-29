@@ -326,6 +326,29 @@
   .data-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
   .data-table td.wrap { white-space: normal; min-width: 160px; }
   .data-table tr:last-child td { border-bottom: none; }
+
+  /* Sticky notes always use a fixed dark ink on pastel backgrounds,
+     regardless of app theme — like real sticky notes look the same in
+     any room lighting. */
+  .sticky-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+  .sticky-note { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-height: 120px; color: #2b2b1f; }
+  .sticky-note-text { flex: 1; font-size: 0.9rem; word-break: break-word; }
+  .sticky-note-text ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
+  .sticky-note-meta { font-size: 0.72rem; opacity: 0.65; margin-top: 8px; }
+  .sticky-note-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .sticky-note-actions button { font-size: 0.76rem; background: none; border: none; text-decoration: underline; cursor: pointer; color: inherit; opacity: 0.75; padding: 0; }
+  .sticky-note-actions button:hover { opacity: 1; }
+
+  .note-editor-card { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); color: #2b2b1f; }
+  .note-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .note-toolbar button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); background: rgba(255,255,255,0.55); font-size: 0.8rem; cursor: pointer; color: #2b2b1f; }
+  .note-toolbar button:hover { background: rgba(255,255,255,0.85); }
+  .note-toolbar-sep { width: 1px; align-self: stretch; background: rgba(0,0,0,0.15); margin: 0 4px; }
+  .note-color-swatch { width: 22px; height: 22px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; display: inline-block; }
+  .note-color-swatch:has(input:checked) { border-color: #2b2b1f; }
+  .note-color-swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
+  .note-editor-area ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
 </style>
 </head>
 <body>
@@ -353,6 +376,15 @@ function appMain() {
     "Rechecked": "green"
   };
   var CORRECTION_CATEGORIES = ["Name", "Date of Birth", "Insurance Number", "Grade", "School Year", "Other"];
+  var NOTE_COLORS = [
+    { id: "yellow", hex: "#FFF3B0" },
+    { id: "pink", hex: "#FCD5E5" },
+    { id: "blue", hex: "#CFE3FC" },
+    { id: "green", hex: "#D8F0D2" },
+    { id: "purple", hex: "#E5D9FA" },
+    { id: "orange", hex: "#FCE1C6" }
+  ];
+  var DEFAULT_NOTE_COLOR = "yellow";
   /* Issue types are a shared, editable list (like task categories) — each carries its
      own status vocabulary. "Record Update" carries its own extra fields, including
      what's being corrected (category + correct info), shown in a table view. */
@@ -381,6 +413,39 @@ function appMain() {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
     });
+  }
+  function noteColorHex(id) {
+    var found = NOTE_COLORS.filter(function (c) { return c.id === id; })[0];
+    return found ? found.hex : NOTE_COLORS[0].hex;
+  }
+  /* Sticky notes store a little bit of rich-text HTML (from a contenteditable
+     editor), so it has to be sanitized before it's ever written to shared
+     state or re-rendered — otherwise a pasted <script>/<img onerror> etc.
+     would run for every future viewer. Only a small formatting tag allowlist
+     survives; everything else is unwrapped (dropped, keeping its text) or,
+     for comments/etc., removed outright. Parsed via DOMParser rather than a
+     live element's innerHTML, since DOMParser documents don't fetch
+     resources or run scripts even transiently during parsing. */
+  var ALLOWED_NOTE_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, UL: 1, OL: 1, LI: 1, BR: 1, DIV: 1, P: 1 };
+  function sanitizeNoteHtml(html) {
+    var doc = new DOMParser().parseFromString(String(html == null ? "" : html), "text/html");
+    (function clean(node) {
+      var children = Array.prototype.slice.call(node.childNodes);
+      children.forEach(function (child) {
+        if (child.nodeType === 1) {
+          if (!ALLOWED_NOTE_TAGS[child.tagName]) {
+            while (child.firstChild) node.insertBefore(child.firstChild, child);
+            node.removeChild(child);
+            return;
+          }
+          while (child.attributes && child.attributes.length) child.removeAttribute(child.attributes[0].name);
+          clean(child);
+        } else if (child.nodeType !== 3) {
+          node.removeChild(child);
+        }
+      });
+    })(doc.body);
+    return doc.body.innerHTML;
   }
   function fmtDate(iso) {
     if (!iso) return "";
@@ -461,6 +526,20 @@ function appMain() {
     var existingIds = parsed.issueTypes.map(function (t) { return t.id; });
     DEFAULT_ISSUE_TYPES.forEach(function (dt) {
       if (existingIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
+    });
+  }
+  /* Notes used to store plain text, escaped at render time. Now they store
+     a bit of sanitized rich-text HTML, rendered directly. A note created
+     before this change has no `color` yet — use that as the signal to
+     convert its old plain text into the HTML-escaped equivalent once, so
+     it keeps displaying correctly (not reinterpreted as markup) and never
+     gets re-migrated. */
+  function migrateNotesToHtml(list) {
+    (list || []).forEach(function (n) {
+      if (!n.color) {
+        n.text = esc(n.text || "");
+        n.color = DEFAULT_NOTE_COLOR;
+      }
     });
   }
   var PASSWORD_KEY = "csdp_app_password";
@@ -676,6 +755,8 @@ function appMain() {
       for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
       migrateTaskFields(state);
       migrateIssueTypes(state);
+      migrateNotesToHtml(state.generalNotes);
+      migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
@@ -696,7 +777,8 @@ function appMain() {
       templateEditorOpen: false,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "" },
-      eodFilterAuthor: ""
+      eodFilterAuthor: "",
+      editingNoteId: null
     };
     render();
   }
@@ -1111,17 +1193,16 @@ function appMain() {
   }
 
   function notesCardHtml(scope, schoolId, notes) {
-    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : (scope === "private" ? "note-private" : "note-general"));
-    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : (scope === "private" ? "Private Notes" : "General Notes"));
-    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : (scope === "private" ? "Write yourself a note…" : "Add a note…");
+    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : "note-general");
+    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : "General Notes");
+    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : "Add a note…";
     var buttonLabel = scope === "suggestion" ? "Add suggestion" : "Add note";
-    var emptyText = scope === "suggestion" ? "No suggestions yet." : (scope === "private" ? "No private notes yet — only you can see this page." : "No notes yet.");
+    var emptyText = scope === "suggestion" ? "No suggestions yet." : "No notes yet.";
     var list = notes.slice().reverse().map(function (n) {
       return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
-        (scope === "private" ? "<div class=\"note-meta\">" + fmtDateTime(n.createdAt) + "</div>" :
-          "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div>") + "</div>";
+        "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
     }).join("");
-    var authorFieldHtml = scope === "private" ? "" :
+    var authorFieldHtml =
       "<div class=\"field-row\" style=\"margin-top:8px;\">" +
       "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
       "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
@@ -1130,8 +1211,7 @@ function appMain() {
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
         "<textarea class=\"text-input\" name=\"text\" placeholder=\"" + placeholder + "\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
         authorFieldHtml +
-        (scope === "private" ? "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add note</button>" : "") +
-      "</form>" + (scope === "private" ? "" : vaDatalist()) +
+      "</form>" + vaDatalist() +
       "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState(emptyText)) + "</div>" +
       "</div></div>";
   }
@@ -1235,18 +1315,21 @@ function appMain() {
     var normalList = list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.extraFields); });
     var recordList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.extraFields; });
 
+    var normalTableCols = 6;
     var rows = normalList.map(function (it) {
-      if (ui.editingIssueId === it.id) return issueEditFormHtml(it);
+      if (ui.editingIssueId === it.id) {
+        return "<tr><td colspan=\"" + normalTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
+      }
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
-      var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
-      if (it.reportedBy) meta += " · Reported by " + esc(it.reportedBy);
-      return "<div class=\"row-item\"><div class=\"row-main\">" +
-        "<div class=\"row-title\">" + esc(it.description) + "</div>" +
-        "<div class=\"row-meta\">" + meta + "</div></div>" +
-        statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
-        "<button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" +
-        deleteBtn("issue", it.id, "remove-issue") + "</div>";
+      return "<tr>" +
+        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
+        "<td>" + esc(ty ? ty.name : "Removed type") + "</td>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        "<td>" + esc(it.reportedBy) + "</td>" +
+        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
     }).join("");
 
     var recordTableCols = 15;
@@ -1302,7 +1385,12 @@ function appMain() {
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
       "</div>" +
-      "<div class=\"card\"><div class=\"card-body\"><div class=\"row-list\">" + (rows || emptyState("No issues match these filters.")) + "</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" +
+      "<th>School</th><th>Type</th><th>Issue / concern</th><th>Reported by</th><th>Status</th><th></th>" +
+      "</tr></thead><tbody>" +
+      (rows || "<tr><td colspan=\"" + normalTableCols + "\">" + emptyState("No issues match these filters.") + "</td></tr>") +
+      "</tbody></table></div></div></div>" +
       recordTableHtml;
   }
 
@@ -1367,10 +1455,54 @@ function appMain() {
       "</div></div>";
   }
 
+  /* ---------- Sticky notes (General Notes + Private Notes) ---------- */
+  function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, showAuthor, isEditing) {
+    var editorId = "note-editor-" + (id || "new");
+    var swatches = NOTE_COLORS.map(function (c) {
+      return "<label class=\"note-color-swatch\" style=\"background:" + c.hex + ";\" title=\"" + c.id + "\">" +
+        "<input type=\"radio\" name=\"color\" value=\"" + c.id + "\"" + (c.id === (initialColor || DEFAULT_NOTE_COLOR) ? " checked" : "") + "></label>";
+    }).join("");
+    var formInner =
+      "<div class=\"note-toolbar\">" +
+      "<button type=\"button\" style=\"font-weight:700;\" title=\"Bold\" onmousedown=\"event.preventDefault(); document.execCommand('bold');\">B</button>" +
+      "<button type=\"button\" style=\"font-style:italic;\" title=\"Italic\" onmousedown=\"event.preventDefault(); document.execCommand('italic');\">I</button>" +
+      "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
+      "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
+      "<span class=\"note-toolbar-sep\"></span>" + swatches +
+      "</div>" +
+      "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\">" + (initialHtml || "") + "</div>" +
+      (showAuthor ? "<input class=\"text-input\" style=\"width:180px; margin-top:8px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" : "") +
+      "<div style=\"margin-top:8px; display:flex; gap:8px;\">" +
+      "<button class=\"btn\" type=\"submit\">" + (isEditing ? "Save" : "Add note") + "</button>" +
+      (isEditing ? "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-note\">Cancel</button>" : "") +
+      "</div>";
+    return "<div class=\"note-editor-card\" style=\"background:" + noteColorHex(initialColor || DEFAULT_NOTE_COLOR) + ";\">" +
+      "<form data-action=\"" + action + "\" data-id=\"" + (id || "") + "\" data-scope=\"" + scope + "\">" + formInner + "</form>" +
+      "</div>";
+  }
+
+  function stickyNotesSectionHtml(scope, notes, addAction) {
+    var showAuthorOnAdd = scope === "general";
+    var addFormHtml = noteEditorFormHtml(addAction, null, scope, "", DEFAULT_NOTE_COLOR, showAuthorOnAdd, false);
+    var cards = notes.slice().reverse().map(function (n) {
+      if (ui.editingNoteId === n.id) {
+        return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, false, true);
+      }
+      return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
+        "<div class=\"sticky-note-text\">" + (n.text || "") + "</div>" +
+        "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
+        "<div class=\"sticky-note-actions\"><button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button></div>" +
+        "</div>";
+    }).join("");
+    return addFormHtml + vaDatalist() +
+      (cards ? "<div class=\"sticky-grid\">" + cards + "</div>" :
+        emptyState(scope === "private" ? "No private notes yet — only you can see this page." : "No notes yet."));
+  }
+
   /* ---------- General notes ---------- */
   function generalNotesPageHtml() {
     return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div></div></div>" +
-      notesCardHtml("general", null, state.generalNotes);
+      stickyNotesSectionHtml("general", state.generalNotes, "add-general-note");
   }
 
   /* ---------- Suggestions ---------- */
@@ -1383,7 +1515,7 @@ function appMain() {
   function privateNotesPageHtml() {
     var mine = state.privateNotes.filter(function (n) { return n.author === getStoredIdentity(); });
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Private Notes</div></div></div>" +
-      notesCardHtml("private", null, mine);
+      stickyNotesSectionHtml("private", mine, "add-private-note");
   }
 
   /* ---------- EOD Reports ---------- */
@@ -1498,6 +1630,12 @@ function appMain() {
       case "cancel-edit-issue":
         ui.editingIssueId = null;
         ui.editingIssueType = null;
+        render(); break;
+      case "edit-note":
+        ui.editingNoteId = t.getAttribute("data-id");
+        render(); break;
+      case "cancel-edit-note":
+        ui.editingNoteId = null;
         render(); break;
       case "remove-issue-type":
         requestDelete("issue-type", t.getAttribute("data-id"), function () {
@@ -1734,8 +1872,8 @@ function appMain() {
           var scope = form.getAttribute("data-scope");
           var text = (fd.get("text") || "").toString().trim();
           if (!text) return;
-          var author = scope === "private" ? getStoredIdentity() : (fd.get("author") || "").toString().trim();
-          if (scope !== "private") addVaIfNew(author);
+          var author = (fd.get("author") || "").toString().trim();
+          addVaIfNew(author);
           var entry = { id: uid("note"), text: text, author: author, createdAt: new Date().toISOString() };
           var draftName;
           if (scope === "school") {
@@ -1745,14 +1883,44 @@ function appMain() {
           } else if (scope === "suggestion") {
             state.suggestions.push(entry);
             draftName = "note-suggestion";
-          } else if (scope === "private") {
-            state.privateNotes.push(entry);
-            draftName = "note-private";
           } else {
             state.generalNotes.push(entry);
             draftName = "note-general";
           }
           saveDraft(draftName, "");
+          persist();
+        })(); break;
+      case "add-general-note":
+        (function () {
+          var editorEl = form.querySelector("[contenteditable]");
+          var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
+          if (!html || html === "<br>") return;
+          var author = (fd.get("author") || "").toString().trim();
+          addVaIfNew(author);
+          var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
+          state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, createdAt: new Date().toISOString() });
+          persist();
+        })(); break;
+      case "add-private-note":
+        (function () {
+          var editorEl = form.querySelector("[contenteditable]");
+          var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
+          if (!html || html === "<br>") return;
+          var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
+          state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, createdAt: new Date().toISOString() });
+          persist();
+        })(); break;
+      case "save-note-edit":
+        (function () {
+          var id = form.getAttribute("data-id");
+          var scope = form.getAttribute("data-scope");
+          var editorEl = form.querySelector("[contenteditable]");
+          var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
+          var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
+          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+          var note = arr.find(function (x) { return x.id === id; });
+          if (note) { note.text = html; note.color = color; }
+          ui.editingNoteId = null;
           persist();
         })(); break;
       case "add-eod":
