@@ -165,7 +165,7 @@
     background: var(--attn-soft); color: var(--attn); border-radius: 999px;
     padding: 1px 7px; flex: none;
   }
-  .school-list { max-height: 40vh; overflow-y: auto; margin: 2px -4px 0; padding: 0 4px; }
+  .school-list { max-height: 58vh; overflow-y: auto; margin: 2px -4px 0; padding: 0 4px; }
   .sidebar-divider { height: 1px; background: var(--border); margin: 10px 14px; }
   .add-inline-btn {
     background: none; border: 1px dashed var(--border-strong); color: var(--ink-soft);
@@ -189,6 +189,7 @@
 
   .page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 22px; }
   .page-title { font-size: 1.9rem; font-weight: 600; }
+  .overview-title { font-size: 2.4rem; font-weight: 700; color: var(--accent); }
   .page-sub { color: var(--ink-soft); font-size: 0.88rem; margin-top: 4px; }
   .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .field-label { font-size: 0.76rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
@@ -253,6 +254,7 @@
   }
   .check-toggle.done { background: var(--done); border-color: var(--done); color: var(--done-soft); }
   .check-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+  .va-color-input { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 6px; background: none; cursor: pointer; }
   .check-toggle.confirming { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); font-weight: 700; }
 
   textarea.text-input { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
@@ -897,6 +899,18 @@ function appMain() {
     });
     return true;
   }
+  /* Seeds each VA's chosen color once, matching the fixed colors that were
+     hardcoded before this became editable from the Team page — same
+     colors, just now stored per-VA instead of baked into the code. */
+  var DEFAULT_VA_COLORS = { "Michelle": "#E8821E", "Therese": "#2E9E4F", "Nikki": "#D8B300", "Rexanne": "#D9453D" };
+  function migrateVaColors(parsed) {
+    if (parsed._migratedVaColors) return false;
+    parsed._migratedVaColors = true;
+    (parsed.vas || []).forEach(function (v) {
+      if (!v.color && DEFAULT_VA_COLORS.hasOwnProperty(v.name)) v.color = DEFAULT_VA_COLORS[v.name];
+    });
+    return true;
+  }
   /* Normalizes a school name to Title Case when a new one is added by
      hand, so casing stays consistent regardless of how it was typed.
      Short all-caps/alphanumeric tokens (like "K-8") are left as-is rather
@@ -1155,6 +1169,7 @@ function appMain() {
       migrateBrocktonSchools(fresh);
       migrateDavisSchool(fresh);
       migrateSchoolRenames(fresh);
+      migrateVaColors(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1214,13 +1229,14 @@ function appMain() {
       var justMigratedSchools = migrateBrocktonSchools(state);
       var justMigratedDavis = migrateDavisSchool(state);
       var justMigratedRenames = migrateSchoolRenames(state);
+      var justMigratedVaColors = migrateVaColors(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1245,7 +1261,8 @@ function appMain() {
       taskSort: { field: "date", dir: "desc" },
       emailSort: { field: "date", dir: "desc" },
       issuesSort: { field: "date", dir: "desc" },
-      schoolSort: "alpha"
+      schoolSort: "alpha",
+      schoolVaFilter: ""
     };
     render();
     startPollingForUpdates();
@@ -1421,6 +1438,8 @@ function appMain() {
       return a.name.localeCompare(b.name);
     });
     if (q) schools = schools.filter(function (s) { return s.name.toLowerCase().indexOf(q) !== -1; });
+    var vaFilter = ui.schoolVaFilter || "";
+    if (vaFilter) schools = schools.filter(function (s) { return (state.schoolData[s.id] || {}).vaAssigned === vaFilter; });
 
     var schoolRows = schools.map(function (s) {
       var active = ui.view.type === "school" && ui.view.id === s.id;
@@ -1439,6 +1458,12 @@ function appMain() {
       "<select class=\"text-input\" style=\"margin-top:6px; font-size:0.8rem;\" data-action-change=\"set-school-sort\">" +
       "<option value=\"alpha\"" + (schoolSort === "alpha" ? " selected" : "") + ">Sort: A → Z</option>" +
       "<option value=\"color\"" + (schoolSort === "color" ? " selected" : "") + ">Sort: By VA color</option>" +
+      "</select>" +
+      "<select class=\"text-input\" style=\"margin-top:6px; font-size:0.8rem;\" data-action-change=\"set-school-va-filter\">" +
+      "<option value=\"\">All VAs</option>" +
+      state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (v) {
+        return "<option value=\"" + esc(v.name) + "\"" + (vaFilter === v.name ? " selected" : "") + ">" + esc(v.name) + "'s schools</option>";
+      }).join("") +
       "</select>" +
       "<div class=\"school-list nav-list\">" + (schoolRows || "<div class=\"empty-state\" style=\"padding:10px 4px;\">No schools match.</div>") + "</div>" +
       "<button class=\"add-inline-btn\" data-action=\"toggle-add-school\">+ Add school</button>" +
@@ -1509,7 +1534,7 @@ function appMain() {
       emailAttn += emailAttnCount(state.schools[i].id);
       if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
     }
-    var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div></div></div>";
+    var html = "<div class=\"page-header\"><div><div class=\"page-title display overview-title\">Overview</div></div></div>";
 
     html += "<div class=\"stat-row-sm\">" +
       statTile(state.schools.length, "Schools", true) +
@@ -1552,18 +1577,32 @@ function appMain() {
   /* Fixed "signature" colors per VA, as requested — everyone else (added
      later, or not yet assigned one) falls back to a hash-derived hue so
      they still get a consistent, distinct color of their own. */
-  var VA_SIGNATURE_HUES = { "Michelle": 30, "Therese": 140, "Nikki": 48, "Rexanne": 3 };
-  function vaHue(name) {
-    if (VA_SIGNATURE_HUES.hasOwnProperty(name)) return VA_SIGNATURE_HUES[name];
+  function hexToRgb(hex) {
+    hex = String(hex || "").replace("#", "");
+    if (hex.length === 3) hex = hex.split("").map(function (c) { return c + c; }).join("");
+    var num = parseInt(hex, 16);
+    if (hex.length !== 6 || isNaN(num)) return null;
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+  }
+  /* Each VA can have her own chosen color (set on the Team page); anyone
+     without one yet (a brand-new VA before the superadmin assigns one)
+     falls back to a hash-derived hue so they still get a distinct,
+     consistent color of their own in the meantime. */
+  function vaColorCss(name, alpha) {
+    var va = state.vas.filter(function (v) { return v.name === name; })[0];
+    if (va && va.color) {
+      var rgb = hexToRgb(va.color);
+      if (rgb) return alpha != null ? "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + "," + alpha + ")" : va.color;
+    }
     var hue = 0;
     for (var i = 0; i < name.length; i++) hue = (hue * 31 + name.charCodeAt(i)) % 360;
-    return hue;
+    return alpha != null ? "hsla(" + hue + ",70%,45%," + alpha + ")" : "hsl(" + hue + ",65%,45%)";
   }
   function vaTagColor(name) {
-    return "hsla(" + vaHue(name) + ",70%,45%,0.22)";
+    return vaColorCss(name, 0.22);
   }
   function vaSolidColor(name) {
-    return "hsl(" + vaHue(name) + ",65%,45%)";
+    return vaColorCss(name, null);
   }
   /* Colors a school's name to match whichever VA it's assigned to, so the
      sidebar reads at a glance like each VA's own signature color. */
@@ -2115,11 +2154,20 @@ function appMain() {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"" + schoolNameColorCss(s.id) + "font-weight:600;\">" + esc(s.name) + "</div>" +
         "<select class=\"text-input\" style=\"max-width:160px;\" data-action-change=\"set-va-assigned\" data-school=\"" + s.id + "\">" + opts + "</select></div>";
     }).join("");
+    var colorRows = sortedVas.map(function (v) {
+      return "<div class=\"row-item\"><div class=\"row-main\" style=\"color:" + vaSolidColor(v.name) + "; font-weight:600;\">" + esc(v.name) + "</div>" +
+        "<input type=\"color\" class=\"va-color-input\" value=\"" + esc(v.color || "#888888") + "\" data-action-change=\"set-va-color\" data-id=\"" + v.id + "\" title=\"Pick " + esc(v.name) + "'s color\"></div>";
+    }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-va\">" +
         "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
       "<div class=\"va-chip-list\">" + (chips || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">VA Colors</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"checklist-note\">Pick a color for each VA — used for their signature on files and for their assigned schools' names. New VAs default to an auto-picked color until you set one here.</div>" +
+      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
       "<div class=\"card-body\">" +
@@ -2577,6 +2625,12 @@ function appMain() {
         ensureSchoolData(t.getAttribute("data-school")).vaAssigned = t.value.trim();
         addVaIfNew(t.value);
         persist(); break;
+      case "set-va-color":
+        (function () {
+          var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (va) va.color = t.value;
+          persist();
+        })(); break;
       case "toggle-task-status":
         (function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
@@ -2616,6 +2670,9 @@ function appMain() {
         render(); break;
       case "set-school-sort":
         ui.schoolSort = t.value;
+        render(); break;
+      case "set-school-va-filter":
+        ui.schoolVaFilter = t.value;
         render(); break;
       case "set-task-sort":
         ui.taskSort = parseSortValue(t.value);
