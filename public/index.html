@@ -338,11 +338,12 @@
   .sticky-note-actions { display: flex; gap: 10px; margin-top: 6px; }
   .sticky-note-actions button { font-size: 0.76rem; background: none; border: none; text-decoration: underline; cursor: pointer; color: inherit; opacity: 0.75; padding: 0; }
   .sticky-note-actions button:hover { opacity: 1; }
+  .sticky-note-actions button.confirming { color: var(--danger); opacity: 1; font-weight: 600; }
 
   /* Background reacts live to the checked color swatch via :has() — no JS
      re-render, so it never disturbs an in-progress edit in the contenteditable
      area next to it. Colors match NOTE_COLORS in the script below. */
-  .note-editor-card { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); color: #2b2b1f; background: #FFF3B0; }
+  .note-editor-card { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); color: #2b2b1f; background: #FFFFFF; }
   .note-editor-card:has(input[name="color"][value="yellow"]:checked) { background: #FFF3B0; }
   .note-editor-card:has(input[name="color"][value="pink"]:checked) { background: #FCD5E5; }
   .note-editor-card:has(input[name="color"][value="blue"]:checked) { background: #CFE3FC; }
@@ -395,13 +396,22 @@ function appMain() {
     { id: "orange", hex: "#FCE1C6" },
     { id: "white", hex: "#FFFFFF" }
   ];
-  var DEFAULT_NOTE_COLOR = "yellow";
+  var DEFAULT_NOTE_COLOR = "white";
   var NOTE_TEXT_COLORS = ["#2b2b1f", "#c0392b", "#2166ac", "#1e824c", "#8e44ad", "#b8860b"];
   var NOTE_FONTS = [
     { label: "Aa", family: "'Public Sans', sans-serif", style: "font-family:'Public Sans',sans-serif;" },
     { label: "Aa", family: "Georgia, serif", style: "font-family:Georgia,serif;" },
-    { label: "Aa", family: "'IBM Plex Mono', monospace", style: "font-family:'IBM Plex Mono',monospace;" }
+    { label: "Aa", family: "'IBM Plex Mono', monospace", style: "font-family:'IBM Plex Mono',monospace;" },
+    { label: "Aa", family: "'Poppins', sans-serif", style: "font-family:'Poppins',sans-serif; font-weight:600;" }
   ];
+  var NOTE_FONT_SIZES = [
+    { label: "S", legacy: "2", px: "12px" },
+    { label: "M", legacy: "4", px: "15px" },
+    { label: "L", legacy: "6", px: "20px" }
+  ];
+  var NOTE_FONT_SIZE_PX_BY_LEGACY = {};
+  NOTE_FONT_SIZES.forEach(function (s) { NOTE_FONT_SIZE_PX_BY_LEGACY[s.legacy] = s.px; });
+  var SAFE_NOTE_FONT_SIZE_PX = NOTE_FONT_SIZES.map(function (s) { return s.px; });
   /* Issue types are a shared, editable list (like task categories) — each carries its
      own status vocabulary. "Record Update" carries its own extra fields, including
      what's being corrected (category + correct info), shown in a table view. */
@@ -432,8 +442,8 @@ function appMain() {
     });
   }
   function noteColorHex(id) {
-    var found = NOTE_COLORS.filter(function (c) { return c.id === id; })[0];
-    return found ? found.hex : NOTE_COLORS[0].hex;
+    var found = NOTE_COLORS.filter(function (c) { return c.id === (id || DEFAULT_NOTE_COLOR); })[0];
+    return found ? found.hex : "#FFFFFF";
   }
   /* Sticky notes store a little bit of rich-text HTML (from a contenteditable
      editor), so it has to be sanitized before it's ever written to shared
@@ -459,6 +469,7 @@ function appMain() {
       var val = decl.slice(idx + 1).trim();
       if (prop === "color" && SAFE_COLOR_RE.test(val)) out.push("color:" + val);
       if (prop === "font-family" && SAFE_NOTE_FONT_FAMILIES.indexOf(val) !== -1) out.push("font-family:" + val);
+      if (prop === "font-size" && SAFE_NOTE_FONT_SIZE_PX.indexOf(val) !== -1) out.push("font-size:" + val);
     });
     return out.join("; ");
   }
@@ -476,10 +487,12 @@ function appMain() {
           if (child.tagName === "FONT") {
             var colorAttr = child.getAttribute("color");
             var faceAttr = child.getAttribute("face");
+            var sizeAttr = child.getAttribute("size");
             while (child.attributes.length) child.removeAttribute(child.attributes[0].name);
             var parts = [];
             if (colorAttr && SAFE_COLOR_RE.test(colorAttr)) parts.push("color:" + colorAttr);
             if (faceAttr && SAFE_NOTE_FONT_FAMILIES.indexOf(faceAttr) !== -1) parts.push("font-family:" + faceAttr);
+            if (sizeAttr && NOTE_FONT_SIZE_PX_BY_LEGACY[sizeAttr]) parts.push("font-size:" + NOTE_FONT_SIZE_PX_BY_LEGACY[sizeAttr]);
             if (parts.length) child.setAttribute("style", parts.join("; "));
           } else if (child.tagName === "SPAN") {
             var cleaned = sanitizeStyleDecl(child.getAttribute("style"));
@@ -1517,13 +1530,19 @@ function appMain() {
     var fontBtns = NOTE_FONTS.map(function (f) {
       return "<button type=\"button\" style=\"" + f.style + "\" title=\"Font\" onmousedown=\"event.preventDefault(); document.execCommand('fontName', false, '" + f.family + "');\">" + f.label + "</button>";
     }).join("");
+    var sizeBtns = NOTE_FONT_SIZES.map(function (s) {
+      return "<button type=\"button\" style=\"font-size:" + s.px + ";\" title=\"Font size\" onmousedown=\"event.preventDefault(); document.execCommand('fontSize', false, '" + s.legacy + "');\">" + s.label + "</button>";
+    }).join("");
     var formInner =
       "<div class=\"note-toolbar\">" +
       "<button type=\"button\" style=\"font-weight:700;\" title=\"Bold\" onmousedown=\"event.preventDefault(); document.execCommand('bold');\">B</button>" +
       "<button type=\"button\" style=\"font-style:italic;\" title=\"Italic\" onmousedown=\"event.preventDefault(); document.execCommand('italic');\">I</button>" +
       "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
       "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
+      "<button type=\"button\" title=\"Dash list\" onmousedown=\"event.preventDefault(); document.execCommand('insertText', false, '- ');\">-</button>" +
+      "<button type=\"button\" title=\"Checkbox\" onmousedown=\"event.preventDefault(); document.execCommand('insertText', false, '☐ ');\">☐</button>" +
       "<span class=\"note-toolbar-sep\"></span>" + fontBtns +
+      "<span class=\"note-toolbar-sep\"></span>" + sizeBtns +
       "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
       "</div>" +
@@ -1545,10 +1564,14 @@ function appMain() {
       if (ui.editingNoteId === n.id) {
         return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, false, true);
       }
+      var pendingDelete = isPending("note", n.id);
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
         "<div class=\"sticky-note-text\">" + (n.text || "") + "</div>" +
         "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
-        "<div class=\"sticky-note-actions\"><button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button></div>" +
+        "<div class=\"sticky-note-actions\">" +
+        "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
+        "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" +
+        "</div>" +
         "</div>";
     }).join("");
     return addFormHtml + vaDatalist() +
@@ -1694,6 +1717,16 @@ function appMain() {
       case "cancel-edit-note":
         ui.editingNoteId = null;
         render(); break;
+      case "remove-note":
+        (function () {
+          var id = t.getAttribute("data-id");
+          var scope = t.getAttribute("data-scope");
+          requestDelete("note", id, function () {
+            var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+            var idx = arr.findIndex(function (x) { return x.id === id; });
+            if (idx !== -1) arr.splice(idx, 1);
+          });
+        })(); break;
       case "remove-issue-type":
         requestDelete("issue-type", t.getAttribute("data-id"), function () {
           state.issueTypes = state.issueTypes.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
