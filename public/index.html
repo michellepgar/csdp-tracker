@@ -928,6 +928,21 @@ function appMain() {
     });
     return true;
   }
+  /* Faith is the owner, not a VA doing casework — she still logs in with
+     her own name + PIN like everyone else, but gets full access and is
+     left out of VA-only lists (school assignment, etc.). */
+  function migrateFaithOwner(parsed) {
+    if (parsed._migratedFaithOwner) return false;
+    parsed._migratedFaithOwner = true;
+    parsed.vas = parsed.vas || [];
+    var faith = parsed.vas.filter(function (v) { return v.name === "Faith"; })[0];
+    if (!faith) {
+      faith = { id: uid("va"), name: "Faith" };
+      parsed.vas.push(faith);
+    }
+    faith.role = "owner";
+    return true;
+  }
   /* Normalizes a school name to Title Case when a new one is added by
      hand, so casing stays consistent regardless of how it was typed.
      Short all-caps/alphanumeric tokens (like "K-8") are left as-is rather
@@ -990,7 +1005,11 @@ function appMain() {
     var name = getStoredIdentity();
     if (name === SUPERADMIN_NAME) return true;
     var va = state.vas.find(function (v) { return v.name === name; });
-    return !!(va && va.admin);
+    return !!(va && (va.admin || va.role === "owner"));
+  }
+  function isOwner(name) {
+    var va = state.vas.find(function (v) { return v.name === name; });
+    return !!(va && va.role === "owner");
   }
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
@@ -1193,6 +1212,7 @@ function appMain() {
       migrateSchoolRenames(fresh);
       migrateVaColors(fresh);
       migrateVaAdminField(fresh);
+      migrateFaithOwner(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1254,13 +1274,14 @@ function appMain() {
       var justMigratedRenames = migrateSchoolRenames(state);
       var justMigratedVaColors = migrateVaColors(state);
       var justMigratedVaAdminField = migrateVaAdminField(state);
+      var justMigratedFaithOwner = migrateFaithOwner(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -2162,20 +2183,22 @@ function appMain() {
   /* ---------- Team ---------- */
   function teamPageHtml() {
     var chips = state.vas.map(function (v) {
-      return "<div class=\"va-chip\">" + esc(v.name) +
+      return "<div class=\"va-chip\">" + esc(v.name) + (v.role === "owner" ? " <span class=\"field-mini-label\">(Owner)</span>" : "") +
         "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
     }).join("");
     var sortedVas = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    /* Schools get assigned to VAs doing casework, not to the owner. */
+    var assignableVas = sortedVas.filter(function (v) { return v.role !== "owner"; });
     var assignmentRows = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
       var sd = state.schoolData[s.id] || {};
-      var currentIsKnown = !sd.vaAssigned || sortedVas.some(function (v) { return v.name === sd.vaAssigned; });
+      var currentIsKnown = !sd.vaAssigned || assignableVas.some(function (v) { return v.name === sd.vaAssigned; });
       var opts = "<option value=\"\"" + (!sd.vaAssigned ? " selected" : "") + ">Unassigned</option>" +
         /* If whoever's assigned was since removed from Team, keep showing
            their name (rather than silently defaulting to "Unassigned") —
            the record still says it's theirs until someone deliberately
            reassigns it. */
         (!currentIsKnown ? "<option value=\"" + esc(sd.vaAssigned) + "\" selected>" + esc(sd.vaAssigned) + " (removed)</option>" : "") +
-        sortedVas.map(function (v) {
+        assignableVas.map(function (v) {
           return "<option value=\"" + esc(v.name) + "\"" + (sd.vaAssigned === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>";
         }).join("");
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"" + schoolNameColorCss(s.id) + "font-weight:600;\">" + esc(s.name) + "</div>" +
@@ -2185,7 +2208,7 @@ function appMain() {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"color:" + vaSolidColor(v.name) + "; font-weight:600;\">" + esc(v.name) + "</div>" +
         "<input type=\"color\" class=\"va-color-input\" value=\"" + esc(v.color || "#888888") + "\" data-action-change=\"set-va-color\" data-id=\"" + v.id + "\" title=\"Pick " + esc(v.name) + "'s color\"></div>";
     }).join("");
-    var promotableVas = sortedVas.filter(function (v) { return v.name !== SUPERADMIN_NAME; });
+    var promotableVas = sortedVas.filter(function (v) { return v.name !== SUPERADMIN_NAME && v.role !== "owner"; });
     var adminRows = promotableVas.map(function (v) {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"font-weight:600;\">" + esc(v.name) + "</div>" +
         "<label class=\"field-row\" style=\"gap:6px; cursor:pointer;\">" +
