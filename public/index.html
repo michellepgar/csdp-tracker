@@ -505,6 +505,20 @@ function appMain() {
     { id: "record_update", name: "Record Update", statusOptions: ["Pending", "Resolved"], fieldSet: "record_update" }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Pending", "Resolved"];
+  /* Shared, editable "+Field" options for any issue — no type forces any
+     of these; whoever's adding an issue picks only what applies. Editable
+     from the Issues page's "Edit fields" control. */
+  var DEFAULT_ISSUE_FIELD_POOL = [
+    { key: "schoolId", label: "School", type: "school-select" },
+    { key: "studentName", label: "Student Name", type: "text" },
+    { key: "dob", label: "Date of Birth", type: "date" },
+    { key: "insuranceNumber", label: "Insurance #", type: "text" },
+    { key: "schoolYear", label: "School Year", type: "text" },
+    { key: "fileName", label: "File Name", type: "text-mono" },
+    { key: "pageNumber", label: "Page #", type: "text" },
+    { key: "category", label: "Correcting", type: "correction-select" },
+    { key: "correctInfo", label: "Correct Info", type: "text" }
+  ];
 
   var DEFAULT_TASK_CATEGORIES = [
     "Encoding & Uploading (Consent & SDF)", "Transactions", "Initial", "Photos",
@@ -515,7 +529,8 @@ function appMain() {
     schools: [], vas: [], schoolData: {},
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
-    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: []
+    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
+    emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: []
   };
 
   /* ============ helpers ============ */
@@ -640,9 +655,9 @@ function appMain() {
   /* Issue "+Field" buttons work the same way as the note toolbar — plain
      DOM insertion instead of a full render(), so nothing else typed into
      the Add/Edit issue form gets wiped out when a field is toggled on or
-     off. issueFieldRowHtml/ISSUE_FIELD_POOL_BY_KEY are defined further
-     down in this same script — fine to reference here since function
-     declarations are hoisted and these only ever run from a later click. */
+     off. issueFieldRowHtml is defined further down in this same script —
+     fine to reference here since function declarations are hoisted and
+     these only ever run from a later click. */
   function csdpSyncIssueEnabledFields(wrap) {
     var keys = Array.prototype.map.call(wrap.querySelectorAll(".issue-field-row"), function (r) {
       return r.getAttribute("data-field-key");
@@ -2016,44 +2031,41 @@ function appMain() {
   /* No issue type forces any field anymore — every entry starts blank and
      whoever's filling it in clicks "+School", "+Student Name", etc. to add
      only what actually applies. This pool is shared across every type. */
-  var ISSUE_FIELD_POOL = [
-    { key: "schoolId", label: "School" },
-    { key: "studentName", label: "Student Name" },
-    { key: "dob", label: "Date of Birth" },
-    { key: "insuranceNumber", label: "Insurance #" },
-    { key: "schoolYear", label: "School Year" },
-    { key: "fileName", label: "File Name" },
-    { key: "pageNumber", label: "Page #" },
-    { key: "category", label: "Correcting" },
-    { key: "correctInfo", label: "Correct Info" }
-  ];
-  var ISSUE_FIELD_POOL_BY_KEY = {};
-  ISSUE_FIELD_POOL.forEach(function (f) { ISSUE_FIELD_POOL_BY_KEY[f.key] = f; });
-  function issueFieldInputHtml(key, value) {
+  /* The available +Field options live in state.issueFieldPool now (see
+     migrateIssueFieldPool) so the superadmin can edit them — remove
+     "School Year", add a brand-new one, etc. — from the Issues page. Only
+     the three original built-ins carry a special input type; anything
+     added later is a plain text field. */
+  function issueFieldPoolByKey() {
+    var m = {};
+    (state.issueFieldPool || []).forEach(function (f) { m[f.key] = f; });
+    return m;
+  }
+  function issueFieldInputHtml(field, value) {
     value = value || "";
-    if (key === "schoolId") {
+    if (field.type === "school-select") {
       var opts = "<option value=\"\">School…</option>" + state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
         return "<option value=\"" + s.id + "\"" + (s.id === value ? " selected" : "") + ">" + esc(s.name) + "</option>";
       }).join("");
-      return "<select class=\"text-input\" name=\"schoolId\">" + opts + "</select>";
+      return "<select class=\"text-input\" name=\"" + field.key + "\">" + opts + "</select>";
     }
-    if (key === "dob") {
-      return "<input class=\"text-input\" type=\"date\" name=\"dob\" value=\"" + esc(value) + "\">";
+    if (field.type === "date") {
+      return "<input class=\"text-input\" type=\"date\" name=\"" + field.key + "\" value=\"" + esc(value) + "\">";
     }
-    if (key === "category") {
+    if (field.type === "correction-select") {
       var catOpts = CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === value ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("");
-      return "<select class=\"text-input\" name=\"category\">" + catOpts + "</select>";
+      return "<select class=\"text-input\" name=\"" + field.key + "\">" + catOpts + "</select>";
     }
-    if (key === "fileName") {
-      return "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(value) + "\">";
+    if (field.type === "text-mono") {
+      return "<input class=\"text-input mono\" name=\"" + field.key + "\" placeholder=\"" + esc(field.label) + "\" value=\"" + esc(value) + "\">";
     }
-    return "<input class=\"text-input\" name=\"" + key + "\" placeholder=\"" + esc(ISSUE_FIELD_POOL_BY_KEY[key].label) + "\" value=\"" + esc(value) + "\">";
+    return "<input class=\"text-input\" name=\"" + field.key + "\" placeholder=\"" + esc(field.label) + "\" value=\"" + esc(value) + "\">";
   }
   function issueFieldRowHtml(key, value) {
-    var f = ISSUE_FIELD_POOL_BY_KEY[key];
+    var f = issueFieldPoolByKey()[key];
     if (!f) return "";
     return "<span class=\"issue-field-row\" data-field-key=\"" + key + "\">" +
-      "<span class=\"field-mini-label\">" + esc(f.label) + "</span>" + issueFieldInputHtml(key, value) +
+      "<span class=\"field-mini-label\">" + esc(f.label) + "</span>" + issueFieldInputHtml(f, value) +
       "<button type=\"button\" class=\"link-btn\" onmousedown=\"event.preventDefault();\" onclick=\"csdpRemoveIssueField(this);\" title=\"Remove " + esc(f.label) + "\">×</button>" +
       "</span>";
   }
@@ -2067,7 +2079,7 @@ function appMain() {
     enabledKeys = enabledKeys || [];
     values = values || {};
     var rows = enabledKeys.map(function (key) { return issueFieldRowHtml(key, values[key]); }).join("");
-    var addButtons = ISSUE_FIELD_POOL.map(function (f) {
+    var addButtons = (state.issueFieldPool || []).map(function (f) {
       var used = enabledKeys.indexOf(f.key) !== -1;
       return "<button type=\"button\" class=\"add-field-btn\" data-key=\"" + f.key + "\"" + (used ? " style=\"display:none;\"" : "") +
         " onmousedown=\"event.preventDefault();\" onclick=\"csdpAddIssueField(this);\">+" + esc(f.label) + "</button>";
@@ -2079,8 +2091,6 @@ function appMain() {
       "</div>";
   }
   function issueEditFormHtml(it) {
-    var vaOptsEdit = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === it.reportedBy ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var editTypeId = ui.editingIssueType || it.type;
     var typeOptsEdit = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === editTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
@@ -2093,7 +2103,7 @@ function appMain() {
       "<span class=\"add-row-form\" style=\"padding:0; margin:0;\">" +
       "<select class=\"text-input\" name=\"type\">" + typeOptsEdit + "</select>" +
       "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
-      "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
+      "<span class=\"field-mini-label\">Reported by " + esc(it.reportedBy || "—") + "</span>" +
       "</span>" +
       "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml(it.enabledFields || [], it) + "</span>" +
       remarksHtml +
@@ -2102,21 +2112,35 @@ function appMain() {
       "</form></div>";
   }
 
+  /* "Fixed by" works the same as a task's self-signature: click + to add
+     your own name once you're the one who resolved it, click × (with
+     confirm) to take it back off if that was a mistake. */
+  function issueFixedByHtml(it) {
+    if (it.fixedBy) {
+      var pending = isPending("issue-fixedby", it.id);
+      return "<span class=\"va-tag\" style=\"background:" + vaTagColor(it.fixedBy) + ";\">" + esc(it.fixedBy) +
+        "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"clear-issue-fixed-by\" data-id=\"" + it.id + "\" title=\"" + (pending ? "Click again to confirm" : "Remove") + "\">" + (pending ? "Confirm?" : "×") + "</button></span>";
+    }
+    var me = getStoredIdentity();
+    if (!me) return "";
+    return "<button class=\"add-va-btn\" data-action=\"sign-issue-fixed\" data-id=\"" + it.id + "\" title=\"Mark as fixed by you (" + esc(me) + ")\">+</button>";
+  }
   /* One table per issue type, columns = every pool field (blank where an
      entry didn't use it) plus Issue/Remarks/Reported by/Status. */
   function issueTypeSectionHtml(title, typeList, statusOptions) {
-    var tableCols = 1 + ISSUE_FIELD_POOL.length + 3 + 1;
+    var pool = state.issueFieldPool || [];
+    var tableCols = 1 + pool.length + 4 + 1;
     var headerCells = "<th>Issue / concern</th>" +
-      ISSUE_FIELD_POOL.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") +
-      "<th>Remarks</th><th>Reported by</th><th>Status</th><th></th>";
+      pool.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") +
+      "<th>Remarks</th><th>Reported by</th><th>Fixed by</th><th>Status</th><th></th>";
     var rowsHtml = typeList.map(function (it) {
       if (ui.editingIssueId === it.id) {
         return "<tr><td colspan=\"" + tableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
       }
       var enabled = it.enabledFields || [];
-      var cells = ISSUE_FIELD_POOL.map(function (f) {
+      var cells = pool.map(function (f) {
         if (enabled.indexOf(f.key) === -1) return "<td></td>";
-        if (f.key === "schoolId") {
+        if (f.type === "school-select") {
           var sch = schoolById(it.schoolId);
           return "<td>" + esc(sch ? sch.name : "") + "</td>";
         }
@@ -2127,6 +2151,7 @@ function appMain() {
         cells +
         "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
+        "<td>" + issueFixedByHtml(it) + "</td>" +
         "<td>" + statusControlOptions(statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
         "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
@@ -2148,8 +2173,6 @@ function appMain() {
     });
     var schoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (s) { return "<option value=\"" + s.id + "\"" + (f.school === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
-    var vaOpts = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === getStoredIdentity() ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var typeFilterOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
@@ -2178,6 +2201,20 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
+    var fieldEditorHtml = "";
+    if (ui.issueFieldEditorOpen) {
+      var fieldRows = (state.issueFieldPool || []).map(function (f) {
+        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(f.label) + "</div>" +
+          deleteBtn("issue-field-pool", f.key, "remove-issue-field-pool") + "</div>";
+      }).join("");
+      fieldEditorHtml = "<div class=\"template-card\" style=\"margin-bottom:14px; padding:14px;\">" +
+        "<div class=\"checklist-note\">These are the +Field options available when adding or editing an issue, shared across every type. Removing one here just stops offering it — it doesn't touch anything already saved under it.</div>" +
+        fieldRows +
+        "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-issue-field-pool\">" +
+        "<input class=\"text-input\" name=\"label\" placeholder=\"New field name\" required>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
+    }
+
     var knownTypeIds = state.issueTypes.map(function (ty) { return ty.id; });
     var typeSections = state.issueTypes.map(function (ty) {
       var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description; });
@@ -2188,20 +2225,23 @@ function appMain() {
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div></div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Add an issue</div>" +
-        "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button></div></div>" +
-        "<div class=\"card-body\">" + typeEditorHtml +
+        "<div class=\"card-actions\">" +
+        "<button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button>" +
+        "<button class=\"link-btn\" data-action=\"toggle-issue-field-editor\">" + (ui.issueFieldEditorOpen ? "Close editor" : "Edit fields") + "</button>" +
+        "</div></div>" +
+        "<div class=\"card-body\">" + typeEditorHtml + fieldEditorHtml +
         "<form class=\"add-row-form\" data-action=\"add-issue\" style=\"flex-wrap:wrap;\">" +
         "<span class=\"add-row-form\" style=\"padding:0; margin:0;\">" +
         "<select class=\"text-input\" name=\"type\">" + newTypeOpts + "</select>" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
-        "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
+        "<span class=\"field-mini-label\">Reported by " + esc(getStoredIdentity() || "—") + "</span>" +
         "</span>" +
         /* No fields pre-added — click a +Field button for whatever this
            particular issue actually needs. Remarks stays edit-only, added
            after saving once there's something to report back. */
         "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>" +
         "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add</button></form>" +
-        (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
+        (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet — add your team there first.</div>" : "") +
         "</div></div>" +
       "<div class=\"filters-row\">" +
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"school\"><option value=\"\">All schools</option>" + schoolOpts + "</select>" +
@@ -2592,6 +2632,11 @@ function appMain() {
           persist();
         })(); break;
       case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
+      case "toggle-issue-field-editor": ui.issueFieldEditorOpen = !ui.issueFieldEditorOpen; render(); break;
+      case "remove-issue-field-pool":
+        requestDelete("issue-field-pool", t.getAttribute("data-id"), function () {
+          state.issueFieldPool = (state.issueFieldPool || []).filter(function (x) { return x.key !== t.getAttribute("data-id"); });
+        }); break;
       case "set-eod-view": ui.eodViewMode = t.getAttribute("data-mode"); render(); break;
       case "edit-issue":
         ui.editingIssueId = t.getAttribute("data-id");
@@ -3052,18 +3097,20 @@ function appMain() {
           var typeObj = issueTypeById(typeId);
           var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
           var enabledFields = (fd.get("enabledFields") || "").toString().split(",").filter(Boolean);
+          var poolByKey = issueFieldPoolByKey();
           var issue = {
             id: uid("issue"),
             type: typeId,
             description: (fd.get("description") || "").toString().trim(),
-            reportedBy: (fd.get("reportedBy") || "").toString(),
+            /* Always whoever's logged in — never picked from a list. */
+            reportedBy: getStoredIdentity(),
             status: statusOpts[0] || "Open",
             remarks: "",
             enabledFields: enabledFields,
             createdAt: new Date().toISOString()
           };
           enabledFields.forEach(function (key) {
-            if (ISSUE_FIELD_POOL_BY_KEY[key]) issue[key] = (fd.get(key) || "").toString().trim();
+            if (poolByKey[key]) issue[key] = (fd.get(key) || "").toString().trim();
           });
           state.issues.push(issue);
           ui.newIssueType = null;
@@ -3075,19 +3122,33 @@ function appMain() {
           var issue = state.issues.find(function (x) { return x.id === id; });
           if (!issue) return;
           var enabledFields = (fd.get("enabledFields") || "").toString().split(",").filter(Boolean);
+          var poolByKey = issueFieldPoolByKey();
           issue.type = (fd.get("type") || "").toString();
           issue.description = (fd.get("description") || "").toString().trim();
-          issue.reportedBy = (fd.get("reportedBy") || "").toString();
+          /* reportedBy is not editable here on purpose — it's the original
+             reporter's signature, not a field anyone else reassigns. */
           issue.remarks = (fd.get("remarks") || "").toString().trim();
-          ISSUE_FIELD_POOL.forEach(function (f) { delete issue[f.key]; });
+          (state.issueFieldPool || []).forEach(function (f) { delete issue[f.key]; });
           enabledFields.forEach(function (key) {
-            if (ISSUE_FIELD_POOL_BY_KEY[key]) issue[key] = (fd.get(key) || "").toString().trim();
+            if (poolByKey[key]) issue[key] = (fd.get(key) || "").toString().trim();
           });
           issue.enabledFields = enabledFields;
           ui.editingIssueId = null;
           ui.editingIssueType = null;
           persist();
         })(); break;
+      case "sign-issue-fixed":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          var me = getStoredIdentity();
+          if (issue && me && !issue.fixedBy) issue.fixedBy = me;
+          persist();
+        })(); break;
+      case "clear-issue-fixed-by":
+        requestDelete("issue-fixedby", t.getAttribute("data-id"), function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) delete issue.fixedBy;
+        }); break;
       case "create-pin":
         (function () {
           var name = form.getAttribute("data-name");
@@ -3128,6 +3189,14 @@ function appMain() {
           var name = (fd.get("name") || "").toString().trim();
           if (!name) return;
           state.issueTypes.push({ id: uid("itype"), name: name, statusOptions: NEW_ISSUE_TYPE_STATUS_OPTIONS.slice() });
+          persist();
+        })(); break;
+      case "add-issue-field-pool":
+        (function () {
+          var label = (fd.get("label") || "").toString().trim();
+          if (!label) return;
+          state.issueFieldPool = state.issueFieldPool || [];
+          state.issueFieldPool.push({ key: uid("field"), label: label, type: "text" });
           persist();
         })(); break;
       case "add-template-item":
