@@ -301,6 +301,13 @@
   .add-va-btn:hover { border-color: var(--accent); color: var(--accent); }
   .va-add-select { max-width: 150px; }
   .field-mini-label { font-size: 0.7rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+
+  .table-scroll { overflow-x: auto; }
+  .data-table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
+  .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
+  .data-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
+  .data-table td.wrap { white-space: normal; min-width: 160px; }
+  .data-table tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -948,6 +955,8 @@ function appMain() {
       "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(it.studentName) + "\">" +
       "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\" value=\"" + esc(it.schoolYear) + "\">" +
       "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\" value=\"" + esc(it.grade) + "\">" +
+      "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(it.dob) + "\">" +
+      "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(it.insuranceNumber) + "\">" +
       "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(it.fileName) + "\">" +
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(it.pageNumber) + "\">" +
       "</div>" +
@@ -992,6 +1001,8 @@ function appMain() {
       "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\">" +
       "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\">" +
       "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\">" +
+      "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\">" +
+      "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\">" +
       "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\">" +
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\">" +
       "</div>" +
@@ -1016,27 +1027,54 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    var rows = list.map(function (it) {
+    var normalList = list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.extraFields); });
+    var recordList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.extraFields; });
+
+    var rows = normalList.map(function (it) {
       if (ui.editingIssueId === it.id) return issueEditFormHtml(it);
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
       if (it.reportedBy) meta += " · Reported by " + esc(it.reportedBy);
-      var detailBits = [];
-      if (it.studentName) detailBits.push("Student: " + esc(it.studentName));
-      if (it.schoolYear) detailBits.push("Year: " + esc(it.schoolYear));
-      if (it.grade) detailBits.push("Grade: " + esc(it.grade));
-      if (it.fileName) detailBits.push("File: " + esc(it.fileName));
-      if (it.pageNumber) detailBits.push("Page: " + esc(it.pageNumber));
-      var detailHtml = detailBits.length ? "<div class=\"row-meta\">" + detailBits.join(" · ") + "</div>" : "";
-      var remarksHtml = it.remarks ? "<div class=\"row-meta\">Remarks: " + esc(it.remarks) + "</div>" : "";
       return "<div class=\"row-item\"><div class=\"row-main\">" +
         "<div class=\"row-title\">" + esc(it.description) + "</div>" +
-        "<div class=\"row-meta\">" + meta + "</div>" + detailHtml + remarksHtml + "</div>" +
+        "<div class=\"row-meta\">" + meta + "</div></div>" +
         statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
         "<button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" +
         deleteBtn("issue", it.id, "remove-issue") + "</div>";
     }).join("");
+
+    var recordTableCols = 12;
+    var recordRows = recordList.map(function (it) {
+      if (ui.editingIssueId === it.id) {
+        return "<tr><td colspan=\"" + recordTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
+      }
+      var sch = schoolById(it.schoolId);
+      var ty = issueTypeById(it.type);
+      return "<tr>" +
+        "<td>" + esc(it.studentName) + "</td>" +
+        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
+        "<td>" + esc(it.schoolYear) + "</td>" +
+        "<td>" + esc(it.grade) + "</td>" +
+        "<td>" + esc(it.dob) + "</td>" +
+        "<td>" + esc(it.insuranceNumber) + "</td>" +
+        "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
+        "<td>" + esc(it.pageNumber) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.remarks) + "</td>" +
+        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    var recordTableHtml = "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Record Updates" +
+      (recordList.length ? " <span class=\"count-chip\">" + recordList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" +
+      "<th>Student</th><th>School</th><th>School year</th><th>Grade</th><th>DOB</th><th>Insurance #</th>" +
+      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Remarks</th><th>Status</th><th></th>" +
+      "</tr></thead><tbody>" +
+      (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div>" +
       "<div class=\"page-sub\">Software issues and recheck items across all schools, in one place. Fields here will grow as the workflow gets detailed further.</div></div></div>" +
@@ -1057,7 +1095,8 @@ function appMain() {
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
       "</div>" +
-      "<div class=\"card\"><div class=\"card-body\"><div class=\"row-list\">" + (rows || emptyState("No issues match these filters.")) + "</div></div></div>";
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"row-list\">" + (rows || emptyState("No issues match these filters.")) + "</div></div></div>" +
+      recordTableHtml;
   }
 
   /* ---------- Email Templates ---------- */
@@ -1455,6 +1494,8 @@ function appMain() {
             issue.studentName = (fd.get("studentName") || "").toString().trim();
             issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
             issue.grade = (fd.get("grade") || "").toString().trim();
+            issue.dob = (fd.get("dob") || "").toString().trim();
+            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
             issue.remarks = (fd.get("remarks") || "").toString().trim();
@@ -1478,11 +1519,14 @@ function appMain() {
             issue.studentName = (fd.get("studentName") || "").toString().trim();
             issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
             issue.grade = (fd.get("grade") || "").toString().trim();
+            issue.dob = (fd.get("dob") || "").toString().trim();
+            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
             issue.remarks = (fd.get("remarks") || "").toString().trim();
           } else {
             delete issue.studentName; delete issue.schoolYear; delete issue.grade;
+            delete issue.dob; delete issue.insuranceNumber;
             delete issue.fileName; delete issue.pageNumber; delete issue.remarks;
           }
           ui.editingIssueId = null;
