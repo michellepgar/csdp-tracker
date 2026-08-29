@@ -208,10 +208,15 @@
     display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 600;
     padding: 3px 9px; border-radius: 999px; white-space: nowrap; border: none;
   }
-  .pill.attn { background: var(--attn-soft); color: var(--attn); }
-  .pill.progress { background: var(--progress-soft); color: var(--progress); }
-  .pill.done { background: var(--done-soft); color: var(--done); }
+  .pill.red { background: var(--danger-soft); color: var(--danger); }
+  .pill.orange { background: var(--attn-soft); color: var(--attn); }
+  .pill.green { background: var(--done-soft); color: var(--done); }
+  .pill.neutral { background: var(--surface-2); color: var(--ink-soft); }
   select.status-select { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 22px 3px 9px; font-size: 0.76rem; font-weight: 600; }
+  select.status-select.red { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+  select.status-select.orange { background: var(--attn-soft); color: var(--attn); border-color: transparent; }
+  select.status-select.green { background: var(--done-soft); color: var(--done); border-color: transparent; }
+  select.status-select.neutral { background: var(--surface-2); color: var(--ink-soft); border-color: transparent; }
 
   .icon-btn { background: none; border: none; color: var(--ink-faint); padding: 4px 6px; border-radius: var(--radius); font-size: 0.78rem; }
   .icon-btn:hover { background: var(--danger-soft); color: var(--danger); }
@@ -325,19 +330,24 @@ function appMain() {
     email_followup: ["Needs My Response", "Waiting on Them", "Done"]
   };
   var COMMUNICATION_CATEGORIES = ["Initial", "Recheck"];
+  /* Status color tiers: red = still needs action, orange = paused/waiting,
+     green = done, neutral = blank/no status yet. */
   var STATUS_TIER = {
-    "Open": "attn", "Done": "done",
-    "In Progress": "progress", "Resolved": "done",
-    "Paused": "attn", "Completed": "done",
-    "Pending": "attn", "Rechecked": "done", "Needs Re-check": "attn",
-    "Needs My Response": "attn", "Waiting on Them": "progress"
+    "Open": "red", "In Progress": "red", "Pending": "red",
+    "Needs Re-check": "red", "Needs My Response": "red",
+    "Paused": "orange", "Waiting on Them": "orange",
+    "Done": "green", "Completed": "green", "Resolved": "green",
+    "Rechecked": "green", "Fixed": "green"
   };
+  var CORRECTION_CATEGORIES = ["Name", "Date of Birth", "Insurance Number", "Grade", "School Year", "Other"];
   /* Issue types are a shared, editable list (like task categories) — each carries its
-     own status vocabulary. "Record Update" also carries its own extra fields. */
+     own status vocabulary. "Record Update" carries its own extra fields (a table view).
+     "Correction" carries a category + the correct info (shown inline on its row). */
   var DEFAULT_ISSUE_TYPES = [
     { id: "software_issue", name: "Software issue", statusOptions: ["Open", "In Progress", "Resolved"] },
     { id: "recheck", name: "Recheck", statusOptions: ["Pending", "Rechecked", "Needs Re-check"] },
-    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true }
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true },
+    { id: "correction", name: "Correction", statusOptions: ["Pending", "Fixed"], correctionFields: true }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
 
@@ -373,7 +383,7 @@ function appMain() {
     return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " · " +
       d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
-  function pillClass(status) { return "pill " + (STATUS_TIER[status] || "attn"); }
+  function pillClass(status) { return "pill " + (STATUS_TIER[status] || "neutral"); }
   function draftKey(name) { return "caseload_draft_" + name; }
   function saveDraft(name, value) {
     try { if (value) { localStorage.setItem(draftKey(name), value); } else { localStorage.removeItem(draftKey(name)); } } catch (e) {}
@@ -540,7 +550,7 @@ function appMain() {
   }
   function countNotDone(list) {
     var n = 0;
-    for (var i = 0; i < list.length; i++) if (STATUS_TIER[list[i].status] !== "done") n++;
+    for (var i = 0; i < list.length; i++) if (STATUS_TIER[list[i].status] !== "green") n++;
     return n;
   }
   function schoolAttnCount(schoolId) {
@@ -551,7 +561,7 @@ function appMain() {
       if (!prog || prog.status !== "Done") n++;
     }
     for (var j = 0; j < state.issues.length; j++) {
-      if (state.issues[j].schoolId === schoolId && STATUS_TIER[state.issues[j].status] !== "done") n++;
+      if (state.issues[j].schoolId === schoolId && STATUS_TIER[state.issues[j].status] !== "green") n++;
     }
     return n;
   }
@@ -565,7 +575,7 @@ function appMain() {
   }
   function issuesAttnCount() {
     var n = 0;
-    for (var i = 0; i < state.issues.length; i++) if (STATUS_TIER[state.issues[i].status] !== "done") n++;
+    for (var i = 0; i < state.issues.length; i++) if (STATUS_TIER[state.issues[i].status] !== "green") n++;
     return n;
   }
   function issueTypeById(id) {
@@ -852,7 +862,7 @@ function appMain() {
     var opts = options.map(function (o) {
       return "<option value=\"" + esc(o) + "\"" + (o === status ? " selected" : "") + ">" + esc(o || "—") + "</option>";
     }).join("");
-    return "<select class=\"status-select " + (STATUS_TIER[status] || "attn") + "\" data-action-change=\"" + action + "\" data-id=\"" + id + "\"" +
+    return "<select class=\"status-select " + (STATUS_TIER[status] || "neutral") + "\" data-action-change=\"" + action + "\" data-id=\"" + id + "\"" +
       (schoolId ? " data-school=\"" + schoolId + "\"" : "") + ">" + opts + "</select>";
   }
 
@@ -961,12 +971,16 @@ function appMain() {
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(it.pageNumber) + "\">" +
       "</div>" +
       "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>" : "";
+    var correctionFieldsEditHtml = editType && editType.correctionFields ?
+      "<select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === it.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
+      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(it.correctInfo) + "\">" : "";
     return "<div class=\"row-item\" style=\"flex-direction:column; align-items:stretch;\">" +
       "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\">" +
       "<select class=\"text-input\" name=\"schoolId\" required>" + schoolOptsEdit + "</select>" +
       "<select class=\"text-input\" name=\"type\" data-action-change=\"select-edit-issue-type\">" + typeOptsEdit + "</select>" +
       "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
       "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
+      correctionFieldsEditHtml +
       extraFieldsEditHtml +
       "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
       "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-issue\">Cancel</button></div>" +
@@ -1007,6 +1021,9 @@ function appMain() {
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\">" +
       "</div>" +
       "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\"></textarea>" : "";
+    var correctionFieldsHtml = newType && newType.correctionFields ?
+      "<select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("") + "</select>" +
+      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\">" : "";
 
     var typeEditorHtml = "";
     if (ui.issueTypeEditorOpen) {
@@ -1036,9 +1053,11 @@ function appMain() {
       var ty = issueTypeById(it.type);
       var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
       if (it.reportedBy) meta += " · Reported by " + esc(it.reportedBy);
+      var correctionHtml = (ty && ty.correctionFields && (it.category || it.correctInfo)) ?
+        "<div class=\"row-meta\">" + esc(it.category) + (it.correctInfo ? " → " + esc(it.correctInfo) : "") + "</div>" : "";
       return "<div class=\"row-item\"><div class=\"row-main\">" +
         "<div class=\"row-title\">" + esc(it.description) + "</div>" +
-        "<div class=\"row-meta\">" + meta + "</div></div>" +
+        "<div class=\"row-meta\">" + meta + "</div>" + correctionHtml + "</div>" +
         statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
         "<button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" +
         deleteBtn("issue", it.id, "remove-issue") + "</div>";
@@ -1087,6 +1106,7 @@ function appMain() {
         "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
         "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
+        correctionFieldsHtml +
         extraFieldsHtml +
         "<button class=\"btn\" type=\"submit\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
@@ -1501,6 +1521,10 @@ function appMain() {
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
             issue.remarks = (fd.get("remarks") || "").toString().trim();
           }
+          if (typeObj && typeObj.correctionFields) {
+            issue.category = (fd.get("category") || "").toString();
+            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
+          }
           state.issues.push(issue);
           ui.newIssueType = null;
           persist();
@@ -1529,6 +1553,12 @@ function appMain() {
             delete issue.studentName; delete issue.schoolYear; delete issue.grade;
             delete issue.dob; delete issue.insuranceNumber;
             delete issue.fileName; delete issue.pageNumber; delete issue.remarks;
+          }
+          if (typeObj && typeObj.correctionFields) {
+            issue.category = (fd.get("category") || "").toString();
+            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
+          } else {
+            delete issue.category; delete issue.correctInfo;
           }
           ui.editingIssueId = null;
           ui.editingIssueType = null;
