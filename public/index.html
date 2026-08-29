@@ -372,7 +372,7 @@ function appMain() {
     schools: [], vas: [], schoolData: {},
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
-    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: [], suggestions: [], eodReports: []
+    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: []
   };
 
   /* ============ helpers ============ */
@@ -854,7 +854,13 @@ function appMain() {
       "</div>" +
       "<div class=\"sidebar-divider\"></div>" +
       "<div class=\"sidebar-section\">" +
-      "<div class=\"sidebar-label\">Workspace</div>" +
+      "<div class=\"sidebar-label\">My Space</div>" +
+      "<div class=\"nav-list\">" +
+      navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }) +
+      "</div></div>" +
+      "<div class=\"sidebar-divider\"></div>" +
+      "<div class=\"sidebar-section\">" +
+      "<div class=\"sidebar-label\">Team</div>" +
       "<div class=\"nav-list\">" +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
@@ -875,6 +881,7 @@ function appMain() {
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
       case "eod": return eodPageHtml();
+      case "private-notes": return privateNotesPageHtml();
       default: return homePageHtml();
     }
   }
@@ -1104,22 +1111,27 @@ function appMain() {
   }
 
   function notesCardHtml(scope, schoolId, notes) {
-    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : "note-general");
-    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : "General Notes");
-    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : "Add a note…";
+    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : (scope === "private" ? "note-private" : "note-general"));
+    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : (scope === "private" ? "Private Notes" : "General Notes"));
+    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : (scope === "private" ? "Write yourself a note…" : "Add a note…");
     var buttonLabel = scope === "suggestion" ? "Add suggestion" : "Add note";
-    var emptyText = scope === "suggestion" ? "No suggestions yet." : "No notes yet.";
+    var emptyText = scope === "suggestion" ? "No suggestions yet." : (scope === "private" ? "No private notes yet — only you can see this page." : "No notes yet.");
     var list = notes.slice().reverse().map(function (n) {
       return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
-        "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
+        (scope === "private" ? "<div class=\"note-meta\">" + fmtDateTime(n.createdAt) + "</div>" :
+          "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div>") + "</div>";
     }).join("");
+    var authorFieldHtml = scope === "private" ? "" :
+      "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+      "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
+      "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + title + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
         "<textarea class=\"text-input\" name=\"text\" placeholder=\"" + placeholder + "\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
-        "<div class=\"field-row\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
-        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div></form>" + vaDatalist() +
+        authorFieldHtml +
+        (scope === "private" ? "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add note</button>" : "") +
+      "</form>" + (scope === "private" ? "" : vaDatalist()) +
       "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState(emptyText)) + "</div>" +
       "</div></div>";
   }
@@ -1365,6 +1377,13 @@ function appMain() {
   function suggestionsPageHtml() {
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
       notesCardHtml("suggestion", null, state.suggestions);
+  }
+
+  /* ---------- Private Notes ---------- */
+  function privateNotesPageHtml() {
+    var mine = state.privateNotes.filter(function (n) { return n.author === getStoredIdentity(); });
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Private Notes</div></div></div>" +
+      notesCardHtml("private", null, mine);
   }
 
   /* ---------- EOD Reports ---------- */
@@ -1715,8 +1734,8 @@ function appMain() {
           var scope = form.getAttribute("data-scope");
           var text = (fd.get("text") || "").toString().trim();
           if (!text) return;
-          var author = (fd.get("author") || "").toString().trim();
-          addVaIfNew(author);
+          var author = scope === "private" ? getStoredIdentity() : (fd.get("author") || "").toString().trim();
+          if (scope !== "private") addVaIfNew(author);
           var entry = { id: uid("note"), text: text, author: author, createdAt: new Date().toISOString() };
           var draftName;
           if (scope === "school") {
@@ -1726,6 +1745,9 @@ function appMain() {
           } else if (scope === "suggestion") {
             state.suggestions.push(entry);
             draftName = "note-suggestion";
+          } else if (scope === "private") {
+            state.privateNotes.push(entry);
+            draftName = "note-private";
           } else {
             state.generalNotes.push(entry);
             draftName = "note-general";
