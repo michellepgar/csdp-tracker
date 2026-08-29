@@ -120,7 +120,19 @@
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     height: 100vh; position: sticky; top: 0; overflow-y: auto;
+    transition: width 0.15s ease;
   }
+  .sidebar.collapsed { width: 0; border-right: none; overflow: hidden; }
+  .sidebar-toggle, .theme-toggle {
+    position: fixed; top: 14px; z-index: 25;
+    width: 28px; height: 28px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink-soft);
+    display: flex; align-items: center; justify-content: center; font-size: 0.8rem;
+    box-shadow: var(--shadow); transition: left 0.15s ease;
+  }
+  .sidebar-toggle:hover, .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle { right: 14px; left: auto; }
+  @media (max-width: 900px) { .sidebar-toggle { display: none; } }
   .brand { padding: 20px 18px 14px; border-bottom: 1px solid var(--border); }
   .brand-name { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
   .brand-tag { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
@@ -337,17 +349,16 @@ function appMain() {
     "Needs Re-check": "red", "Needs My Response": "red",
     "Paused": "orange", "Waiting on Them": "orange",
     "Done": "green", "Completed": "green", "Resolved": "green",
-    "Rechecked": "green", "Fixed": "green"
+    "Rechecked": "green"
   };
   var CORRECTION_CATEGORIES = ["Name", "Date of Birth", "Insurance Number", "Grade", "School Year", "Other"];
   /* Issue types are a shared, editable list (like task categories) — each carries its
-     own status vocabulary. "Record Update" carries its own extra fields (a table view).
-     "Correction" carries a category + the correct info (shown inline on its row). */
+     own status vocabulary. "Record Update" carries its own extra fields, including
+     what's being corrected (category + correct info), shown in a table view. */
   var DEFAULT_ISSUE_TYPES = [
     { id: "software_issue", name: "Software issue", statusOptions: ["Open", "In Progress", "Resolved"] },
     { id: "recheck", name: "Recheck", statusOptions: ["Pending", "Rechecked", "Needs Re-check"] },
-    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true },
-    { id: "correction", name: "Correction", statusOptions: ["Pending", "Fixed"], correctionFields: true }
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
 
@@ -416,7 +427,11 @@ function appMain() {
      This appends any built-in type missing by id, without touching order or
      any team-added custom types. */
   function migrateIssueTypes(parsed) {
-    var existingIds = (parsed.issueTypes || []).map(function (t) { return t.id; });
+    /* "Correction" briefly existed as its own type, then was folded into
+       Record Update's extra fields instead — drop it if an earlier save
+       already persisted it. */
+    parsed.issueTypes = (parsed.issueTypes || []).filter(function (t) { return t.id !== "correction"; });
+    var existingIds = parsed.issueTypes.map(function (t) { return t.id; });
     DEFAULT_ISSUE_TYPES.forEach(function (dt) {
       if (existingIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
     });
@@ -428,6 +443,34 @@ function appMain() {
   function setStoredPassword(pw) {
     try { localStorage.setItem(PASSWORD_KEY, pw); } catch (e) {}
   }
+
+  /* ---------- Per-viewer preferences (not synced — local to this browser) ---------- */
+  var SIDEBAR_COLLAPSED_KEY = "csdp_sidebar_collapsed";
+  function loadSidebarCollapsed() {
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1"; } catch (e) { return false; }
+  }
+  function saveSidebarCollapsed(v) {
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? "1" : "0"); } catch (e) {}
+  }
+
+  var THEME_KEY = "csdp_theme";
+  function getStoredTheme() {
+    try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setStoredTheme(v) {
+    try { localStorage.setItem(THEME_KEY, v); } catch (e) {}
+  }
+  function currentEffectiveTheme() {
+    var t = getStoredTheme();
+    if (t === "light" || t === "dark") return t;
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  function applyTheme() {
+    var t = getStoredTheme();
+    if (t === "light" || t === "dark") { document.documentElement.setAttribute("data-theme", t); }
+    else { document.documentElement.removeAttribute("data-theme"); }
+  }
+  applyTheme();
 
   function passwordPromptHtml(message) {
     return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px; color:var(--ink);\">" +
@@ -536,6 +579,7 @@ function appMain() {
         view: loadStoredView(),
         search: "",
         sidebarOpen: false,
+        sidebarCollapsed: loadSidebarCollapsed(),
         templateEditorOpen: false,
         pendingDelete: null,
         issueFilters: { school: "", type: "", status: "" }
@@ -656,7 +700,9 @@ function appMain() {
     return (
       "<div class=\"shell\">" +
       "<div class=\"overlay" + (ui.sidebarOpen ? " show" : "") + "\" data-action=\"close-sidebar\"></div>" +
-      "<aside class=\"sidebar" + (ui.sidebarOpen ? " open" : "") + "\">" + sidebarHtml() + "</aside>" +
+      "<aside class=\"sidebar" + (ui.sidebarOpen ? " open" : "") + (ui.sidebarCollapsed ? " collapsed" : "") + "\">" + sidebarHtml() + "</aside>" +
+      "<button class=\"sidebar-toggle\" data-action=\"toggle-sidebar-collapse\" style=\"left:" + (ui.sidebarCollapsed ? "12px" : "260px") + ";\" title=\"" + (ui.sidebarCollapsed ? "Show sidebar" : "Hide sidebar") + "\">" + (ui.sidebarCollapsed ? "▶" : "◀") + "</button>" +
+      "<button class=\"theme-toggle\" data-action=\"toggle-theme\" title=\"Switch to " + (currentEffectiveTheme() === "dark" ? "light" : "dark") + " mode\">" + (currentEffectiveTheme() === "dark" ? "☀" : "🌙") + "</button>" +
       "<div class=\"main\">" +
       "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
       "<div class=\"content\">" + pageHtml() + "</div>" +
@@ -982,17 +1028,17 @@ function appMain() {
       "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(it.fileName) + "\">" +
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(it.pageNumber) + "\">" +
       "</div>" +
+      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+      "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === it.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
+      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(it.correctInfo) + "\">" +
+      "</div>" +
       "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>" : "";
-    var correctionFieldsEditHtml = editType && editType.correctionFields ?
-      "<select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === it.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
-      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(it.correctInfo) + "\">" : "";
     return "<div class=\"row-item\" style=\"flex-direction:column; align-items:stretch;\">" +
       "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\">" +
       "<select class=\"text-input\" name=\"schoolId\" required>" + schoolOptsEdit + "</select>" +
       "<select class=\"text-input\" name=\"type\" data-action-change=\"select-edit-issue-type\">" + typeOptsEdit + "</select>" +
       "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
       "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
-      correctionFieldsEditHtml +
       extraFieldsEditHtml +
       "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
       "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-issue\">Cancel</button></div>" +
@@ -1032,10 +1078,11 @@ function appMain() {
       "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\">" +
       "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\">" +
       "</div>" +
+      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+      "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("") + "</select>" +
+      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\">" +
+      "</div>" +
       "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\"></textarea>" : "";
-    var correctionFieldsHtml = newType && newType.correctionFields ?
-      "<select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("") + "</select>" +
-      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\">" : "";
 
     var typeEditorHtml = "";
     if (ui.issueTypeEditorOpen) {
@@ -1065,17 +1112,15 @@ function appMain() {
       var ty = issueTypeById(it.type);
       var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
       if (it.reportedBy) meta += " · Reported by " + esc(it.reportedBy);
-      var correctionHtml = (ty && ty.correctionFields && (it.category || it.correctInfo)) ?
-        "<div class=\"row-meta\">" + esc(it.category) + (it.correctInfo ? " → " + esc(it.correctInfo) : "") + "</div>" : "";
       return "<div class=\"row-item\"><div class=\"row-main\">" +
         "<div class=\"row-title\">" + esc(it.description) + "</div>" +
-        "<div class=\"row-meta\">" + meta + "</div>" + correctionHtml + "</div>" +
+        "<div class=\"row-meta\">" + meta + "</div></div>" +
         statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
         "<button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" +
         deleteBtn("issue", it.id, "remove-issue") + "</div>";
     }).join("");
 
-    var recordTableCols = 13;
+    var recordTableCols = 15;
     var recordRows = recordList.map(function (it) {
       if (ui.editingIssueId === it.id) {
         return "<tr><td colspan=\"" + recordTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
@@ -1092,6 +1137,8 @@ function appMain() {
         "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
         "<td>" + esc(it.pageNumber) + "</td>" +
         "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        "<td>" + esc(it.category) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.correctInfo) + "</td>" +
         "<td class=\"wrap\">" + esc(it.remarks) + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
         "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
@@ -1103,7 +1150,7 @@ function appMain() {
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
       "<th>Student</th><th>School</th><th>School year</th><th>Grade</th><th>DOB</th><th>Insurance #</th>" +
-      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
+      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Correcting</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
@@ -1118,7 +1165,6 @@ function appMain() {
         "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
         "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
-        correctionFieldsHtml +
         extraFieldsHtml +
         "<button class=\"btn\" type=\"submit\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
@@ -1224,6 +1270,14 @@ function appMain() {
         goTo({ type: t.getAttribute("data-view") });
         render(); break;
       case "toggle-sidebar": ui.sidebarOpen = !ui.sidebarOpen; render(); break;
+      case "toggle-sidebar-collapse":
+        ui.sidebarCollapsed = !ui.sidebarCollapsed;
+        saveSidebarCollapsed(ui.sidebarCollapsed);
+        render(); break;
+      case "toggle-theme":
+        setStoredTheme(currentEffectiveTheme() === "dark" ? "light" : "dark");
+        applyTheme();
+        render(); break;
       case "close-sidebar": ui.sidebarOpen = false; render(); break;
       case "toggle-add-school": ui.addSchoolOpen = !ui.addSchoolOpen; render(); break;
       case "toggle-template-editor": ui.templateEditorOpen = !ui.templateEditorOpen; render(); break;
@@ -1531,11 +1585,9 @@ function appMain() {
             issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
-            issue.remarks = (fd.get("remarks") || "").toString().trim();
-          }
-          if (typeObj && typeObj.correctionFields) {
             issue.category = (fd.get("category") || "").toString();
             issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
+            issue.remarks = (fd.get("remarks") || "").toString().trim();
           }
           state.issues.push(issue);
           ui.newIssueType = null;
@@ -1560,16 +1612,13 @@ function appMain() {
             issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
+            issue.category = (fd.get("category") || "").toString();
+            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
             issue.remarks = (fd.get("remarks") || "").toString().trim();
           } else {
             delete issue.studentName; delete issue.schoolYear; delete issue.grade;
             delete issue.dob; delete issue.insuranceNumber;
             delete issue.fileName; delete issue.pageNumber; delete issue.remarks;
-          }
-          if (typeObj && typeObj.correctionFields) {
-            issue.category = (fd.get("category") || "").toString();
-            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
-          } else {
             delete issue.category; delete issue.correctInfo;
           }
           ui.editingIssueId = null;
