@@ -116,7 +116,7 @@
   #app { min-height: 100vh; }
   .shell { display: flex; min-height: 100vh; }
   .sidebar {
-    width: 272px; flex: none; background: var(--surface);
+    width: 320px; flex: none; background: var(--surface);
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     height: 100vh; position: sticky; top: 0; overflow-y: auto;
@@ -155,6 +155,11 @@
   .nav-item:hover { background: var(--surface-2); }
   .nav-item.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
   .nav-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* School names can run long ("Manthala George Jr. Global Studies
+     School") — let this list wrap onto a second line instead of
+     truncating, since seeing the full name here is the point. */
+  .school-list .nav-item { align-items: flex-start; padding-top: 8px; padding-bottom: 8px; }
+  .school-list .nav-item .name { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
   .count-chip {
     font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; font-weight: 600;
     background: var(--attn-soft); color: var(--attn); border-radius: 999px;
@@ -828,7 +833,7 @@ function appMain() {
      in this list, this is authoritative and overwrites whatever vaAssigned
      it had; anything outside this list is left untouched. */
   var BROCKTON_SCHOOL_VA_MAP = {
-    "Michelle": ["Gilmore Elementary School", "Angelo Elementary School", "Arnone Elementary School", "Baker Elementary School", "North Middle School"],
+    "Michelle": ["Gilmore Elementary School", "Angelo Elementary School", "Arnone Elementary School", "Baker Elementary School", "North Middle School", "Davis K-8 School"],
     "Therese": ["Barrett Russell Early Childhood Center", "Brookfield Elementary School", "Downey Elementary School", "Plouffe Middle School", "Ashfield Middle School"],
     "Nikki": ["Kennedy Elementary School", "Raymond Elementary School", "East Middle School", "Manthala George Jr. Global Studies School", "Hancock Elementary School"],
     "Rexanne": ["PROMISE College and Career Academy", "Champion High School", "Brockton High School", "Brockton Therapeutic Day School", "Brockton Virtual Learning Academy", "South Middle School", "West Middle School", "Edison Academy"]
@@ -856,6 +861,39 @@ function appMain() {
       });
     });
     return true;
+  }
+  /* The Brockton seed above already ran once by the time Davis K-8 was
+     mentioned — a small follow-up, same idea, just for this one school. */
+  function migrateDavisSchool(parsed) {
+    if (parsed._migratedDavisSchool) return false;
+    parsed._migratedDavisSchool = true;
+    parsed.schools = parsed.schools || [];
+    parsed.schoolData = parsed.schoolData || {};
+    var name = "Davis K-8 School";
+    var existing = parsed.schools.filter(function (s) { return s.name === name; })[0];
+    if (!existing) {
+      existing = { id: uid("sch"), name: name };
+      parsed.schools.push(existing);
+    }
+    if (!parsed.schoolData[existing.id]) {
+      parsed.schoolData[existing.id] = { vaAssigned: "Michelle", tasks: [], emailTracker: [], notes: [] };
+    } else {
+      parsed.schoolData[existing.id].vaAssigned = "Michelle";
+    }
+    return true;
+  }
+  /* Normalizes a school name to Title Case when a new one is added by
+     hand, so casing stays consistent regardless of how it was typed.
+     Short all-caps/alphanumeric tokens (like "K-8") are left as-is rather
+     than lowercased. */
+  function toTitleCase(str) {
+    var minorWords = { of: 1, and: 1, the: 1, for: 1, in: 1, at: 1, "&": 1 };
+    return String(str || "").trim().split(/\s+/).map(function (word, idx) {
+      if (/^[A-Z0-9-]+$/.test(word) && word.length <= 4) return word;
+      var lower = word.toLowerCase();
+      if (idx !== 0 && minorWords[lower]) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }).join(" ");
   }
   /* Notes used to store plain text, escaped at render time. Now they store
      a bit of sanitized rich-text HTML, rendered directly. A note created
@@ -1100,6 +1138,7 @@ function appMain() {
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
       migrateBrocktonSchools(fresh);
+      migrateDavisSchool(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1157,13 +1196,14 @@ function appMain() {
       var justMigratedCategoryOrder = migrateTaskCategoryOrder(state);
       var justMigratedTimestamps = migrateRecordTimestamps(state);
       var justMigratedSchools = migrateBrocktonSchools(state);
+      var justMigratedDavis = migrateDavisSchool(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1485,11 +1525,14 @@ function appMain() {
   }
   /* Colors a school's name to match whichever VA it's assigned to, so the
      sidebar reads at a glance like each VA's own signature color. */
-  function schoolNameColorStyle(schoolId) {
+  function schoolNameColorCss(schoolId) {
     var sd = state.schoolData[schoolId];
     var assigned = sd && sd.vaAssigned;
-    if (!assigned) return "";
-    return " style=\"color:" + vaSolidColor(assigned) + ";\"";
+    return assigned ? "color:" + vaSolidColor(assigned) + ";" : "";
+  }
+  function schoolNameColorStyle(schoolId) {
+    var css = schoolNameColorCss(schoolId);
+    return css ? " style=\"" + css + "\"" : "";
   }
 
   function taskVaGroupHtml(t, schoolId) {
@@ -1522,11 +1565,11 @@ function appMain() {
       "<div><div class=\"page-title display\"" + schoolNameColorStyle(schoolId) + ">" + esc(school.name) + "</div>" +
       "<div class=\"field-row\" style=\"margin-top:8px;\">" +
       "<span class=\"field-label\">VA assigned</span>" +
-      "<input class=\"text-input\" style=\"width:200px;\" list=\"va-list\" value=\"" + esc(sd.vaAssigned) + "\" data-action-change=\"set-va-assigned\" data-school=\"" + schoolId + "\" placeholder=\"Type a name\">" +
+      "<span style=\"font-weight:600;" + schoolNameColorCss(schoolId) + "\">" + esc(sd.vaAssigned || "Unassigned") + "</span>" +
       "</div></div>" +
       "<button class=\"link-btn danger\" data-action=\"remove-school\" data-id=\"" + schoolId + "\">" +
         (isPending("school", schoolId) ? "Really remove " + esc(school.name) + " and all its data? Click again to confirm" : "Remove school") + "</button>" +
-      "</div>" + vaDatalist();
+      "</div>";
 
     return header +
       tasksCardHtml(schoolId, sd) +
@@ -2024,11 +2067,26 @@ function appMain() {
       return "<div class=\"va-chip\">" + esc(v.name) +
         "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
     }).join("");
+    var sortedVas = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var assignmentRows = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
+      var sd = state.schoolData[s.id] || {};
+      var opts = "<option value=\"\"" + (!sd.vaAssigned ? " selected" : "") + ">Unassigned</option>" +
+        sortedVas.map(function (v) {
+          return "<option value=\"" + esc(v.name) + "\"" + (sd.vaAssigned === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>";
+        }).join("");
+      return "<div class=\"row-item\"><div class=\"row-main\" style=\"" + schoolNameColorCss(s.id) + "font-weight:600;\">" + esc(s.name) + "</div>" +
+        "<select class=\"text-input\" style=\"max-width:160px;\" data-action-change=\"set-va-assigned\" data-school=\"" + s.id + "\">" + opts + "</select></div>";
+    }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-va\">" +
         "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
       "<div class=\"va-chip-list\">" + (chips || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"checklist-note\">Change who's responsible for a school here whenever assignments shift — this is the one place it's set.</div>" +
+      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
       "</div></div>";
   }
 
@@ -2578,7 +2636,7 @@ function appMain() {
     switch (action) {
       case "add-school":
         (function () {
-          var name = (fd.get("name") || "").toString().trim();
+          var name = toTitleCase((fd.get("name") || "").toString().trim());
           if (!name) return;
           var id = uid("sch");
           state.schools.push({ id: id, name: name });
