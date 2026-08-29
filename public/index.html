@@ -372,7 +372,7 @@ function appMain() {
     schools: [], vas: [], schoolData: {},
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
-    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: []
+    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: [], suggestions: []
   };
 
   /* ============ helpers ============ */
@@ -833,6 +833,7 @@ function appMain() {
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
       navItem("team", "Team", 0, function (v) { return v.type === "team"; }) +
       navItem("notes", "General Notes", 0, function (v) { return v.type === "notes"; }) +
+      navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>"
     );
   }
@@ -844,6 +845,7 @@ function appMain() {
       case "templates": return templatesPageHtml();
       case "team": return teamPageHtml();
       case "notes": return generalNotesPageHtml();
+      case "suggestions": return suggestionsPageHtml();
       default: return homePageHtml();
     }
   }
@@ -1074,19 +1076,23 @@ function appMain() {
   }
 
   function notesCardHtml(scope, schoolId, notes) {
-    var draftName = scope === "school" ? "note-" + schoolId : "note-general";
+    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : "note-general");
+    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : "General Notes");
+    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : "Add a note…";
+    var buttonLabel = scope === "suggestion" ? "Add suggestion" : "Add note";
+    var emptyText = scope === "suggestion" ? "No suggestions yet." : "No notes yet.";
     var list = notes.slice().reverse().map(function (n) {
       return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
         "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
     }).join("");
-    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + (scope === "school" ? "Notes" : "General Notes") + "</div></div>" +
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + title + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
-        "<textarea class=\"text-input\" name=\"text\" placeholder=\"Add a note…\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
+        "<textarea class=\"text-input\" name=\"text\" placeholder=\"" + placeholder + "\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
         "<div class=\"field-row\" style=\"margin-top:8px;\">" +
         "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
-        "<button class=\"btn\" type=\"submit\">Add note</button></div></form>" + vaDatalist() +
-      "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState("No notes yet.")) + "</div>" +
+        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div></form>" + vaDatalist() +
+      "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState(emptyText)) + "</div>" +
       "</div></div>";
   }
 
@@ -1329,6 +1335,13 @@ function appMain() {
     return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div>" +
       "<div class=\"page-sub\">Team-wide notes, not tied to any school.</div></div></div>" +
       notesCardHtml("general", null, state.generalNotes);
+  }
+
+  /* ---------- Suggestions ---------- */
+  function suggestionsPageHtml() {
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div>" +
+      "<div class=\"page-sub\">What should we add or change on this page? Drop your ideas here.</div></div></div>" +
+      notesCardHtml("suggestion", null, state.suggestions);
   }
 
   /* ============ navigation ============ */
@@ -1647,6 +1660,9 @@ function appMain() {
             var sid = form.getAttribute("data-school");
             ensureSchoolData(sid).notes.push(entry);
             draftName = "note-" + sid;
+          } else if (scope === "suggestion") {
+            state.suggestions.push(entry);
+            draftName = "note-suggestion";
           } else {
             state.generalNotes.push(entry);
             draftName = "note-general";
