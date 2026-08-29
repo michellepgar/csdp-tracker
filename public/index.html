@@ -302,6 +302,11 @@
   .alerts-card { border-color: var(--danger); background: var(--danger-soft); }
   .urgent-pill { display: inline-block; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; align-self: flex-start; }
   .clickable-card { cursor: pointer; }
+  @keyframes blink-alert { 0%, 100% { background: transparent; color: inherit; } 50% { background: var(--danger-soft); color: var(--danger); } }
+  .nav-item.blink-alert { animation: blink-alert 1.1s ease-in-out infinite; font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) {
+    .nav-item.blink-alert { animation: none; background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+  }
   .clickable-card:hover { filter: brightness(0.97); }
   .alerts-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
   .alerts-row .card { flex: 1 1 200px; margin-bottom: 0; }
@@ -1165,11 +1170,20 @@ function appMain() {
     );
   }
 
-  function navItem(view, label, badge, activePredicate) {
+  function navItem(view, label, badge, activePredicate, extraClass) {
     var active = activePredicate(ui.view);
-    return "<button class=\"nav-item" + (active ? " active" : "") + "\" data-action=\"nav-view\" data-view=\"" + view + "\">" +
+    return "<button class=\"nav-item" + (active ? " active" : "") + (extraClass ? " " + extraClass : "") + "\" data-action=\"nav-view\" data-view=\"" + view + "\">" +
       "<span class=\"name\">" + esc(label) + "</span>" +
       (badge > 0 ? "<span class=\"count-chip\">" + badge + "</span>" : "") + "</button>";
+  }
+  /* True when the current viewer has at least one Urgent general note they
+     haven't acknowledged yet, and didn't post themselves — drives the
+     blinking sidebar alert on General Notes/Announcements. */
+  function hasUnreadUrgentNotes() {
+    var me = getStoredIdentity();
+    return state.generalNotes.some(function (n) {
+      return n.urgency === "Urgent" && n.author !== me && (!n.ackBy || n.ackBy.indexOf(me) === -1);
+    });
   }
 
   function sidebarHtml() {
@@ -1213,7 +1227,7 @@ function appMain() {
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
-      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }) +
+      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>"
     );
@@ -1285,19 +1299,6 @@ function appMain() {
       "<div class=\"card card-compact clickable-card" + (issuesTotal > 0 ? " alerts-card" : "") + "\" data-action=\"nav-view\" data-view=\"issues\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns</div></div>" +
       "<div class=\"card-body\"><div class=\"stat-num mono\">" + issuesTotal + "</div><div class=\"stat-label\">still open</div></div></div>" +
       "</div>";
-
-    var urgentNotes = state.generalNotes.filter(function (n) { return n.urgency === "Urgent"; })
-      .slice().reverse();
-    if (urgentNotes.length) {
-      var urgentRows = urgentNotes.map(function (n) {
-        return "<button class=\"nav-item\" data-action=\"nav-view\" data-view=\"notes\">" +
-          "<span class=\"name\">" + esc((n.text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "(empty note)") + "</span>" +
-          "</button>";
-      }).join("");
-      html += "<div class=\"card card-compact alerts-card\"><div class=\"card-head\"><div class=\"card-title\">Urgent Announcements" +
-        " <span class=\"count-chip\">" + urgentNotes.length + "</span></div></div>" +
-        "<div class=\"card-body\"><div class=\"nav-list\">" + urgentRows + "</div></div></div>";
-    }
 
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
@@ -1809,7 +1810,7 @@ function appMain() {
   }
 
   /* ---------- Sticky notes (General Notes + Private Notes) ---------- */
-  function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, showAuthor, isEditing, initialUrgency) {
+  function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, isEditing, initialUrgency) {
     var editorId = "note-editor-" + (id || "new");
     var swatches = NOTE_COLORS.map(function (c) {
       return "<label class=\"note-color-swatch\" style=\"background:" + c.hex + ";\" title=\"" + c.id + "\">" +
@@ -1834,7 +1835,6 @@ function appMain() {
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
       "</div>" +
       "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\">" + (initialHtml || "") + "</div>" +
-      (showAuthor ? "<input class=\"text-input\" style=\"width:180px; margin-top:8px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" : "") +
       (scope === "general" ? "<div style=\"margin-top:8px;\"><span class=\"field-mini-label\">Urgency</span> " +
         "<select class=\"text-input\" style=\"display:inline-block; width:140px;\" name=\"urgency\">" +
         "<option value=\"Normal\"" + ((initialUrgency || "Normal") === "Normal" ? " selected" : "") + ">Normal</option>" +
@@ -1850,24 +1850,37 @@ function appMain() {
   }
 
   function stickyNotesSectionHtml(scope, notes, addAction) {
-    var showAuthorOnAdd = scope === "general";
-    var addFormHtml = noteEditorFormHtml(addAction, null, scope, "", DEFAULT_NOTE_COLOR, showAuthorOnAdd, false, "Normal");
+    var addFormHtml = noteEditorFormHtml(addAction, null, scope, "", DEFAULT_NOTE_COLOR, false, "Normal");
+    var me = getStoredIdentity();
     var cards = notes.slice().reverse().map(function (n) {
       if (ui.editingNoteId === n.id) {
-        return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, false, true, n.urgency);
+        return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, true, n.urgency);
       }
       var pendingDelete = isPending("note", n.id);
+      var isUrgentGeneral = scope === "general" && n.urgency === "Urgent";
+      var ackBy = n.ackBy || [];
+      var isAuthor = n.author === me;
+      var ackHtml = "";
+      if (isUrgentGeneral && !isAuthor) {
+        ackHtml = ackBy.indexOf(me) !== -1
+          ? "<span class=\"field-mini-label\">✓ You checked this</span>"
+          : "<button data-action=\"ack-note\" data-id=\"" + n.id + "\">Mark as checked</button>";
+      }
+      var seenByHtml = (isUrgentGeneral && ackBy.length)
+        ? "<div class=\"sticky-note-meta\">Seen by: " + ackBy.map(esc).join(", ") + "</div>" : "";
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
-        (scope === "general" && n.urgency === "Urgent" ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
+        (isUrgentGeneral ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
         "<div class=\"sticky-note-text\">" + renderNoteCheckboxes(n.text, n.id, scope) + "</div>" +
         "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
+        seenByHtml +
         "<div class=\"sticky-note-actions\">" +
         "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
         "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" +
+        ackHtml +
         "</div>" +
         "</div>";
     }).join("");
-    return addFormHtml + vaDatalist() +
+    return addFormHtml +
       (cards ? "<div class=\"sticky-grid\">" + cards + "</div>" :
         emptyState(scope === "private" ? "No private notes yet — only you can see this page." : "No notes yet."));
   }
@@ -2064,6 +2077,16 @@ function appMain() {
             var idx = arr.findIndex(function (x) { return x.id === id; });
             if (idx !== -1) arr.splice(idx, 1);
           });
+        })(); break;
+      case "ack-note":
+        (function () {
+          var id = t.getAttribute("data-id");
+          var note = state.generalNotes.find(function (x) { return x.id === id; });
+          if (!note) return;
+          note.ackBy = note.ackBy || [];
+          var me = getStoredIdentity();
+          if (note.ackBy.indexOf(me) === -1) note.ackBy.push(me);
+          persist();
         })(); break;
       case "remove-issue-type":
         requestDelete("issue-type", t.getAttribute("data-id"), function () {
@@ -2347,11 +2370,10 @@ function appMain() {
           syncNoteCheckboxAttrs(editorEl);
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           if (!html || html === "<br>") return;
-          var author = (fd.get("author") || "").toString().trim();
-          addVaIfNew(author);
+          var author = getStoredIdentity();
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
           var urgency = (fd.get("urgency") || "Normal").toString();
-          state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, urgency: urgency, createdAt: new Date().toISOString() });
+          state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, urgency: urgency, ackBy: [], createdAt: new Date().toISOString() });
           persist();
         })(); break;
       case "add-private-note":
