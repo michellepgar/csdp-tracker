@@ -582,6 +582,39 @@ function appMain() {
     var h12 = h % 12; if (h12 === 0) h12 = 12;
     return h12 + ":" + parts[1] + " " + ampm;
   }
+  function timeStrToMinutes(str) {
+    if (!str) return null;
+    var parts = String(str).split(":");
+    if (parts.length < 2) return null;
+    var h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  }
+  function formatMinutesAsHours(mins) {
+    if (mins == null || isNaN(mins) || mins < 0) return "";
+    var h = Math.floor(mins / 60);
+    var m = Math.round(mins % 60);
+    return h + ":" + (m < 10 ? "0" : "") + m;
+  }
+  /* Auto-computes worked hours from Time in/out, minus a break (if both
+     Break and Resume are filled in). Assumes a same-day shift — if Time out
+     is earlier than Time in, treats it as crossing midnight. */
+  function computeEodTotalHours(timeIn, timeOut, breakStart, breakEnd) {
+    var inM = timeStrToMinutes(timeIn);
+    var outM = timeStrToMinutes(timeOut);
+    if (inM == null || outM == null) return "";
+    var worked = outM - inM;
+    if (worked < 0) worked += 24 * 60;
+    var bStart = timeStrToMinutes(breakStart);
+    var bEnd = timeStrToMinutes(breakEnd);
+    if (bStart != null && bEnd != null) {
+      var breakMins = bEnd - bStart;
+      if (breakMins < 0) breakMins += 24 * 60;
+      worked -= breakMins;
+    }
+    if (worked < 0) worked = 0;
+    return formatMinutesAsHours(worked);
+  }
   function pillClass(status) { return "pill " + (STATUS_TIER[status] || "neutral"); }
   function draftKey(name) { return "caseload_draft_" + name; }
   function saveDraft(name, value) {
@@ -1666,7 +1699,10 @@ function appMain() {
       return "<div class=\"card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
         "<div class=\"row-title\" style=\"font-weight:600;\">EOD " + esc(fmtEodDate(e.date)) +
         (e.totalHours ? " (Total " + esc(e.totalHours) + " hours)" : "") + "</div>" +
-        (e.timeIn || e.timeOut ? "<div class=\"row-meta\">In: " + esc(fmtTime12(e.timeIn)) + (e.timeOut ? " - Out: " + esc(fmtTime12(e.timeOut)) : "") + "</div>" : "") +
+        (e.timeIn || e.timeOut ? "<div class=\"row-meta\">In: " + esc(fmtTime12(e.timeIn)) +
+          (e.breakStart ? " · Break: " + esc(fmtTime12(e.breakStart)) : "") +
+          (e.breakEnd ? " · Resume: " + esc(fmtTime12(e.breakEnd)) : "") +
+          (e.timeOut ? " - Out: " + esc(fmtTime12(e.timeOut)) : "") + "</div>" : "") +
         (taskItems ? "<ul style=\"margin:8px 0 0 18px; padding:0;\">" + taskItems + "</ul>" : "") +
         "<div class=\"note-meta\" style=\"margin-top:8px;\">" + esc(e.author || "Unnamed") + " · " + fmtDateTime(e.createdAt) + "</div>" +
         "</div></div>";
@@ -1678,9 +1714,11 @@ function appMain() {
       "<div class=\"add-row-form\">" +
       "<span class=\"field-mini-label\">Date</span><input class=\"text-input\" type=\"date\" name=\"date\" value=\"" + esc(todayIsoDate()) + "\" style=\"max-width:160px;\" required>" +
       "<span class=\"field-mini-label\">Time in</span><input class=\"text-input\" type=\"time\" name=\"timeIn\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Break</span><input class=\"text-input\" type=\"time\" name=\"breakStart\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Resume</span><input class=\"text-input\" type=\"time\" name=\"breakEnd\" style=\"max-width:130px;\">" +
       "<span class=\"field-mini-label\">Time out</span><input class=\"text-input\" type=\"time\" name=\"timeOut\" style=\"max-width:130px;\">" +
-      "<span class=\"field-mini-label\">Total hours</span><input class=\"text-input\" name=\"totalHours\" placeholder=\"e.g. 8:00\" style=\"max-width:110px;\">" +
       "</div>" +
+      "<div class=\"field-mini-label\" style=\"margin-top:6px;\">Total hours are calculated automatically from Time in/out, minus your break.</div>" +
       "<textarea class=\"text-input\" name=\"tasks\" placeholder=\"What did you work on today? One item per line…\" style=\"margin-top:8px; min-height:90px; width:100%; box-sizing:border-box;\" required></textarea>" +
       "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add EOD report</button>" +
       "</form></div></div>" +
@@ -2095,13 +2133,19 @@ function appMain() {
         (function () {
           var tasksRaw = (fd.get("tasks") || "").toString();
           var tasks = tasksRaw.split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+          var timeIn = (fd.get("timeIn") || "").toString();
+          var timeOut = (fd.get("timeOut") || "").toString();
+          var breakStart = (fd.get("breakStart") || "").toString();
+          var breakEnd = (fd.get("breakEnd") || "").toString();
           var entry = {
             id: uid("eod"),
             author: getStoredIdentity(),
             date: (fd.get("date") || "").toString(),
-            timeIn: (fd.get("timeIn") || "").toString(),
-            timeOut: (fd.get("timeOut") || "").toString(),
-            totalHours: (fd.get("totalHours") || "").toString().trim(),
+            timeIn: timeIn,
+            timeOut: timeOut,
+            breakStart: breakStart,
+            breakEnd: breakEnd,
+            totalHours: computeEodTotalHours(timeIn, timeOut, breakStart, breakEnd),
             tasks: tasks,
             createdAt: new Date().toISOString()
           };
