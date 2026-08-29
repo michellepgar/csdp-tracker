@@ -1,0 +1,1466 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>CSDP Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* ---------- Reset ---------- */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  ul, ol { margin: 0; padding: 0; list-style: none; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  h1, h2, h3, p { margin: 0; }
+  a { color: inherit; }
+
+  /* ---------- Tokens: light (default) ---------- */
+  :root {
+    --bg: #EEF1EA;
+    --surface: #FFFFFF;
+    --surface-2: #E4E8DF;
+    --surface-3: #DAE0D4;
+    --ink: #1B241E;
+    --ink-soft: #556058;
+    --ink-faint: #7C8A80;
+    --border: #D1D8C8;
+    --border-strong: #B7C1AC;
+    --accent: #0F6B5C;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #DCEEE8;
+    --accent-soft-ink: #0B4C41;
+    --attn: #A85A25;
+    --attn-soft: #F3E2D2;
+    --progress: #8C6D16;
+    --progress-soft: #F1E7C9;
+    --done: #3E7D49;
+    --done-soft: #DDEBDD;
+    --danger: #A23B32;
+    --danger-soft: #F3DEDB;
+    --shadow: 0 1px 2px rgba(27,36,30,0.06), 0 4px 14px rgba(27,36,30,0.06);
+    --radius: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131813;
+      --surface: #1B211B;
+      --surface-2: #232B22;
+      --surface-3: #2C352A;
+      --ink: #E7EBE2;
+      --ink-soft: #A7B4A3;
+      --ink-faint: #7C8A80;
+      --border: #333D31;
+      --border-strong: #3F4B3C;
+      --accent: #4FBBA1;
+      --accent-ink: #0A211C;
+      --accent-soft: #1D3833;
+      --accent-soft-ink: #8FDCC9;
+      --attn: #E29A5C;
+      --attn-soft: #3B2C1C;
+      --progress: #D8BE64;
+      --progress-soft: #3A331A;
+      --done: #7FC48A;
+      --done-soft: #21331F;
+      --danger: #E38076;
+      --danger-soft: #3A211E;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131813;
+    --surface: #1B211B;
+    --surface-2: #232B22;
+    --surface-3: #2C352A;
+    --ink: #E7EBE2;
+    --ink-soft: #A7B4A3;
+    --ink-faint: #7C8A80;
+    --border: #333D31;
+    --border-strong: #3F4B3C;
+    --accent: #4FBBA1;
+    --accent-ink: #0A211C;
+    --accent-soft: #1D3833;
+    --accent-soft-ink: #8FDCC9;
+    --attn: #E29A5C;
+    --attn-soft: #3B2C1C;
+    --progress: #D8BE64;
+    --progress-soft: #3A331A;
+    --done: #7FC48A;
+    --done-soft: #21331F;
+    --danger: #E38076;
+    --danger-soft: #3A211E;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+  }
+
+  /* ---------- Base ---------- */
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .display { font-family: "Poppins", "Public Sans", -apple-system, BlinkMacSystemFont, sans-serif; font-weight: 600; text-wrap: balance; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  /* ---------- Shell ---------- */
+  #app { min-height: 100vh; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 272px; flex: none; background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    height: 100vh; position: sticky; top: 0; overflow-y: auto;
+  }
+  .brand { padding: 20px 18px 14px; border-bottom: 1px solid var(--border); }
+  .brand-name { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+  .brand-tag { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
+  .sidebar-section { padding: 14px 14px 6px; }
+  .sidebar-label {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ink-faint); font-weight: 600; padding: 0 4px 6px;
+  }
+  .search-input {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--bg); color: var(--ink);
+    font-size: 0.85rem;
+  }
+  .nav-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+  .nav-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 10px; border-radius: var(--radius); border: none; background: transparent;
+    text-align: left; width: 100%; font-size: 0.86rem; color: var(--ink);
+  }
+  .nav-item:hover { background: var(--surface-2); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 600; }
+  .nav-item .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count-chip {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; font-weight: 600;
+    background: var(--attn-soft); color: var(--attn); border-radius: 999px;
+    padding: 1px 7px; flex: none;
+  }
+  .school-list { max-height: 40vh; overflow-y: auto; margin: 2px -4px 0; padding: 0 4px; }
+  .sidebar-divider { height: 1px; background: var(--border); margin: 10px 14px; }
+  .add-inline-btn {
+    background: none; border: 1px dashed var(--border-strong); color: var(--ink-soft);
+    border-radius: var(--radius); padding: 7px 10px; font-size: 0.82rem; width: 100%;
+    margin-top: 4px; text-align: left;
+  }
+  .add-inline-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .mini-form { display: flex; gap: 6px; margin-top: 6px; }
+  .mini-form input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .mini-form button { padding: 6px 10px; border-radius: var(--radius); border: none; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 0.8rem; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar { display: none; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+  .menu-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; }
+  .readonly-banner {
+    background: var(--progress-soft); color: var(--progress); font-size: 0.82rem;
+    padding: 8px 20px; border-bottom: 1px solid var(--border); font-weight: 600;
+  }
+  .content { padding: 28px 32px 60px; max-width: 980px; width: 100%; margin: 0 auto; }
+
+  .page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 22px; }
+  .page-title { font-size: 1.9rem; font-weight: 600; }
+  .page-sub { color: var(--ink-soft); font-size: 0.88rem; margin-top: 4px; }
+  .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .field-label { font-size: 0.76rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .text-input, select.text-input {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface); color: var(--ink); font-size: 0.88rem;
+  }
+  .text-input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  .link-btn { background: none; border: none; color: var(--ink-soft); font-size: 0.8rem; padding: 4px 2px; text-decoration: underline; text-underline-offset: 2px; }
+  .link-btn:hover { color: var(--ink); }
+  .link-btn.danger { color: var(--danger); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 20px; box-shadow: var(--shadow); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .card-title { font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 14px 18px 18px; }
+  .card-actions { display: flex; align-items: center; gap: 10px; }
+
+  .add-row-form { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .add-row-form input.text-input { flex: 1; min-width: 160px; }
+  .btn { padding: 7px 14px; border-radius: var(--radius); border: none; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 0.85rem; }
+  .btn:hover { filter: brightness(1.06); }
+  .btn.ghost { background: var(--surface-2); color: var(--ink); }
+  .btn.small { padding: 5px 10px; font-size: 0.78rem; }
+
+  .row-list { display: flex; flex-direction: column; }
+  .row-item { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .row-item:last-child { border-bottom: none; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { font-size: 0.92rem; word-break: break-word; }
+  .row-meta { font-size: 0.76rem; color: var(--ink-faint); margin-top: 2px; }
+  .row-file { font-family: "IBM Plex Mono", monospace; font-size: 0.86rem; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 0.76rem; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap; border: none;
+  }
+  .pill.attn { background: var(--attn-soft); color: var(--attn); }
+  .pill.progress { background: var(--progress-soft); color: var(--progress); }
+  .pill.done { background: var(--done-soft); color: var(--done); }
+  select.status-select { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 22px 3px 9px; font-size: 0.76rem; font-weight: 600; }
+
+  .icon-btn { background: none; border: none; color: var(--ink-faint); padding: 4px 6px; border-radius: var(--radius); font-size: 0.78rem; }
+  .icon-btn:hover { background: var(--danger-soft); color: var(--danger); }
+  .icon-btn.confirming { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+
+  .empty-state { padding: 22px 8px; text-align: center; color: var(--ink-faint); font-size: 0.86rem; }
+
+  .checklist-note { font-size: 0.8rem; color: var(--ink-soft); background: var(--surface-2); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 12px; }
+  .checklist-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .checklist-item:last-child { border-bottom: none; }
+  .check-toggle {
+    width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--border-strong);
+    background: var(--surface); flex: none; margin-top: 1px; display: flex; align-items: center; justify-content: center;
+  }
+  .check-toggle.done { background: var(--done); border-color: var(--done); color: var(--done-soft); }
+
+  textarea.text-input { width: 100%; min-height: 64px; resize: vertical; font-family: inherit; }
+  .note-entry { border-bottom: 1px solid var(--border); padding: 10px 0; }
+  .note-entry:last-child { border-bottom: none; }
+  .note-text { font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }
+  .note-meta { font-size: 0.76rem; color: var(--ink-faint); margin-top: 4px; }
+
+  .template-item-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .template-item-row:last-child { border-bottom: none; }
+  .stack-btns { display: flex; flex-direction: column; gap: 1px; }
+  .stack-btns button { background: var(--surface-2); border: none; width: 20px; height: 15px; font-size: 0.6rem; color: var(--ink-soft); }
+  .stack-btns button:first-child { border-radius: 4px 4px 0 0; }
+  .stack-btns button:last-child { border-radius: 0 0 4px 4px; }
+
+  .filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+
+  .template-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .tmpl-item { border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
+  .tmpl-item-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: pointer; }
+  .tmpl-item-head:hover { background: var(--surface-2); }
+  .tmpl-name { font-weight: 600; }
+  .tmpl-cat { font-size: 0.74rem; color: var(--ink-faint); background: var(--surface-2); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+  .tmpl-body-view { padding: 0 16px 16px; }
+  .tmpl-subject { font-size: 0.86rem; color: var(--ink-soft); margin-bottom: 6px; }
+  .tmpl-body-text { font-size: 0.88rem; white-space: pre-wrap; background: var(--bg); border-radius: var(--radius); padding: 10px 12px; border: 1px solid var(--border); }
+  .tmpl-edit-form { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tmpl-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+  .va-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .va-chip { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 0.85rem; }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: var(--radius);
+    font-size: 0.85rem; box-shadow: var(--shadow); z-index: 50; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .toast.show { opacity: 1; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
+  .stat-num { font-family: "IBM Plex Mono", monospace; font-size: 1.7rem; font-weight: 600; }
+  .stat-label { font-size: 0.78rem; color: var(--ink-soft); margin-top: 2px; }
+
+  @media (max-width: 900px) {
+    .sidebar { position: fixed; z-index: 20; left: 0; top: 0; transform: translateX(-100%); transition: transform 0.2s ease; box-shadow: var(--shadow); }
+    .sidebar.open { transform: translateX(0); }
+    .topbar { display: flex; }
+    .content { padding: 20px 16px 50px; }
+    .form-2col { grid-template-columns: 1fr; }
+  }
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 15; }
+  .overlay.show { display: block; }
+
+  .task-group { margin-bottom: 16px; }
+  .task-group:last-child { margin-bottom: 0; }
+  .task-group-title {
+    font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-soft); padding: 6px 0; border-bottom: 1px solid var(--border-strong); margin-bottom: 2px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .va-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .va-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .va-tag-remove { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.85rem; line-height: 1; padding: 0; }
+  .va-tag-remove:hover { opacity: 1; }
+  .add-va-btn {
+    width: 22px; height: 22px; border-radius: 999px; border: 1px dashed var(--border-strong);
+    background: none; color: var(--ink-soft); font-size: 0.9rem; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .add-va-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .va-add-select { max-width: 150px; }
+  .field-mini-label { font-size: 0.7rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="config.js"></script>
+<script>
+function appMain() {
+  "use strict";
+
+  /* ============ constants ============ */
+  var STATUS_OPTIONS = {
+    task: ["", "In Progress", "Paused", "Completed"],
+    communication: ["", "In Progress", "Paused", "Completed"],
+    checklist: ["Open", "Done"],
+    email_followup: ["Needs My Response", "Waiting on Them", "Done"]
+  };
+  var COMMUNICATION_CATEGORIES = ["Initial", "Recheck"];
+  var STATUS_TIER = {
+    "Open": "attn", "Done": "done",
+    "In Progress": "progress", "Resolved": "done",
+    "Paused": "attn", "Completed": "done",
+    "Pending": "attn", "Rechecked": "done", "Needs Re-check": "attn",
+    "Needs My Response": "attn", "Waiting on Them": "progress"
+  };
+  /* Issue types are a shared, editable list (like task categories) — each carries its
+     own status vocabulary. "Record Update" also carries its own extra fields. */
+  var DEFAULT_ISSUE_TYPES = [
+    { id: "software_issue", name: "Software issue", statusOptions: ["Open", "In Progress", "Resolved"] },
+    { id: "recheck", name: "Recheck", statusOptions: ["Pending", "Rechecked", "Needs Re-check"] },
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true }
+  ];
+  var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
+
+  var DEFAULT_TASK_CATEGORIES = [
+    "Encoding & Uploading (Consent & SDF)", "Transactions", "Initial", "Photos",
+    "Recheck", "Insurance", "Eligibility", "Billing"
+  ];
+
+  var DEFAULT_STATE = {
+    schools: [], vas: [], schoolData: {},
+    taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
+    checklistTemplate: [], checklistProgress: {},
+    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, emailTemplates: [], generalNotes: []
+  };
+
+  /* ============ helpers ============ */
+  function uid(p) { return p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function fmtDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+  function fmtDateTime(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " · " +
+      d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+  function pillClass(status) { return "pill " + (STATUS_TIER[status] || "attn"); }
+  function draftKey(name) { return "caseload_draft_" + name; }
+  function saveDraft(name, value) {
+    try { if (value) { localStorage.setItem(draftKey(name), value); } else { localStorage.removeItem(draftKey(name)); } } catch (e) {}
+  }
+  function loadDraft(name) {
+    try { return localStorage.getItem(draftKey(name)) || ""; } catch (e) { return ""; }
+  }
+  function loadLocal(key, fallback) {
+    try { var v = localStorage.getItem(key); return v == null ? fallback : v; } catch (e) { return fallback; }
+  }
+  function saveLocal(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+  /* ============ state ============ */
+  var LEGACY_TASK_STATUS = { "Open": "In Progress", "Done": "Completed" };
+  function migrateTaskFields(parsed) {
+    var sd = parsed.schoolData || {};
+    for (var schoolId in sd) {
+      var tasks = (sd[schoolId] || {}).tasks || [];
+      for (var i = 0; i < tasks.length; i++) {
+        var t = tasks[i];
+        if (LEGACY_TASK_STATUS[t.status]) t.status = LEGACY_TASK_STATUS[t.status];
+        if (typeof t.vaAssigned === "string") t.vaAssigned = t.vaAssigned ? [t.vaAssigned] : [];
+        if (!Array.isArray(t.vaAssigned)) t.vaAssigned = [];
+      }
+    }
+  }
+  var PASSWORD_KEY = "csdp_app_password";
+  function getStoredPassword() {
+    try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setStoredPassword(pw) {
+    try { localStorage.setItem(PASSWORD_KEY, pw); } catch (e) {}
+  }
+
+  function passwordPromptHtml(message) {
+    return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px; color:var(--ink);\">" +
+      "<h2 class=\"display\" style=\"margin:0 0 12px;\">CSDP Tracker</h2>" +
+      (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
+      "<form id=\"password-form\">" +
+      "<input id=\"password-input\" class=\"text-input\" type=\"password\" placeholder=\"Team password\" autofocus style=\"width:100%; margin-bottom:10px;\">" +
+      "<button type=\"submit\" class=\"btn\" style=\"width:100%;\">Enter</button>" +
+      "</form></div>";
+  }
+
+  function showPasswordPrompt(message) {
+    document.getElementById("app").innerHTML = passwordPromptHtml(message);
+    document.getElementById("password-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var pw = document.getElementById("password-input").value;
+      setStoredPassword(pw.trim());
+      boot();
+    });
+  }
+
+  var VIEW_STORAGE_KEY = "caseload_current_view";
+  function loadStoredView() {
+    try {
+      var raw = sessionStorage.getItem(VIEW_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : { type: "home" };
+    } catch (e) { return { type: "home" }; }
+  }
+  function saveStoredView() {
+    try { sessionStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(ui.view)); } catch (e) {}
+  }
+
+  var state = null;
+  var ui = null;
+  var lastKnownUpdatedAt = null;
+
+  function hasSupabaseConfig() {
+    var c = window.SUPABASE_CONFIG;
+    return !!(c && c.url && c.anonKey);
+  }
+
+  function configMissingError() {
+    var e = new Error("config missing");
+    e.code = "config_missing";
+    return e;
+  }
+
+  function supabaseHeaders(extra) {
+    var h = {
+      apikey: window.SUPABASE_CONFIG.anonKey,
+      Authorization: "Bearer " + window.SUPABASE_CONFIG.anonKey,
+      "x-app-password": getStoredPassword()
+    };
+    if (extra) for (var k in extra) h[k] = extra[k];
+    return h;
+  }
+
+  function loadStateFromServer() {
+    if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?select=data,updated_at&id=eq.1";
+    return fetch(url, { headers: supabaseHeaders() }).then(function (res) {
+      if (res.status === 401 || res.status === 403) { var e = new Error("bad password"); e.code = "bad_password"; throw e; }
+      if (!res.ok) { var e2 = new Error("load failed: " + res.status); e2.code = "load_failed"; throw e2; }
+      return res.json();
+    }).then(function (rows) {
+      /* Row-Level Security filters non-matching rows silently rather than
+         returning 401/403 — so once the app_state row is seeded, an empty
+         result here always means the password header didn't match, not a
+         missing row. Treat it as bad_password rather than a separate case. */
+      if (!rows || !rows.length) { var e3 = new Error("no data row"); e3.code = "bad_password"; throw e3; }
+      lastKnownUpdatedAt = rows[0].updated_at;
+      return rows[0].data;
+    });
+  }
+
+  function saveStateToServer(newState) {
+    if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?id=eq.1" +
+      (lastKnownUpdatedAt ? "&updated_at=eq." + encodeURIComponent(lastKnownUpdatedAt) : "");
+    var nowIso = new Date().toISOString();
+    return fetch(url, {
+      method: "PATCH",
+      headers: supabaseHeaders({ "Content-Type": "application/json", "Prefer": "return=representation" }),
+      body: JSON.stringify({ data: newState, updated_at: nowIso })
+    }).then(function (res) {
+      if (res.status === 401 || res.status === 403) { var e = new Error("bad password"); e.code = "bad_password"; throw e; }
+      if (!res.ok) { var e2 = new Error("save failed: " + res.status); e2.code = "save_failed"; throw e2; }
+      return res.json();
+    }).then(function (rows) {
+      if (!rows || !rows.length) { var e3 = new Error("conflict"); e3.code = "conflict"; throw e3; }
+      lastKnownUpdatedAt = rows[0].updated_at;
+      return rows[0];
+    });
+  }
+
+  function boot() {
+    var pw = getStoredPassword();
+    if (!pw) { showPasswordPrompt(); return; }
+    loadStateFromServer().then(function (data) {
+      state = data;
+      for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
+      migrateTaskFields(state);
+      ui = {
+        view: loadStoredView(),
+        search: "",
+        sidebarOpen: false,
+        templateEditorOpen: false,
+        pendingDelete: null,
+        issueFilters: { school: "", type: "", status: "" }
+      };
+      render();
+    }).catch(function (err) {
+      if (err.code === "bad_password") { showPasswordPrompt("Incorrect password."); return; }
+      if (err.code === "config_missing") { showPasswordPrompt("App isn't configured yet — config.js is missing or incomplete."); return; }
+      showPasswordPrompt("Couldn't connect — check your internet connection and try again.");
+    });
+  }
+
+  /* ============ derived data helpers ============ */
+  function schoolById(id) { for (var i = 0; i < state.schools.length; i++) if (state.schools[i].id === id) return state.schools[i]; return null; }
+  function ensureSchoolData(id) {
+    if (!state.schoolData[id]) state.schoolData[id] = { vaAssigned: "", tasks: [], emailTracker: [], notes: [] };
+    return state.schoolData[id];
+  }
+  function addVaIfNew(name) {
+    name = (name || "").trim();
+    if (!name) return;
+    for (var i = 0; i < state.vas.length; i++) if (state.vas[i].name.toLowerCase() === name.toLowerCase()) return;
+    state.vas.push({ id: uid("va"), name: name });
+  }
+  function countNotDone(list) {
+    var n = 0;
+    for (var i = 0; i < list.length; i++) if (STATUS_TIER[list[i].status] !== "done") n++;
+    return n;
+  }
+  function schoolAttnCount(schoolId) {
+    var sd = state.schoolData[schoolId] || { tasks: [], emailTracker: [] };
+    var n = countNotDone(sd.tasks || []) + countNotDone(sd.emailTracker || []);
+    for (var i = 0; i < state.checklistTemplate.length; i++) {
+      var prog = state.checklistProgress[schoolId + ":" + state.checklistTemplate[i].id];
+      if (!prog || prog.status !== "Done") n++;
+    }
+    for (var j = 0; j < state.issues.length; j++) {
+      if (state.issues[j].schoolId === schoolId && STATUS_TIER[state.issues[j].status] !== "done") n++;
+    }
+    return n;
+  }
+  function issuesAttnCount() {
+    var n = 0;
+    for (var i = 0; i < state.issues.length; i++) if (STATUS_TIER[state.issues[i].status] !== "done") n++;
+    return n;
+  }
+  function issueTypeById(id) {
+    for (var i = 0; i < state.issueTypes.length; i++) if (state.issueTypes[i].id === id) return state.issueTypes[i];
+    return null;
+  }
+  function isSchoolYearComplete(schoolId) {
+    var tmpl = state.checklistTemplate;
+    if (!tmpl.length) return false;
+    for (var i = 0; i < tmpl.length; i++) {
+      var prog = state.checklistProgress[schoolId + ":" + tmpl[i].id];
+      if (!prog || prog.status !== "Done") return false;
+    }
+    return true;
+  }
+
+  /* ============ persistence ============ */
+  function persist() {
+    render();
+    saveStoredView();
+    saveStateToServer(state).catch(function (err) {
+      if (err.code === "conflict") { showToast("Someone else just saved a change — refresh the page and try again."); return; }
+      if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+      if (err.code === "config_missing") { showToast("App isn't configured yet — config.js is missing or incomplete."); return; }
+      showToast("Couldn't save that change" + (err && err.message ? ": " + err.message : "") + ". Please try again.");
+    });
+  }
+
+  var toastTimer = null;
+  function showToast(msg) {
+    var t = document.getElementById("caseload-toast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "caseload-toast";
+      t.className = "toast";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, 3200);
+  }
+
+  /* ============ two-stage delete ============ */
+  function isPending(type, id) { return ui.pendingDelete && ui.pendingDelete.type === type && ui.pendingDelete.id === id; }
+  function requestDelete(type, id, performFn) {
+    if (isPending(type, id)) {
+      ui.pendingDelete = null;
+      performFn();
+      persist();
+    } else {
+      ui.pendingDelete = { type: type, id: id };
+      render();
+      setTimeout(function () {
+        if (isPending(type, id)) { ui.pendingDelete = null; render(); }
+      }, 4000);
+    }
+  }
+
+  /* ============ rendering ============ */
+  function render() {
+    var app = document.getElementById("app");
+    app.innerHTML = shellHtml();
+  }
+
+  function shellHtml() {
+    return (
+      "<div class=\"shell\">" +
+      "<div class=\"overlay" + (ui.sidebarOpen ? " show" : "") + "\" data-action=\"close-sidebar\"></div>" +
+      "<aside class=\"sidebar" + (ui.sidebarOpen ? " open" : "") + "\">" + sidebarHtml() + "</aside>" +
+      "<div class=\"main\">" +
+      "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
+      "<div class=\"content\">" + pageHtml() + "</div>" +
+      "</div></div>"
+    );
+  }
+
+  function navItem(view, label, badge, activePredicate) {
+    var active = activePredicate(ui.view);
+    return "<button class=\"nav-item" + (active ? " active" : "") + "\" data-action=\"nav-view\" data-view=\"" + view + "\">" +
+      "<span class=\"name\">" + esc(label) + "</span>" +
+      (badge > 0 ? "<span class=\"count-chip\">" + badge + "</span>" : "") + "</button>";
+  }
+
+  function sidebarHtml() {
+    var q = ui.search.trim().toLowerCase();
+    var schools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    if (q) schools = schools.filter(function (s) { return s.name.toLowerCase().indexOf(q) !== -1; });
+
+    var schoolRows = schools.map(function (s) {
+      var active = ui.view.type === "school" && ui.view.id === s.id;
+      var n = schoolAttnCount(s.id);
+      return "<button class=\"nav-item" + (active ? " active" : "") + "\" data-action=\"nav-school\" data-id=\"" + s.id + "\">" +
+        "<span class=\"name\">" + esc(s.name) + "</span>" + (n > 0 ? "<span class=\"count-chip\">" + n + "</span>" : "") + "</button>";
+    }).join("");
+
+    return (
+      "<div class=\"brand\"><div class=\"brand-name display\">CSDP Tracker</div><div class=\"brand-tag\">Shared casework tracker</div></div>" +
+      "<div class=\"sidebar-section\">" +
+      navItem("home", "Overview", 0, function (v) { return v.type === "home"; }) +
+      "</div>" +
+      "<div class=\"sidebar-section\">" +
+      "<div class=\"sidebar-label\">Schools (" + state.schools.length + ")</div>" +
+      "<input class=\"search-input\" placeholder=\"Search schools…\" value=\"" + esc(ui.search) + "\" data-role=\"school-search\">" +
+      "<div class=\"school-list nav-list\">" + (schoolRows || "<div class=\"empty-state\" style=\"padding:10px 4px;\">No schools match.</div>") + "</div>" +
+      "<button class=\"add-inline-btn\" data-action=\"toggle-add-school\">+ Add school</button>" +
+      (ui.addSchoolOpen ? "<form class=\"mini-form\" data-action=\"add-school\">" +
+        "<input required autofocus name=\"name\" placeholder=\"School name\">" +
+        "<button type=\"submit\">Add</button></form>" : "") +
+      "</div>" +
+      "<div class=\"sidebar-divider\"></div>" +
+      "<div class=\"sidebar-section\">" +
+      "<div class=\"sidebar-label\">Workspace</div>" +
+      "<div class=\"nav-list\">" +
+      navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
+      navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
+      navItem("team", "Team", 0, function (v) { return v.type === "team"; }) +
+      navItem("notes", "General Notes", 0, function (v) { return v.type === "notes"; }) +
+      "</div></div>"
+    );
+  }
+
+  function pageHtml() {
+    switch (ui.view.type) {
+      case "school": return schoolPageHtml(ui.view.id);
+      case "issues": return issuesPageHtml();
+      case "templates": return templatesPageHtml();
+      case "team": return teamPageHtml();
+      case "notes": return generalNotesPageHtml();
+      default: return homePageHtml();
+    }
+  }
+
+  /* ---------- Home ---------- */
+  function homePageHtml() {
+    var totalAttn = 0;
+    var completedSchools = [];
+    for (var i = 0; i < state.schools.length; i++) {
+      totalAttn += schoolAttnCount(state.schools[i].id);
+      if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
+    }
+    var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div>" +
+      "<div class=\"page-sub\">Pick a school on the left, or jump into a shared workspace page.</div></div></div>";
+    html += "<div class=\"stat-grid\">" +
+      statTile(state.schools.length, "Schools") +
+      statTile(state.vas.length, "VAs on the team") +
+      statTile(totalAttn, "Items needing attention") +
+      statTile(completedSchools.length, "Completed for the year") +
+      "</div>";
+    if (state.schools.length === 0) {
+      html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
+    } else {
+      var completedRows = completedSchools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
+        return "<button class=\"nav-item\" data-action=\"nav-school\" data-id=\"" + s.id + "\"><span class=\"name\">✓ " + esc(s.name) + "</span></button>";
+      }).join("");
+      html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Completed for the Year</div></div>" +
+        "<div class=\"card-body\"><div class=\"nav-list\">" + (completedRows || emptyState("No schools have finished the Yearly Checklist yet — check them off on a school's page as work wraps up.")) + "</div></div></div>";
+    }
+    return html;
+  }
+  function statTile(num, label) {
+    return "<div class=\"stat-tile\"><div class=\"stat-num mono\">" + num + "</div><div class=\"stat-label\">" + esc(label) + "</div></div>";
+  }
+
+  /* ---------- School page ---------- */
+  function vaDatalist() {
+    return "<datalist id=\"va-list\">" + state.vas.map(function (v) { return "<option value=\"" + esc(v.name) + "\">"; }).join("") + "</datalist>";
+  }
+
+  function vaTagColor(name) {
+    var hue = 0;
+    for (var i = 0; i < name.length; i++) hue = (hue * 31 + name.charCodeAt(i)) % 360;
+    return "hsla(" + hue + ",60%,50%,0.2)";
+  }
+
+  function taskVaGroupHtml(t, schoolId) {
+    var names = Array.isArray(t.vaAssigned) ? t.vaAssigned : (t.vaAssigned ? [t.vaAssigned] : []);
+    var chips = names.map(function (name) {
+      return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
+        "<button class=\"va-tag-remove\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"Remove " + esc(name) + "\">×</button>" +
+        "</span>";
+    }).join("");
+    var control = "";
+    if (ui.addingVaForTask === t.id) {
+      var available = state.vas.filter(function (v) { return names.indexOf(v.name) === -1; });
+      var opts = "<option value=\"\" disabled selected>Add VA…</option>" + available.map(function (v) {
+        return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
+      }).join("");
+      control = "<select class=\"text-input va-add-select\" data-action-change=\"add-va-to-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\">" + opts + "</select>" +
+        "<button class=\"link-btn\" data-action=\"cancel-add-va-for-task\">Cancel</button>";
+    } else {
+      control = "<button class=\"add-va-btn\" data-action=\"toggle-add-va-for-task\" data-id=\"" + t.id + "\" title=\"Add a VA\">+</button>";
+    }
+    return "<span class=\"va-group\">" + chips + control + "</span>";
+  }
+
+  function schoolPageHtml(schoolId) {
+    var school = schoolById(schoolId);
+    if (!school) { ui.view = { type: "home" }; return homePageHtml(); }
+    var sd = ensureSchoolData(schoolId);
+
+    var header = "<div class=\"page-header\">" +
+      "<div><div class=\"page-title display\">" + esc(school.name) + "</div>" +
+      "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+      "<span class=\"field-label\">VA assigned</span>" +
+      "<input class=\"text-input\" style=\"width:200px;\" list=\"va-list\" value=\"" + esc(sd.vaAssigned) + "\" data-action-change=\"set-va-assigned\" data-school=\"" + schoolId + "\" placeholder=\"Type a name\">" +
+      "</div></div>" +
+      "<button class=\"link-btn danger\" data-action=\"remove-school\" data-id=\"" + schoolId + "\">" +
+        (isPending("school", schoolId) ? "Really remove " + esc(school.name) + " and all its data? Click again to confirm" : "Remove school") + "</button>" +
+      "</div>" + vaDatalist();
+
+    return header +
+      tasksCardHtml(schoolId, sd) +
+      checklistCardHtml(schoolId) +
+      emailTrackerCardHtml(schoolId, sd) +
+      notesCardHtml("school", schoolId, sd.notes);
+  }
+
+  function taskRowHtml(t, schoolId) {
+    var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
+    return "<div class=\"row-item\"><div class=\"row-main\"><span class=\"row-file mono\">" + esc(t.fileName) + "</span></div>" +
+      taskVaGroupHtml(t, schoolId) +
+      statusControl("task", t.id, t.status, "toggle-task-status", schoolId) +
+      (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId) : "") +
+      deleteBtn("task", t.id, "remove-task", schoolId) + "</div>";
+  }
+
+  function tasksCardHtml(schoolId, sd) {
+    var open = countNotDone(sd.tasks);
+    var cats = state.taskCategories;
+    var catNames = cats.map(function (c) { return c.name; });
+
+    var groupsHtml = cats.map(function (c) {
+      var items = sd.tasks.filter(function (t) { return t.category === c.name; }).slice().reverse();
+      return "<div class=\"task-group\"><div class=\"task-group-title\"><span>" + esc(c.name) + "</span>" +
+        (items.length ? "<span class=\"count-chip\">" + items.length + "</span>" : "") + "</div>" +
+        "<div class=\"row-list\">" + (items.map(function (t) { return taskRowHtml(t, schoolId); }).join("") || emptyState("No files yet in this category.")) + "</div></div>";
+    }).join("");
+
+    var orphaned = sd.tasks.filter(function (t) { return catNames.indexOf(t.category) === -1; }).slice().reverse();
+    if (orphaned.length) {
+      groupsHtml += "<div class=\"task-group\"><div class=\"task-group-title\"><span>Other</span><span class=\"count-chip\">" + orphaned.length + "</span></div>" +
+        "<div class=\"row-list\">" + orphaned.map(function (t) { return taskRowHtml(t, schoolId); }).join("") + "</div></div>";
+    }
+
+    var catOptions = cats.map(function (c) { return "<option value=\"" + esc(c.name) + "\">" + esc(c.name) + "</option>"; }).join("");
+
+    var editorHtml = "";
+    if (ui.taskCategoryEditorOpen) {
+      var catRows = cats.map(function (c, idx) {
+        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(c.name) + "</div>" +
+          "<div class=\"stack-btns\">" +
+          "<button" + (idx === 0 ? " disabled" : "") + " data-action=\"move-task-category\" data-id=\"" + c.id + "\" data-dir=\"up\">▲</button>" +
+          "<button" + (idx === cats.length - 1 ? " disabled" : "") + " data-action=\"move-task-category\" data-id=\"" + c.id + "\" data-dir=\"down\">▼</button>" +
+          "</div>" +
+          deleteBtn("task-category", c.id, "remove-task-category") + "</div>";
+      }).join("");
+      editorHtml = "<div class=\"template-card\" style=\"margin-bottom:14px; padding:14px;\">" +
+        "<div class=\"checklist-note\">Editing this list changes the categories for every school. Existing files keep their category name even if it's later removed here.</div>" +
+        catRows +
+        "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-task-category\">" +
+        "<input class=\"text-input\" name=\"name\" placeholder=\"New category\" required>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
+    }
+
+    return "<div class=\"card\"><div class=\"card-head\">" +
+      "<div class=\"card-title\">Tasks" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
+      "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-task-category-editor\">" + (ui.taskCategoryEditorOpen ? "Close editor" : "Edit categories") + "</button></div>" +
+      "</div><div class=\"card-body\">" + editorHtml +
+      "<form class=\"add-row-form\" data-action=\"add-task\" data-school=\"" + schoolId + "\">" +
+        "<select class=\"text-input\" name=\"category\">" + catOptions + "</select>" +
+        "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name, e.g. Q3-enrollment-report.xlsx\" required style=\"flex:2;\">" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form>" +
+      groupsHtml +
+      "</div></div>";
+  }
+
+  function statusControl(type, id, status, action, schoolId) {
+    return statusControlOptions(STATUS_OPTIONS[type], id, status, action, schoolId);
+  }
+
+  function statusControlOptions(options, id, status, action, schoolId) {
+    var opts = options.map(function (o) {
+      return "<option value=\"" + esc(o) + "\"" + (o === status ? " selected" : "") + ">" + esc(o || "—") + "</option>";
+    }).join("");
+    return "<select class=\"status-select " + (STATUS_TIER[status] || "attn") + "\" data-action-change=\"" + action + "\" data-id=\"" + id + "\"" +
+      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + ">" + opts + "</select>";
+  }
+
+  function deleteBtn(type, id, action, schoolId) {
+    var pending = isPending(type, id);
+    return "<button class=\"icon-btn" + (pending ? " confirming" : "") + "\" data-action=\"" + action + "\" data-id=\"" + id + "\"" +
+      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + " title=\"Remove\">" + (pending ? "Confirm?" : "✕") + "</button>";
+  }
+
+  function emptyState(text) { return "<div class=\"empty-state\">" + esc(text) + "</div>"; }
+
+  function checklistCardHtml(schoolId) {
+    var tmpl = state.checklistTemplate;
+    var doneCount = 0;
+    tmpl.forEach(function (item) {
+      var p = state.checklistProgress[schoolId + ":" + item.id];
+      if (p && p.status === "Done") doneCount++;
+    });
+    var rows = tmpl.map(function (item) {
+      var p = state.checklistProgress[schoolId + ":" + item.id] || { status: "Open" };
+      var done = p.status === "Done";
+      return "<div class=\"checklist-item\">" +
+        "<button class=\"check-toggle" + (done ? " done" : "") + "\" data-action=\"toggle-checklist\" data-school=\"" + schoolId + "\" data-item=\"" + item.id + "\">" + (done ? "✓" : "") + "</button>" +
+        "<div class=\"row-main\"><div class=\"row-title\">" + esc(item.description) + "</div>" +
+        "</div></div>";
+    }).join("");
+
+    var editorHtml = "";
+    if (ui.templateEditorOpen) {
+      var tmplRows = tmpl.map(function (item, idx) {
+        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(item.description) + "</div>" +
+          "<div class=\"stack-btns\">" +
+          "<button" + (idx === 0 ? " disabled" : "") + " data-action=\"move-template-item\" data-id=\"" + item.id + "\" data-dir=\"up\">▲</button>" +
+          "<button" + (idx === tmpl.length - 1 ? " disabled" : "") + " data-action=\"move-template-item\" data-id=\"" + item.id + "\" data-dir=\"down\">▼</button>" +
+          "</div>" +
+          deleteBtn("template-item", item.id, "remove-template-item") + "</div>";
+      }).join("");
+      editorHtml = "<div class=\"template-card\" style=\"margin-bottom:14px; padding:14px;\">" +
+        "<div class=\"checklist-note\">Editing this list changes the checklist for every school — it's one shared, standard template.</div>" +
+        tmplRows +
+        "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-template-item\">" +
+        "<input class=\"text-input\" name=\"description\" placeholder=\"New checklist item\" required>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
+    }
+
+    return "<div class=\"card\"><div class=\"card-head\">" +
+      "<div class=\"card-title\">Yearly Checklist" + (tmpl.length > 0 ? " <span class=\"count-chip\" style=\"background:var(--done-soft); color:var(--done);\">" + doneCount + "/" + tmpl.length + "</span>" : "") + "</div>" +
+      "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-template-editor\">" + (ui.templateEditorOpen ? "Close editor" : "Edit template") + "</button></div>" +
+      "</div><div class=\"card-body\">" + editorHtml +
+      "<div class=\"row-list\">" + (rows || emptyState("No checklist items yet — use “Edit template” to add the first one.")) + "</div>" +
+      "</div></div>";
+  }
+
+  function emailTrackerCardHtml(schoolId, sd) {
+    var open = countNotDone(sd.emailTracker);
+    var rows = sd.emailTracker.slice().reverse().map(function (e) {
+      return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
+        statusControl("email_followup", e.id, e.status, "change-email-status", schoolId) +
+        deleteBtn("email-item", e.id, "remove-email-item", schoolId) + "</div>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\">" +
+      "<form class=\"add-row-form\" data-action=\"add-email-item\" data-school=\"" + schoolId + "\">" +
+        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the email about?\" required>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form>" +
+      "<div class=\"row-list\">" + (rows || emptyState("Nothing being tracked — add an email that needs a response or a reply.")) + "</div>" +
+      "</div></div>";
+  }
+
+  function notesCardHtml(scope, schoolId, notes) {
+    var draftName = scope === "school" ? "note-" + schoolId : "note-general";
+    var list = notes.slice().reverse().map(function (n) {
+      return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
+        "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + (scope === "school" ? "Notes" : "General Notes") + "</div></div>" +
+      "<div class=\"card-body\">" +
+      "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
+        "<textarea class=\"text-input\" name=\"text\" placeholder=\"Add a note…\" data-draft-key=\"" + draftName + "\">" + esc(loadDraft(draftName)) + "</textarea>" +
+        "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\">" +
+        "<button class=\"btn\" type=\"submit\">Add note</button></div></form>" + vaDatalist() +
+      "<div class=\"row-list\" style=\"margin-top:14px;\">" + (list || emptyState("No notes yet.")) + "</div>" +
+      "</div></div>";
+  }
+
+  /* ---------- Issues & Concerns ---------- */
+  function issuesPageHtml() {
+    var f = ui.issueFilters;
+    var list = state.issues.slice().reverse().filter(function (it) {
+      if (f.school && it.schoolId !== f.school) return false;
+      if (f.type && it.type !== f.type) return false;
+      if (f.status && it.status !== f.status) return false;
+      return true;
+    });
+    var schoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (s) { return "<option value=\"" + s.id + "\"" + (f.school === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
+    var addSchoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (s) { return "<option value=\"" + s.id + "\">" + esc(s.name) + "</option>"; }).join("");
+    var vaOpts = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (v) { return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>"; }).join("");
+    var typeFilterOpts = state.issueTypes.map(function (ty) {
+      return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
+    }).join("");
+
+    var newTypeId = ui.newIssueType && issueTypeById(ui.newIssueType) ? ui.newIssueType : (state.issueTypes[0] ? state.issueTypes[0].id : "");
+    var newType = issueTypeById(newTypeId);
+    var newTypeOpts = state.issueTypes.map(function (ty) {
+      return "<option value=\"" + ty.id + "\"" + (ty.id === newTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
+    }).join("");
+    var extraFieldsHtml = newType && newType.extraFields ?
+      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\">" +
+      "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\">" +
+      "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\">" +
+      "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\">" +
+      "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\">" +
+      "</div>" +
+      "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\"></textarea>" : "";
+
+    var typeEditorHtml = "";
+    if (ui.issueTypeEditorOpen) {
+      var typeRows = state.issueTypes.map(function (ty, idx) {
+        return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(ty.name) +
+          "<div class=\"row-meta\">" + ty.statusOptions.map(esc).join(" · ") + "</div></div>" +
+          "<div class=\"stack-btns\">" +
+          "<button" + (idx === 0 ? " disabled" : "") + " data-action=\"move-issue-type\" data-id=\"" + ty.id + "\" data-dir=\"up\">▲</button>" +
+          "<button" + (idx === state.issueTypes.length - 1 ? " disabled" : "") + " data-action=\"move-issue-type\" data-id=\"" + ty.id + "\" data-dir=\"down\">▼</button>" +
+          "</div>" +
+          deleteBtn("issue-type", ty.id, "remove-issue-type") + "</div>";
+      }).join("");
+      typeEditorHtml = "<div class=\"template-card\" style=\"margin-bottom:14px; padding:14px;\">" +
+        "<div class=\"checklist-note\">New types get a generic status (" + NEW_ISSUE_TYPE_STATUS_OPTIONS.join(" / ") + "). Removing a type leaves its past entries labeled with the old type name.</div>" +
+        typeRows +
+        "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-issue-type\">" +
+        "<input class=\"text-input\" name=\"name\" placeholder=\"New type name\" required>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
+    }
+
+    var rows = list.map(function (it) {
+      var sch = schoolById(it.schoolId);
+      var ty = issueTypeById(it.type);
+      var meta = esc(sch ? sch.name : "Unknown school") + " · " + esc(ty ? ty.name : "Removed type");
+      if (it.reportedBy) meta += " · Reported by " + esc(it.reportedBy);
+      var detailBits = [];
+      if (it.studentName) detailBits.push("Student: " + esc(it.studentName));
+      if (it.schoolYear) detailBits.push("Year: " + esc(it.schoolYear));
+      if (it.grade) detailBits.push("Grade: " + esc(it.grade));
+      if (it.fileName) detailBits.push("File: " + esc(it.fileName));
+      if (it.pageNumber) detailBits.push("Page: " + esc(it.pageNumber));
+      var detailHtml = detailBits.length ? "<div class=\"row-meta\">" + detailBits.join(" · ") + "</div>" : "";
+      var remarksHtml = it.remarks ? "<div class=\"row-meta\">Remarks: " + esc(it.remarks) + "</div>" : "";
+      return "<div class=\"row-item\"><div class=\"row-main\">" +
+        "<div class=\"row-title\">" + esc(it.description) + "</div>" +
+        "<div class=\"row-meta\">" + meta + "</div>" + detailHtml + remarksHtml + "</div>" +
+        statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") +
+        deleteBtn("issue", it.id, "remove-issue") + "</div>";
+    }).join("");
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div>" +
+      "<div class=\"page-sub\">Software issues and recheck items across all schools, in one place. Fields here will grow as the workflow gets detailed further.</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Add an issue</div>" +
+        "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button></div></div>" +
+        "<div class=\"card-body\">" + typeEditorHtml +
+        "<form class=\"add-row-form\" data-action=\"add-issue\">" +
+        "<select class=\"text-input\" name=\"schoolId\" required><option value=\"\" disabled selected>School…</option>" + addSchoolOpts + "</select>" +
+        "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
+        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
+        "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
+        "<button class=\"btn\" type=\"submit\">Add</button></form>" +
+        extraFieldsHtml +
+        (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
+        "</div></div>" +
+      "<div class=\"filters-row\">" +
+      "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"school\"><option value=\"\">All schools</option>" + schoolOpts + "</select>" +
+      "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
+      "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
+      "</div>" +
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"row-list\">" + (rows || emptyState("No issues match these filters.")) + "</div></div></div>";
+  }
+
+  /* ---------- Email Templates ---------- */
+  function templatesPageHtml() {
+    var list = state.emailTemplates.slice();
+    var rows = list.map(function (t) {
+      var isEditing = ui.editingTemplateId === t.id;
+      var isOpen = ui.openTemplateId === t.id;
+      var body = "<div class=\"tmpl-item\">" +
+        "<div class=\"tmpl-item-head\" data-action=\"toggle-template-open\" data-id=\"" + t.id + "\">" +
+        "<div><span class=\"tmpl-name\">" + esc(t.name) + "</span>" + (t.category ? "<span class=\"tmpl-cat\">" + esc(t.category) + "</span>" : "") + "</div>" +
+        "<span class=\"link-btn\">" + (isOpen ? "Collapse" : "View") + "</span></div>";
+      if (isOpen && !isEditing) {
+        body += "<div class=\"tmpl-body-view\">" +
+          "<div class=\"tmpl-subject\"><strong>Subject:</strong> " + esc(t.subject) + "</div>" +
+          "<div class=\"tmpl-body-text\">" + esc(t.body) + "</div>" +
+          "<div class=\"tmpl-actions\">" +
+          "<button class=\"btn small\" data-action=\"copy-template\" data-id=\"" + t.id + "\">Copy</button>" +
+          "<button class=\"btn small ghost\" data-action=\"edit-template\" data-id=\"" + t.id + "\">Edit</button>" +
+            "<button class=\"link-btn danger\" data-action=\"delete-template\" data-id=\"" + t.id + "\">" + (isPending("template", t.id) ? "Confirm delete?" : "Delete") + "</button>" +
+          "</div></div>";
+      } else if (isEditing) {
+        body += templateFormHtml(t);
+      }
+      return body + "</div>";
+    }).join("");
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Email Templates</div>" +
+      "<div class=\"page-sub\">Reference text to copy into your own email client. Not connected to any inbox.</div></div>" +
+      "<button class=\"btn\" data-action=\"new-template\">" + (ui.editingTemplateId === "new" ? "Cancel" : "+ New template") + "</button>" +
+      "</div>" +
+      (ui.editingTemplateId === "new" ? "<div class=\"tmpl-item\">" + templateFormHtml(null) + "</div>" : "") +
+      (rows || emptyState("No templates yet. Add one to build the shared library."));
+  }
+
+  function templateFormHtml(t) {
+    var id = t ? t.id : "new";
+    var subjDraft = "tmpl-" + id + "-subject";
+    var bodyDraft = "tmpl-" + id + "-body";
+    return "<form class=\"tmpl-edit-form\" data-action=\"save-template\" data-id=\"" + id + "\">" +
+      "<div class=\"form-2col\">" +
+      "<input class=\"text-input\" name=\"name\" placeholder=\"Template name\" value=\"" + esc(t ? t.name : "") + "\" required>" +
+      "<input class=\"text-input\" name=\"category\" placeholder=\"Category (optional)\" value=\"" + esc(t ? t.category : "") + "\">" +
+      "</div>" +
+      "<input class=\"text-input\" name=\"subject\" placeholder=\"Subject line\" value=\"" + esc(t ? t.subject : loadDraft(subjDraft)) + "\" data-draft-key=\"" + subjDraft + "\" required>" +
+      "<textarea class=\"text-input\" name=\"body\" placeholder=\"Email body… use {{placeholders}} as needed\" style=\"min-height:120px;\" data-draft-key=\"" + bodyDraft + "\">" + esc(t ? t.body : loadDraft(bodyDraft)) + "</textarea>" +
+      "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
+      "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-template-edit\">Cancel</button></div></form>";
+  }
+
+  /* ---------- Team ---------- */
+  function teamPageHtml() {
+    var chips = state.vas.map(function (v) {
+      return "<div class=\"va-chip\">" + esc(v.name) +
+        "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
+    }).join("");
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div>" +
+      "<div class=\"page-sub\">VA names used across the app. Removing one here only removes it from the suggestion list — past entries keep their name.</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-body\">" +
+      "<form class=\"add-row-form\" data-action=\"add-va\">" +
+        "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
+      "<div class=\"va-chip-list\">" + (chips || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>";
+  }
+
+  /* ---------- General notes ---------- */
+  function generalNotesPageHtml() {
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div>" +
+      "<div class=\"page-sub\">Team-wide notes, not tied to any school.</div></div></div>" +
+      notesCardHtml("general", null, state.generalNotes);
+  }
+
+  /* ============ navigation ============ */
+  function goTo(view) {
+    ui.view = view;
+    ui.sidebarOpen = false;
+    ui.templateEditorOpen = false;
+    ui.pendingDelete = null;
+    saveStoredView();
+  }
+
+  /* ============ event handling ============ */
+  function onClick(e) {
+    var t = e.target.closest("[data-action]");
+    if (!t) return;
+    var action = t.getAttribute("data-action");
+    switch (action) {
+      case "nav-school":
+        goTo({ type: "school", id: t.getAttribute("data-id") });
+        render(); break;
+      case "nav-view":
+        goTo({ type: t.getAttribute("data-view") });
+        render(); break;
+      case "toggle-sidebar": ui.sidebarOpen = !ui.sidebarOpen; render(); break;
+      case "close-sidebar": ui.sidebarOpen = false; render(); break;
+      case "toggle-add-school": ui.addSchoolOpen = !ui.addSchoolOpen; render(); break;
+      case "toggle-template-editor": ui.templateEditorOpen = !ui.templateEditorOpen; render(); break;
+      case "toggle-task-category-editor": ui.taskCategoryEditorOpen = !ui.taskCategoryEditorOpen; render(); break;
+      case "toggle-add-va-for-task": ui.addingVaForTask = t.getAttribute("data-id"); render(); break;
+      case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
+      case "remove-va-from-task":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (task) {
+            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
+            task.vaAssigned = names.filter(function (n) { return n !== t.getAttribute("data-va"); });
+          }
+          persist();
+        })(); break;
+      case "remove-task-category":
+        requestDelete("task-category", t.getAttribute("data-id"), function () {
+          state.taskCategories = state.taskCategories.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "move-task-category":
+        (function () {
+          var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
+          var idx = state.taskCategories.findIndex(function (x) { return x.id === id; });
+          var swapWith = dir === "up" ? idx - 1 : idx + 1;
+          if (swapWith < 0 || swapWith >= state.taskCategories.length) return;
+          var tmp = state.taskCategories[idx];
+          state.taskCategories[idx] = state.taskCategories[swapWith];
+          state.taskCategories[swapWith] = tmp;
+          persist();
+        })(); break;
+      case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
+      case "remove-issue-type":
+        requestDelete("issue-type", t.getAttribute("data-id"), function () {
+          state.issueTypes = state.issueTypes.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "move-issue-type":
+        (function () {
+          var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
+          var idx = state.issueTypes.findIndex(function (x) { return x.id === id; });
+          var swapWith = dir === "up" ? idx - 1 : idx + 1;
+          if (swapWith < 0 || swapWith >= state.issueTypes.length) return;
+          var tmp = state.issueTypes[idx];
+          state.issueTypes[idx] = state.issueTypes[swapWith];
+          state.issueTypes[swapWith] = tmp;
+          persist();
+        })(); break;
+      case "toggle-template-open":
+        var tid = t.getAttribute("data-id");
+        ui.openTemplateId = ui.openTemplateId === tid ? null : tid;
+        if (ui.editingTemplateId !== tid) ui.editingTemplateId = null;
+        render(); break;
+      case "new-template":
+        ui.editingTemplateId = ui.editingTemplateId === "new" ? null : "new";
+        render(); break;
+      case "edit-template":
+        ui.editingTemplateId = t.getAttribute("data-id");
+        ui.openTemplateId = t.getAttribute("data-id");
+        render(); break;
+      case "cancel-template-edit":
+        ui.editingTemplateId = null; render(); break;
+      case "copy-template":
+        (function () {
+          var tp = state.emailTemplates.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (!tp) return;
+          var text = "Subject: " + tp.subject + "\n\n" + tp.body;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { showToast("Copied to clipboard."); }).catch(function () { showToast("Couldn't copy — select and copy manually."); });
+          } else { showToast("Clipboard not available here — select and copy manually."); }
+        })(); break;
+      case "delete-template":
+        requestDelete("template", t.getAttribute("data-id"), function () {
+          state.emailTemplates = state.emailTemplates.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "toggle-task-status":
+        break; /* handled on change */
+      case "remove-task":
+        requestDelete("task", t.getAttribute("data-id"), function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          sd.tasks = sd.tasks.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "remove-email-item":
+        requestDelete("email-item", t.getAttribute("data-id"), function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          sd.emailTracker = sd.emailTracker.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "remove-issue":
+        requestDelete("issue", t.getAttribute("data-id"), function () {
+          state.issues = state.issues.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "remove-template-item":
+        requestDelete("template-item", t.getAttribute("data-id"), function () {
+          var tmplId = t.getAttribute("data-id");
+          state.checklistTemplate = state.checklistTemplate.filter(function (x) { return x.id !== tmplId; });
+          Object.keys(state.checklistProgress).forEach(function (k) { if (k.indexOf(":" + tmplId) !== -1) delete state.checklistProgress[k]; });
+        }); break;
+      case "move-template-item":
+        (function () {
+          var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
+          var idx = state.checklistTemplate.findIndex(function (x) { return x.id === id; });
+          var swapWith = dir === "up" ? idx - 1 : idx + 1;
+          if (swapWith < 0 || swapWith >= state.checklistTemplate.length) return;
+          var tmp = state.checklistTemplate[idx];
+          state.checklistTemplate[idx] = state.checklistTemplate[swapWith];
+          state.checklistTemplate[swapWith] = tmp;
+          persist();
+        })(); break;
+      case "remove-va":
+        (function () {
+          var id = t.getAttribute("data-id");
+          state.vas = state.vas.filter(function (x) { return x.id !== id; });
+          persist();
+        })(); break;
+      case "remove-school":
+        requestDelete("school", t.getAttribute("data-id"), function () {
+          var id = t.getAttribute("data-id");
+          state.schools = state.schools.filter(function (x) { return x.id !== id; });
+          delete state.schoolData[id];
+          state.issues = state.issues.filter(function (x) { return x.schoolId !== id; });
+          Object.keys(state.checklistProgress).forEach(function (k) { if (k.indexOf(id + ":") === 0) delete state.checklistProgress[k]; });
+          if (ui.view.type === "school" && ui.view.id === id) goTo({ type: "home" });
+        }); break;
+      case "toggle-checklist":
+        (function () {
+          var schoolId = t.getAttribute("data-school"), itemId = t.getAttribute("data-item");
+          var key = schoolId + ":" + itemId;
+          var cur = state.checklistProgress[key];
+          if (cur && cur.status === "Done") {
+            state.checklistProgress[key] = { status: "Open" };
+          } else {
+            var sd = ensureSchoolData(schoolId);
+            state.checklistProgress[key] = { status: "Done", completedBy: sd.vaAssigned || "", completedDate: new Date().toISOString() };
+          }
+          persist();
+        })(); break;
+      default: break;
+    }
+  }
+
+  function onChange(e) {
+    var t = e.target.closest("[data-action-change]");
+    if (!t) return;
+    var action = t.getAttribute("data-action-change");
+    switch (action) {
+      case "set-va-assigned":
+        ensureSchoolData(t.getAttribute("data-school")).vaAssigned = t.value.trim();
+        addVaIfNew(t.value);
+        persist(); break;
+      case "toggle-task-status":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (task) task.status = t.value;
+          persist();
+        })(); break;
+      case "change-task-communication":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (task) task.communication = t.value;
+          persist();
+        })(); break;
+      case "add-va-to-task":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (task && t.value) {
+            var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
+            if (names.indexOf(t.value) === -1) names.push(t.value);
+            task.vaAssigned = names;
+          }
+          ui.addingVaForTask = null;
+          persist();
+        })(); break;
+      case "change-email-status":
+        (function () {
+          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var item = sd.emailTracker.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (item) item.status = t.value;
+          persist();
+        })(); break;
+      case "change-issue-status":
+        (function () {
+          var item = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (item) item.status = t.value;
+          persist();
+        })(); break;
+      case "filter-issues":
+        ui.issueFilters[t.getAttribute("data-field")] = t.value;
+        render(); break;
+      case "select-new-issue-type":
+        ui.newIssueType = t.value;
+        render(); break;
+      default: break;
+    }
+  }
+
+  function onInput(e) {
+    var t = e.target;
+    if (t.matches && t.matches("[data-role='school-search']")) { ui.search = t.value; render(); focusSearch(); return; }
+    var key = t.getAttribute && t.getAttribute("data-draft-key");
+    if (key) saveDraft(key, t.value);
+  }
+  function focusSearch() {
+    var el = document.querySelector("[data-role='school-search']");
+    if (el) { el.focus(); var v = el.value; el.value = ""; el.value = v; }
+  }
+
+  function onSubmit(e) {
+    var form = e.target.closest("form[data-action]");
+    if (!form) return;
+    e.preventDefault();
+    var action = form.getAttribute("data-action");
+    var fd = new FormData(form);
+    switch (action) {
+      case "add-school":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          if (!name) return;
+          var id = uid("sch");
+          state.schools.push({ id: id, name: name });
+          ensureSchoolData(id);
+          ui.addSchoolOpen = false;
+          goTo({ type: "school", id: id });
+          persist();
+        })(); break;
+      case "add-task":
+        (function () {
+          var sid = form.getAttribute("data-school");
+          var sd = ensureSchoolData(sid);
+          var category = (fd.get("category") || "").toString();
+          var task = {
+            id: uid("task"),
+            category: category,
+            fileName: (fd.get("fileName") || "").toString().trim(),
+            vaAssigned: [],
+            status: ""
+          };
+          if (COMMUNICATION_CATEGORIES.indexOf(category) !== -1) task.communication = "";
+          sd.tasks.push(task);
+          persist();
+        })(); break;
+      case "add-task-category":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          if (!name) return;
+          state.taskCategories.push({ id: uid("cat"), name: name });
+          persist();
+        })(); break;
+      case "add-email-item":
+        (function () {
+          var sid = form.getAttribute("data-school");
+          var sd = ensureSchoolData(sid);
+          sd.emailTracker.push({ id: uid("mail"), description: (fd.get("description") || "").toString().trim(), status: "Needs My Response" });
+          persist();
+        })(); break;
+      case "add-note":
+        (function () {
+          var scope = form.getAttribute("data-scope");
+          var text = (fd.get("text") || "").toString().trim();
+          if (!text) return;
+          var author = (fd.get("author") || "").toString().trim();
+          addVaIfNew(author);
+          var entry = { id: uid("note"), text: text, author: author, createdAt: new Date().toISOString() };
+          var draftName;
+          if (scope === "school") {
+            var sid = form.getAttribute("data-school");
+            ensureSchoolData(sid).notes.push(entry);
+            draftName = "note-" + sid;
+          } else {
+            state.generalNotes.push(entry);
+            draftName = "note-general";
+          }
+          saveDraft(draftName, "");
+          persist();
+        })(); break;
+      case "add-issue":
+        (function () {
+          var typeId = (fd.get("type") || "").toString();
+          var typeObj = issueTypeById(typeId);
+          var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
+          var issue = {
+            id: uid("issue"), schoolId: (fd.get("schoolId") || "").toString(),
+            type: typeId,
+            description: (fd.get("description") || "").toString().trim(),
+            reportedBy: (fd.get("reportedBy") || "").toString(),
+            status: statusOpts[0] || "Open"
+          };
+          if (typeObj && typeObj.extraFields) {
+            issue.studentName = (fd.get("studentName") || "").toString().trim();
+            issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
+            issue.grade = (fd.get("grade") || "").toString().trim();
+            issue.fileName = (fd.get("fileName") || "").toString().trim();
+            issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
+            issue.remarks = (fd.get("remarks") || "").toString().trim();
+          }
+          state.issues.push(issue);
+          ui.newIssueType = null;
+          persist();
+        })(); break;
+      case "add-issue-type":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          if (!name) return;
+          state.issueTypes.push({ id: uid("itype"), name: name, statusOptions: NEW_ISSUE_TYPE_STATUS_OPTIONS.slice() });
+          persist();
+        })(); break;
+      case "add-template-item":
+        (function () {
+          var desc = (fd.get("description") || "").toString().trim();
+          if (!desc) return;
+          state.checklistTemplate.push({ id: uid("tmpl"), description: desc });
+          persist();
+        })(); break;
+      case "add-va":
+        (function () {
+          addVaIfNew((fd.get("name") || "").toString());
+          persist();
+        })(); break;
+      case "save-template":
+        (function () {
+          var id = form.getAttribute("data-id");
+          var vals = {
+            name: (fd.get("name") || "").toString().trim(),
+            category: (fd.get("category") || "").toString().trim(),
+            subject: (fd.get("subject") || "").toString().trim(),
+            body: (fd.get("body") || "").toString()
+          };
+          if (id === "new") {
+            var nid = uid("etmpl");
+            state.emailTemplates.push(Object.assign({ id: nid }, vals));
+            ui.openTemplateId = nid;
+          } else {
+            var existing = state.emailTemplates.find(function (x) { return x.id === id; });
+            if (existing) Object.assign(existing, vals);
+          }
+          saveDraft("tmpl-" + id + "-subject", ""); saveDraft("tmpl-" + id + "-body", "");
+          ui.editingTemplateId = null;
+          persist();
+        })(); break;
+      default: break;
+    }
+  }
+
+  document.addEventListener("click", onClick);
+  document.addEventListener("change", onChange);
+  document.addEventListener("input", onInput);
+  document.addEventListener("submit", onSubmit);
+
+  boot();
+}
+appMain();
+</script>
+</body>
+</html>
