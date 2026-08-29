@@ -339,7 +339,16 @@
   .sticky-note-actions button { font-size: 0.76rem; background: none; border: none; text-decoration: underline; cursor: pointer; color: inherit; opacity: 0.75; padding: 0; }
   .sticky-note-actions button:hover { opacity: 1; }
 
-  .note-editor-card { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); color: #2b2b1f; }
+  /* Background reacts live to the checked color swatch via :has() — no JS
+     re-render, so it never disturbs an in-progress edit in the contenteditable
+     area next to it. Colors match NOTE_COLORS in the script below. */
+  .note-editor-card { border-radius: 10px; padding: 14px; box-shadow: var(--shadow); color: #2b2b1f; background: #FFF3B0; }
+  .note-editor-card:has(input[name="color"][value="yellow"]:checked) { background: #FFF3B0; }
+  .note-editor-card:has(input[name="color"][value="pink"]:checked) { background: #FCD5E5; }
+  .note-editor-card:has(input[name="color"][value="blue"]:checked) { background: #CFE3FC; }
+  .note-editor-card:has(input[name="color"][value="green"]:checked) { background: #D8F0D2; }
+  .note-editor-card:has(input[name="color"][value="purple"]:checked) { background: #E5D9FA; }
+  .note-editor-card:has(input[name="color"][value="orange"]:checked) { background: #FCE1C6; }
   .note-toolbar { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
   .note-toolbar button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(0,0,0,0.15); background: rgba(255,255,255,0.55); font-size: 0.8rem; cursor: pointer; color: #2b2b1f; }
   .note-toolbar button:hover { background: rgba(255,255,255,0.85); }
@@ -1522,7 +1531,7 @@ function appMain() {
       "<button class=\"btn\" type=\"submit\">" + (isEditing ? "Save" : "Add note") + "</button>" +
       (isEditing ? "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-note\">Cancel</button>" : "") +
       "</div>";
-    return "<div class=\"note-editor-card\" style=\"background:" + noteColorHex(initialColor || DEFAULT_NOTE_COLOR) + ";\">" +
+    return "<div class=\"note-editor-card\">" +
       "<form data-action=\"" + action + "\" data-id=\"" + (id || "") + "\" data-scope=\"" + scope + "\">" + formInner + "</form>" +
       "</div>";
   }
