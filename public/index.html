@@ -335,9 +335,12 @@
 
   .task-group { margin-bottom: 16px; }
   .task-group:last-child { margin-bottom: 0; }
+  /* Distinct accent color so a task category header reads clearly as a
+     grouping label, not just another line of body text — everything in
+     this area was using the same muted grey before. */
   .task-group-title {
     font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--ink-soft); padding: 6px 0; border-bottom: 1px solid var(--border-strong); margin-bottom: 2px;
+    color: var(--accent); padding: 6px 0; border-bottom: 1px solid var(--accent-soft); margin-bottom: 2px;
     display: flex; align-items: center; gap: 6px;
   }
   .va-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
