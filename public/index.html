@@ -189,7 +189,8 @@
 
   .page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 22px; }
   .page-title { font-size: 1.9rem; font-weight: 600; }
-  .overview-title { font-size: 2.4rem; font-weight: 700; color: var(--accent); }
+  .overview-nav-item { font-size: 1rem; font-weight: 700; color: var(--accent); }
+  .overview-nav-item.active { color: var(--accent-soft-ink); }
   .page-sub { color: var(--ink-soft); font-size: 0.88rem; margin-top: 4px; }
   .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .field-label { font-size: 0.76rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
@@ -1453,7 +1454,7 @@ function appMain() {
     return (
       "<div class=\"brand\"><div class=\"brand-name display\">CSDP Tracker</div><div class=\"brand-tag\">Shared casework tracker</div></div>" +
       "<div class=\"sidebar-section\">" +
-      navItem("home", "Overview", 0, function (v) { return v.type === "home"; }) +
+      navItem("home", "Overview", 0, function (v) { return v.type === "home"; }, "overview-nav-item") +
       "</div>" +
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Schools (" + state.schools.length + ")</div>" +
@@ -1537,7 +1538,7 @@ function appMain() {
       emailAttn += emailAttnCount(state.schools[i].id);
       if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
     }
-    var html = "<div class=\"page-header\"><div><div class=\"page-title display overview-title\">Overview</div></div></div>";
+    var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div></div></div>";
 
     html += "<div class=\"stat-row-sm\">" +
       statTile(state.schools.length, "Schools", true) +
