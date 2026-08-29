@@ -782,6 +782,23 @@ function appMain() {
       }
     });
   }
+  /* One-time reorder: "Transactions" moves right after "Encoding &
+     Uploading (Consent & SDF)" since files get added under both using the
+     same file name. Guarded by a flag so it only runs once, and never
+     fights back against a manual reorder the team does afterward. */
+  function migrateTaskCategoryOrder(parsed) {
+    if (parsed._migratedTaskCategoryOrder) return false;
+    parsed._migratedTaskCategoryOrder = true;
+    var cats = parsed.taskCategories || [];
+    var encIdx = cats.findIndex(function (c) { return c.name === "Encoding & Uploading (Consent & SDF)"; });
+    var transIdx = cats.findIndex(function (c) { return c.name === "Transactions"; });
+    if (encIdx !== -1 && transIdx !== -1 && transIdx !== encIdx + 1) {
+      var trans = cats.splice(transIdx, 1)[0];
+      var newEncIdx = cats.findIndex(function (c) { return c.name === "Encoding & Uploading (Consent & SDF)"; });
+      cats.splice(newEncIdx + 1, 0, trans);
+    }
+    return true;
+  }
   /* Notes used to store plain text, escaped at render time. Now they store
      a bit of sanitized rich-text HTML, rendered directly. A note created
      before this change has no `color` yet — use that as the signal to
@@ -1022,6 +1039,7 @@ function appMain() {
       migrateTaskFields(fresh);
       migrateIssueTypes(fresh);
       migrateChecklistTemplate(fresh);
+      migrateTaskCategoryOrder(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1072,12 +1090,20 @@ function appMain() {
       migrateTaskFields(state);
       migrateIssueTypes(state);
       migrateChecklistTemplate(state);
+      /* Save right away if this just ran for the first time, so the
+         one-time flag itself is persisted — otherwise it'd only get
+         written back on the user's next unrelated change, and until then
+         a fresh reload would still see the reorder as "not done yet". */
+      var justMigratedCategoryOrder = migrateTaskCategoryOrder(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
+      if (justMigratedCategoryOrder) {
+        saveStateToServer(state).catch(function () {});
+      }
     }).catch(function (err) {
       if (err.code === "bad_password") { showPasswordPrompt("Incorrect password."); return; }
       if (err.code === "config_missing") { showPasswordPrompt("App isn't configured yet — config.js is missing or incomplete."); return; }
@@ -1096,7 +1122,10 @@ function appMain() {
       issueFilters: { school: "", type: "", status: "" },
       eodFilterAuthor: "",
       eodViewMode: "notes",
-      editingNoteId: null
+      editingNoteId: null,
+      taskSort: { field: "date", dir: "desc" },
+      emailSort: { field: "date", dir: "desc" },
+      issuesSort: { field: "date", dir: "desc" }
     };
     render();
     startPollingForUpdates();
@@ -1442,13 +1471,13 @@ function appMain() {
     var catNames = cats.map(function (c) { return c.name; });
 
     var groupsHtml = cats.map(function (c) {
-      var items = sd.tasks.filter(function (t) { return t.category === c.name; }).slice().reverse();
+      var items = sortRecords(sd.tasks.filter(function (t) { return t.category === c.name; }).slice().reverse(), ui.taskSort, function (t) { return t.fileName; });
       return "<div class=\"task-group\"><div class=\"task-group-title\"><span>" + esc(c.name) + "</span>" +
         (items.length ? "<span class=\"count-chip\">" + items.length + "</span>" : "") + "</div>" +
         "<div class=\"row-list\">" + (items.map(function (t) { return taskRowHtml(t, schoolId); }).join("") || emptyState("No files yet in this category.")) + "</div></div>";
     }).join("");
 
-    var orphaned = sd.tasks.filter(function (t) { return catNames.indexOf(t.category) === -1; }).slice().reverse();
+    var orphaned = sortRecords(sd.tasks.filter(function (t) { return catNames.indexOf(t.category) === -1; }).slice().reverse(), ui.taskSort, function (t) { return t.fileName; });
     if (orphaned.length) {
       groupsHtml += "<div class=\"task-group\"><div class=\"task-group-title\"><span>Other</span><span class=\"count-chip\">" + orphaned.length + "</span></div>" +
         "<div class=\"row-list\">" + orphaned.map(function (t) { return taskRowHtml(t, schoolId); }).join("") + "</div></div>";
@@ -1476,7 +1505,8 @@ function appMain() {
 
     return "<div class=\"card\"><div class=\"card-head\">" +
       "<div class=\"card-title\">Tasks" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
-      "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-task-category-editor\">" + (ui.taskCategoryEditorOpen ? "Close editor" : "Edit categories") + "</button></div>" +
+      "<div class=\"card-actions\">" + sortControlHtml(ui.taskSort, "set-task-sort") +
+      "<button class=\"link-btn\" data-action=\"toggle-task-category-editor\">" + (ui.taskCategoryEditorOpen ? "Close editor" : "Edit categories") + "</button></div>" +
       "</div><div class=\"card-body\">" + editorHtml +
       "<form class=\"add-row-form\" data-action=\"add-task\" data-school=\"" + schoolId + "\">" +
         "<select class=\"text-input\" name=\"category\">" + catOptions + "</select>" +
@@ -1505,6 +1535,44 @@ function appMain() {
   }
 
   function emptyState(text) { return "<div class=\"empty-state\">" + esc(text) + "</div>"; }
+
+  /* Shared sort control used on Tasks, Email Tracker, and Issues &
+     Concerns. Records created before this feature don't have a createdAt
+     — those are treated as an empty string, which naturally sorts to one
+     end or the other depending on direction, and since Array#sort is
+     stable, ties keep whatever order the list is handed in. */
+  function sortRecords(list, sort, textAccessor) {
+    var dir = sort.dir === "asc" ? 1 : -1;
+    return list.slice().sort(function (a, b) {
+      var av, bv;
+      if (sort.field === "alpha") {
+        av = (textAccessor(a) || "").toLowerCase();
+        bv = (textAccessor(b) || "").toLowerCase();
+      } else {
+        av = a.createdAt || "";
+        bv = b.createdAt || "";
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return 0;
+    });
+  }
+  function parseSortValue(v) {
+    var parts = String(v || "date_desc").split("_");
+    return { field: parts[0], dir: parts[1] };
+  }
+  function sortControlHtml(current, action) {
+    var opts = [
+      { value: "date_desc", label: "Date: Newest first" },
+      { value: "date_asc", label: "Date: Oldest first" },
+      { value: "alpha_asc", label: "A → Z" },
+      { value: "alpha_desc", label: "Z → A" }
+    ];
+    var curVal = current.field + "_" + current.dir;
+    return "<select class=\"text-input\" style=\"max-width:170px;\" data-action-change=\"" + action + "\">" +
+      opts.map(function (o) { return "<option value=\"" + o.value + "\"" + (o.value === curVal ? " selected" : "") + ">" + o.label + "</option>"; }).join("") +
+      "</select>";
+  }
 
   function checklistCardHtml(schoolId) {
     var tmpl = state.checklistTemplate;
@@ -1556,12 +1624,14 @@ function appMain() {
 
   function emailTrackerCardHtml(schoolId, sd) {
     var open = countNotDone(sd.emailTracker);
-    var rows = sd.emailTracker.slice().reverse().map(function (e) {
+    var sorted = sortRecords(sd.emailTracker.slice().reverse(), ui.emailSort, function (e) { return e.description; });
+    var rows = sorted.map(function (e) {
       return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
         statusControl("email_followup", e.id, e.status, "change-email-status", schoolId) +
         deleteBtn("email-item", e.id, "remove-email-item", schoolId) + "</div>";
     }).join("");
-    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div></div>" +
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
+      "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-email-item\" data-school=\"" + schoolId + "\">" +
         "<input class=\"text-input\" name=\"description\" placeholder=\"What's the email about?\" required>" +
@@ -1703,9 +1773,9 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    var normalList = list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.fieldSet); });
-    var recordList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "record_update"; });
-    var recheckList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "recheck"; });
+    var normalList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.fieldSet); }), ui.issuesSort, function (it) { return it.description; });
+    var recordList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "record_update"; }), ui.issuesSort, function (it) { return it.studentName; });
+    var recheckList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "recheck"; }), ui.issuesSort, function (it) { return it.studentName; });
 
     var normalTableCols = 6;
     var rows = normalList.map(function (it) {
@@ -1803,6 +1873,7 @@ function appMain() {
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"school\"><option value=\"\">All schools</option>" + schoolOpts + "</select>" +
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
+      sortControlHtml(ui.issuesSort, "set-issues-sort") +
       "</div>" +
       "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
@@ -2359,6 +2430,15 @@ function appMain() {
       case "filter-issues":
         ui.issueFilters[t.getAttribute("data-field")] = t.value;
         render(); break;
+      case "set-task-sort":
+        ui.taskSort = parseSortValue(t.value);
+        render(); break;
+      case "set-email-sort":
+        ui.emailSort = parseSortValue(t.value);
+        render(); break;
+      case "set-issues-sort":
+        ui.issuesSort = parseSortValue(t.value);
+        render(); break;
       case "filter-eod":
         ui.eodFilterAuthor = t.value;
         render(); break;
@@ -2428,7 +2508,8 @@ function appMain() {
             category: category,
             fileName: (fd.get("fileName") || "").toString().trim(),
             vaAssigned: currentIdentity ? [currentIdentity] : [],
-            status: ""
+            status: "",
+            createdAt: new Date().toISOString()
           };
           if (COMMUNICATION_CATEGORIES.indexOf(category) !== -1) task.communication = "";
           sd.tasks.push(task);
@@ -2445,7 +2526,7 @@ function appMain() {
         (function () {
           var sid = form.getAttribute("data-school");
           var sd = ensureSchoolData(sid);
-          sd.emailTracker.push({ id: uid("mail"), description: (fd.get("description") || "").toString().trim(), status: "Needs My Response" });
+          sd.emailTracker.push({ id: uid("mail"), description: (fd.get("description") || "").toString().trim(), status: "Needs My Response", createdAt: new Date().toISOString() });
           persist();
         })(); break;
       case "add-note":
@@ -2545,7 +2626,8 @@ function appMain() {
             description: (fd.get("description") || "").toString().trim(),
             reportedBy: (fd.get("reportedBy") || "").toString(),
             status: statusOpts[0] || "Open",
-            remarks: ""
+            remarks: "",
+            createdAt: new Date().toISOString()
           };
           if (fieldSet === "record_update") {
             issue.studentName = (fd.get("studentName") || "").toString().trim();
