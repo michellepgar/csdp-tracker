@@ -410,6 +410,17 @@ function appMain() {
       }
     }
   }
+  /* Once a database has saved its own copy of issueTypes, the DEFAULT_STATE
+     merge above no longer applies (the key already exists) — so a new
+     built-in type added here in code would never reach an existing database.
+     This appends any built-in type missing by id, without touching order or
+     any team-added custom types. */
+  function migrateIssueTypes(parsed) {
+    var existingIds = (parsed.issueTypes || []).map(function (t) { return t.id; });
+    DEFAULT_ISSUE_TYPES.forEach(function (dt) {
+      if (existingIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
+    });
+  }
   var PASSWORD_KEY = "csdp_app_password";
   function getStoredPassword() {
     try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch (e) { return ""; }
@@ -520,6 +531,7 @@ function appMain() {
       state = data;
       for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
       migrateTaskFields(state);
+      migrateIssueTypes(state);
       ui = {
         view: loadStoredView(),
         search: "",
