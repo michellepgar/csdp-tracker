@@ -335,12 +335,13 @@
 
   .task-group { margin-bottom: 16px; }
   .task-group:last-child { margin-bottom: 0; }
-  /* Distinct accent color so a task category header reads clearly as a
-     grouping label, not just another line of body text — everything in
-     this area was using the same muted grey before. */
+  /* Distinct filled background so a task category header reads clearly as
+     a grouping label, not just another line of body text — everything in
+     this area was using the same muted grey/transparent styling before. */
   .task-group-title {
     font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--accent); padding: 6px 0; border-bottom: 1px solid var(--accent-soft); margin-bottom: 2px;
+    color: var(--accent-soft-ink); background: var(--accent-soft); padding: 7px 10px; border-radius: 6px;
+    margin-bottom: 6px;
     display: flex; align-items: center; gap: 6px;
   }
   .va-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
