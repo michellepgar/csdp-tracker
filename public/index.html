@@ -1874,8 +1874,8 @@ function appMain() {
         "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
         seenByHtml +
         "<div class=\"sticky-note-actions\">" +
-        "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
-        "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" +
+        (isAuthor ? "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
+          "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" : "") +
         ackHtml +
         "</div>" +
         "</div>";
@@ -2063,8 +2063,15 @@ function appMain() {
         ui.editingIssueType = null;
         render(); break;
       case "edit-note":
-        ui.editingNoteId = t.getAttribute("data-id");
-        render(); break;
+        (function () {
+          var id = t.getAttribute("data-id");
+          var scope = t.getAttribute("data-scope");
+          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+          var note = arr.find(function (x) { return x.id === id; });
+          if (!note || note.author !== getStoredIdentity()) return;
+          ui.editingNoteId = id;
+          render();
+        })(); break;
       case "cancel-edit-note":
         ui.editingNoteId = null;
         render(); break;
@@ -2072,8 +2079,10 @@ function appMain() {
         (function () {
           var id = t.getAttribute("data-id");
           var scope = t.getAttribute("data-scope");
+          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+          var note = arr.find(function (x) { return x.id === id; });
+          if (!note || note.author !== getStoredIdentity()) return;
           requestDelete("note", id, function () {
-            var arr = scope === "private" ? state.privateNotes : state.generalNotes;
             var idx = arr.findIndex(function (x) { return x.id === id; });
             if (idx !== -1) arr.splice(idx, 1);
           });
@@ -2397,7 +2406,9 @@ function appMain() {
           var urgency = (fd.get("urgency") || "Normal").toString();
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
           var note = arr.find(function (x) { return x.id === id; });
-          if (note) { note.text = html; note.color = color; if (scope === "general") note.urgency = urgency; }
+          if (note && note.author === getStoredIdentity()) {
+            note.text = html; note.color = color; if (scope === "general") note.urgency = urgency;
+          }
           ui.editingNoteId = null;
           persist();
         })(); break;
