@@ -817,14 +817,6 @@ function appMain() {
   function isSuperAdmin() {
     return getStoredIdentity() === SUPERADMIN_NAME;
   }
-  /* Per-VA page access, granted individually by the superadmin from the
-     Team page's "Page Access" list — separate from isSuperAdmin(), which
-     always has access to everything regardless of this flag. */
-  function currentVaCanAccessEod() {
-    var va = state.vas.find(function (v) { return v.name === getStoredIdentity(); });
-    return !!(va && va.eodAccess);
-  }
-
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
     try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; }
@@ -1212,7 +1204,7 @@ function appMain() {
       "<div class=\"nav-list\">" +
       navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }) +
       (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
-      ((isSuperAdmin() || currentVaCanAccessEod()) ? navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) : "") +
+      navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       "</div></div>" +
       "<div class=\"sidebar-divider\"></div>" +
       "<div class=\"sidebar-section\">" +
@@ -1243,7 +1235,7 @@ function appMain() {
       case "team": return isSuperAdmin() ? teamPageHtml() : homePageHtml();
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
-      case "eod": return (isSuperAdmin() || currentVaCanAccessEod()) ? eodPageHtml() : homePageHtml();
+      case "eod": return eodPageHtml();
       case "private-notes": return privateNotesPageHtml();
       default: return homePageHtml();
     }
@@ -1808,25 +1800,11 @@ function appMain() {
       return "<div class=\"va-chip\">" + esc(v.name) +
         "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
     }).join("");
-    /* The superadmin always has full access to everything regardless of
-       these toggles, so their own name is left off this list entirely —
-       a checkbox here would be meaningless (and confusing) for them. */
-    var accessRows = state.vas.filter(function (v) { return v.name !== SUPERADMIN_NAME; }).map(function (v) {
-      return "<div class=\"row-item\"><div class=\"row-main\">" + esc(v.name) + "</div>" +
-        "<label class=\"field-row\" style=\"gap:6px; cursor:pointer;\">" +
-        "<input type=\"checkbox\" data-action-change=\"toggle-va-eod-access\" data-id=\"" + v.id + "\"" + (v.eodAccess ? " checked" : "") + "> EOD Reports" +
-        "</label></div>";
-    }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-va\">" +
         "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
       "<div class=\"va-chip-list\">" + (chips || emptyState("No VAs added yet.")) + "</div>" +
-      "</div></div>" +
-      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Page Access</div></div>" +
-      "<div class=\"card-body\">" +
-      "<div class=\"checklist-note\">Only you (superadmin) can manage the team and this list. Team page management always stays superadmin-only — check EOD Reports for anyone who should see their own end-of-day reports.</div>" +
-      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (accessRows || emptyState("No VAs added yet.")) + "</div>" +
       "</div></div>";
   }
 
@@ -2260,12 +2238,6 @@ function appMain() {
       case "select-edit-issue-type":
         ui.editingIssueType = t.value;
         render(); break;
-      case "toggle-va-eod-access":
-        (function () {
-          var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (va) va.eodAccess = !!t.checked;
-          persist();
-        })(); break;
       case "toggle-note-checkbox":
         (function () {
           var id = t.getAttribute("data-id");
