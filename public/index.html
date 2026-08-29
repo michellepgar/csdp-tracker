@@ -882,6 +882,21 @@ function appMain() {
     }
     return true;
   }
+  /* A couple of the auto-added official Brockton names were longer/more
+     formal than the superadmin wanted them displayed. One-time rename by
+     exact match, guarded so it never fights a later manual rename. */
+  var SCHOOL_RENAMES = {
+    "Manthala George Jr. Global Studies School": "George Global Studies School",
+    "PROMISE College and Career Academy": "Promise College and Career Academy"
+  };
+  function migrateSchoolRenames(parsed) {
+    if (parsed._migratedSchoolRenames) return false;
+    parsed._migratedSchoolRenames = true;
+    (parsed.schools || []).forEach(function (s) {
+      if (SCHOOL_RENAMES.hasOwnProperty(s.name)) s.name = SCHOOL_RENAMES[s.name];
+    });
+    return true;
+  }
   /* Normalizes a school name to Title Case when a new one is added by
      hand, so casing stays consistent regardless of how it was typed.
      Short all-caps/alphanumeric tokens (like "K-8") are left as-is rather
@@ -1139,6 +1154,7 @@ function appMain() {
       migrateRecordTimestamps(fresh);
       migrateBrocktonSchools(fresh);
       migrateDavisSchool(fresh);
+      migrateSchoolRenames(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1197,13 +1213,14 @@ function appMain() {
       var justMigratedTimestamps = migrateRecordTimestamps(state);
       var justMigratedSchools = migrateBrocktonSchools(state);
       var justMigratedDavis = migrateDavisSchool(state);
+      var justMigratedRenames = migrateSchoolRenames(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1227,7 +1244,8 @@ function appMain() {
       editingNoteId: null,
       taskSort: { field: "date", dir: "desc" },
       emailSort: { field: "date", dir: "desc" },
-      issuesSort: { field: "date", dir: "desc" }
+      issuesSort: { field: "date", dir: "desc" },
+      schoolSort: "alpha"
     };
     render();
     startPollingForUpdates();
@@ -1346,7 +1364,19 @@ function appMain() {
   /* ============ rendering ============ */
   function render() {
     var app = document.getElementById("app");
+    /* Every render rebuilds the sidebar from scratch, which would reset
+       its scroll position on every click — most noticeable when picking a
+       school near the bottom of a long, scrolled list. Snapshot and
+       restore both scrollable spots around the rebuild. */
+    var oldSchoolList = document.querySelector(".school-list");
+    var oldSidebar = document.querySelector(".sidebar");
+    var schoolListScroll = oldSchoolList ? oldSchoolList.scrollTop : 0;
+    var sidebarScroll = oldSidebar ? oldSidebar.scrollTop : 0;
     app.innerHTML = shellHtml();
+    var newSchoolList = document.querySelector(".school-list");
+    var newSidebar = document.querySelector(".sidebar");
+    if (newSchoolList) newSchoolList.scrollTop = schoolListScroll;
+    if (newSidebar) newSidebar.scrollTop = sidebarScroll;
   }
 
   function shellHtml() {
@@ -1381,14 +1411,21 @@ function appMain() {
 
   function sidebarHtml() {
     var q = ui.search.trim().toLowerCase();
-    var schools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var schoolSort = ui.schoolSort || "alpha";
+    var schools = state.schools.slice().sort(function (a, b) {
+      if (schoolSort === "color") {
+        var vaA = (state.schoolData[a.id] || {}).vaAssigned || "";
+        var vaB = (state.schoolData[b.id] || {}).vaAssigned || "";
+        return vaA.localeCompare(vaB) || a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name);
+    });
     if (q) schools = schools.filter(function (s) { return s.name.toLowerCase().indexOf(q) !== -1; });
 
     var schoolRows = schools.map(function (s) {
       var active = ui.view.type === "school" && ui.view.id === s.id;
-      var n = schoolAttnCount(s.id);
       return "<button class=\"nav-item" + (active ? " active" : "") + "\" data-action=\"nav-school\" data-id=\"" + s.id + "\">" +
-        "<span class=\"name\"" + schoolNameColorStyle(s.id) + ">" + esc(s.name) + "</span>" + (n > 0 ? "<span class=\"count-chip\">" + n + "</span>" : "") + "</button>";
+        "<span class=\"name\"" + schoolNameColorStyle(s.id) + ">" + esc(s.name) + "</span></button>";
     }).join("");
 
     return (
@@ -1399,6 +1436,10 @@ function appMain() {
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Schools (" + state.schools.length + ")</div>" +
       "<input class=\"search-input\" placeholder=\"Search schools…\" value=\"" + esc(ui.search) + "\" data-role=\"school-search\">" +
+      "<select class=\"text-input\" style=\"margin-top:6px; font-size:0.8rem;\" data-action-change=\"set-school-sort\">" +
+      "<option value=\"alpha\"" + (schoolSort === "alpha" ? " selected" : "") + ">Sort: A → Z</option>" +
+      "<option value=\"color\"" + (schoolSort === "color" ? " selected" : "") + ">Sort: By VA color</option>" +
+      "</select>" +
       "<div class=\"school-list nav-list\">" + (schoolRows || "<div class=\"empty-state\" style=\"padding:10px 4px;\">No schools match.</div>") + "</div>" +
       "<button class=\"add-inline-btn\" data-action=\"toggle-add-school\">+ Add school</button>" +
       (ui.addSchoolOpen ? "<form class=\"mini-form\" data-action=\"add-school\">" +
@@ -1449,14 +1490,15 @@ function appMain() {
   }
 
   /* ---------- Home ---------- */
-  function taskProgressBySchool() {
+  function checklistProgressBySchool() {
+    var tmpl = state.checklistTemplate || [];
     return state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
-      var sd = state.schoolData[s.id] || { tasks: [] };
-      var total = 0, done = 0;
-      (sd.tasks || []).forEach(function (t) {
-        total++;
-        if (STATUS_TIER[t.status] === "green") done++;
+      var done = 0;
+      tmpl.forEach(function (item) {
+        var p = state.checklistProgress[s.id + ":" + item.id];
+        if (p && p.status === "Done") done++;
       });
+      var total = tmpl.length;
       return { school: s, total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
     });
   }
@@ -1474,17 +1516,6 @@ function appMain() {
       statTile(completedSchools.length, "Completed for the year", true) +
       "</div>";
 
-    var schoolProgress = taskProgressBySchool();
-    var progressRows = schoolProgress.map(function (p) {
-      return "<div class=\"school-progress-row\">" +
-        "<span class=\"school-progress-name\">" + esc(p.school.name) + "</span>" +
-        "<div class=\"progress-bar-track\"><div class=\"progress-bar-fill\" style=\"width:" + p.pct + "%;\"></div></div>" +
-        "<span class=\"school-progress-pct\">" + p.pct + "%</span>" +
-        "</div>";
-    }).join("");
-    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Task Progress by School</div></div>" +
-      "<div class=\"card-body\">" + (progressRows || emptyState("No schools yet.")) + "</div></div>";
-
     var issuesTotal = issuesAttnCount();
     html += "<div class=\"alerts-row\">" +
       "<div class=\"card card-compact" + (emailAttn > 0 ? " alerts-card" : "") + "\"><div class=\"card-head\"><div class=\"card-title\">Emails Needing Attention</div></div>" +
@@ -1492,6 +1523,17 @@ function appMain() {
       "<div class=\"card card-compact clickable-card" + (issuesTotal > 0 ? " alerts-card" : "") + "\" data-action=\"nav-view\" data-view=\"issues\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns</div></div>" +
       "<div class=\"card-body\"><div class=\"stat-num mono\">" + issuesTotal + "</div><div class=\"stat-label\">still open</div></div></div>" +
       "</div>";
+
+    var schoolProgress = checklistProgressBySchool();
+    var progressRows = schoolProgress.map(function (p) {
+      return "<div class=\"school-progress-row\">" +
+        "<span class=\"school-progress-name\">" + esc(p.school.name) + "</span>" +
+        "<div class=\"progress-bar-track\"><div class=\"progress-bar-fill\" style=\"width:" + p.pct + "%;\"></div></div>" +
+        "<span class=\"school-progress-pct\">" + p.pct + "%</span>" +
+        "</div>";
+    }).join("");
+    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Checklist Progress by School</div></div>" +
+      "<div class=\"card-body\">" + (progressRows || emptyState("No schools yet.")) + "</div></div>";
 
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
@@ -2577,6 +2619,9 @@ function appMain() {
         })(); break;
       case "filter-issues":
         ui.issueFilters[t.getAttribute("data-field")] = t.value;
+        render(); break;
+      case "set-school-sort":
+        ui.schoolSort = t.value;
         render(); break;
       case "set-task-sort":
         ui.taskSort = parseSortValue(t.value);
