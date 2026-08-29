@@ -214,6 +214,9 @@
   .btn:hover { filter: brightness(1.06); }
   .btn.ghost { background: var(--surface-2); color: var(--ink); }
   .btn.small { padding: 5px 10px; font-size: 0.78rem; }
+  .btn.danger { background: var(--danger); color: #fff; }
+  .danger-zone { border-color: var(--danger); }
+  .danger-zone .card-title { color: var(--danger); }
 
   .row-list { display: flex; flex-direction: column; }
   .row-item { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
@@ -2173,6 +2176,15 @@ function appMain() {
       "<div class=\"card-body\">" +
       "<div class=\"checklist-note\">Change who's responsible for a school here whenever assignments shift — this is the one place it's set.</div>" +
       "<div class=\"row-list\" style=\"margin-top:10px;\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card danger-zone\"><div class=\"card-head\"><div class=\"card-title\">Start New School Year</div></div>" +
+      "<div class=\"card-body\">" +
+      "<p style=\"margin:0 0 10px;\">Clears every school's Tasks list — file names, statuses, Counts, and VA signatures — so each school starts the new year with an empty Tasks section. " +
+      "Schools themselves, VA assignments, the Yearly Checklist, Email Tracker, Notes, and Issues &amp; Concerns are <strong>not</strong> touched. This cannot be undone.</p>" +
+      "<form class=\"add-row-form\" data-action=\"reset-all-tasks\">" +
+      "<input class=\"text-input\" name=\"confirm\" placeholder=\"Type RESET to confirm\" autocomplete=\"off\" style=\"max-width:220px;\">" +
+      "<button class=\"btn danger\" type=\"submit\">Reset all tasks</button>" +
+      "</form>" +
       "</div></div>";
   }
 
@@ -2980,6 +2992,20 @@ function appMain() {
       case "add-va":
         (function () {
           addVaIfNew((fd.get("name") || "").toString());
+          persist();
+        })(); break;
+      case "reset-all-tasks":
+        (function () {
+          if (!isSuperAdmin()) return;
+          var confirmText = (fd.get("confirm") || "").toString();
+          if (confirmText !== "RESET") {
+            showToast("Type RESET exactly (all caps) to confirm.");
+            return;
+          }
+          Object.keys(state.schoolData).forEach(function (schoolId) {
+            state.schoolData[schoolId].tasks = [];
+          });
+          showToast("All schools' Tasks lists have been reset for the new school year.");
           persist();
         })(); break;
       case "save-template":
