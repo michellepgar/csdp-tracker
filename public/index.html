@@ -370,6 +370,17 @@
     display: inline-flex; align-items: center; justify-content: center;
   }
   .add-va-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .issue-fields-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .issue-fields-container { display: flex; flex-wrap: wrap; gap: 8px; }
+  .issue-field-row { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border-radius: var(--radius); padding: 4px 8px; }
+  .issue-field-row .field-mini-label { white-space: nowrap; }
+  .issue-field-row .text-input { min-width: 120px; }
+  .issue-fields-add-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .add-field-btn {
+    padding: 4px 10px; border-radius: 999px; border: 1px dashed var(--border-strong);
+    background: none; color: var(--ink-soft); font-size: 0.76rem; cursor: pointer;
+  }
+  .add-field-btn:hover { border-color: var(--accent); color: var(--accent); }
   .va-add-select { max-width: 150px; }
   .field-mini-label { font-size: 0.7rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 
@@ -620,6 +631,40 @@ function appMain() {
         break;
       }
       node = node.parentNode;
+    }
+  };
+  /* Issue "+Field" buttons work the same way as the note toolbar — plain
+     DOM insertion instead of a full render(), so nothing else typed into
+     the Add/Edit issue form gets wiped out when a field is toggled on or
+     off. issueFieldRowHtml/ISSUE_FIELD_POOL_BY_KEY are defined further
+     down in this same script — fine to reference here since function
+     declarations are hoisted and these only ever run from a later click. */
+  function csdpSyncIssueEnabledFields(wrap) {
+    var keys = Array.prototype.map.call(wrap.querySelectorAll(".issue-field-row"), function (r) {
+      return r.getAttribute("data-field-key");
+    });
+    var hidden = wrap.querySelector("input[name='enabledFields']");
+    if (hidden) hidden.value = keys.join(",");
+  }
+  window.csdpAddIssueField = function (btn) {
+    var key = btn.getAttribute("data-key");
+    var wrap = btn.closest(".issue-fields-wrap");
+    if (!wrap) return;
+    var container = wrap.querySelector(".issue-fields-container");
+    container.insertAdjacentHTML("beforeend", issueFieldRowHtml(key, ""));
+    btn.style.display = "none";
+    csdpSyncIssueEnabledFields(wrap);
+  };
+  window.csdpRemoveIssueField = function (btn) {
+    var row = btn.closest(".issue-field-row");
+    if (!row) return;
+    var key = row.getAttribute("data-field-key");
+    var wrap = btn.closest(".issue-fields-wrap");
+    row.remove();
+    if (wrap) {
+      var addBtn = wrap.querySelector(".add-field-btn[data-key='" + key + "']");
+      if (addBtn) addBtn.style.display = "";
+      csdpSyncIssueEnabledFields(wrap);
     }
   };
   /* A checkbox's "checked" DOM attribute only reflects its *default* state —
@@ -1940,48 +1985,75 @@ function appMain() {
   }
 
   /* ---------- Issues & Concerns ---------- */
-  /* Each issue type carries its own field set beyond the shared School /
-     Issue / Reported by / Status fields: Record Update needs what's being
-     corrected, Record Needs Rechecking needs the file/page it lives on.
-     `v` supplies current values (empty object for a blank Add form). */
-  function issueExtraFieldsHtml(fieldSet, v) {
-    v = v || {};
-    if (fieldSet === "record_update") {
-      return "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-        "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === v.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
-        "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(v.studentName) + "\">" +
-        "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(v.dob) + "\">" +
-        "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(v.insuranceNumber) + "\">" +
-        "</div>" +
-        "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(v.correctInfo) + "\">" +
-        "</div>";
+  /* No issue type forces any field anymore — every entry starts blank and
+     whoever's filling it in clicks "+School", "+Student Name", etc. to add
+     only what actually applies. This pool is shared across every type. */
+  var ISSUE_FIELD_POOL = [
+    { key: "schoolId", label: "School" },
+    { key: "studentName", label: "Student Name" },
+    { key: "dob", label: "Date of Birth" },
+    { key: "insuranceNumber", label: "Insurance #" },
+    { key: "schoolYear", label: "School Year" },
+    { key: "fileName", label: "File Name" },
+    { key: "pageNumber", label: "Page #" },
+    { key: "category", label: "Correcting" },
+    { key: "correctInfo", label: "Correct Info" }
+  ];
+  var ISSUE_FIELD_POOL_BY_KEY = {};
+  ISSUE_FIELD_POOL.forEach(function (f) { ISSUE_FIELD_POOL_BY_KEY[f.key] = f; });
+  function issueFieldInputHtml(key, value) {
+    value = value || "";
+    if (key === "schoolId") {
+      var opts = "<option value=\"\">School…</option>" + state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
+        return "<option value=\"" + s.id + "\"" + (s.id === value ? " selected" : "") + ">" + esc(s.name) + "</option>";
+      }).join("");
+      return "<select class=\"text-input\" name=\"schoolId\">" + opts + "</select>";
     }
-    if (fieldSet === "recheck") {
-      return "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(v.studentName) + "\">" +
-        "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\" value=\"" + esc(v.schoolYear) + "\">" +
-        "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(v.dob) + "\">" +
-        "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(v.insuranceNumber) + "\">" +
-        "</div>" +
-        "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(v.fileName) + "\">" +
-        "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(v.pageNumber) + "\">" +
-        "</div>";
+    if (key === "dob") {
+      return "<input class=\"text-input\" type=\"date\" name=\"dob\" value=\"" + esc(value) + "\">";
     }
-    return "";
+    if (key === "category") {
+      var catOpts = CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === value ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("");
+      return "<select class=\"text-input\" name=\"category\">" + catOpts + "</select>";
+    }
+    if (key === "fileName") {
+      return "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(value) + "\">";
+    }
+    return "<input class=\"text-input\" name=\"" + key + "\" placeholder=\"" + esc(ISSUE_FIELD_POOL_BY_KEY[key].label) + "\" value=\"" + esc(value) + "\">";
   }
-  function issueDescriptionLabel(fieldSet) {
-    return fieldSet === "recheck" ? "What needs to be rechecked?" : "What's the issue?";
+  function issueFieldRowHtml(key, value) {
+    var f = ISSUE_FIELD_POOL_BY_KEY[key];
+    if (!f) return "";
+    return "<span class=\"issue-field-row\" data-field-key=\"" + key + "\">" +
+      "<span class=\"field-mini-label\">" + esc(f.label) + "</span>" + issueFieldInputHtml(key, value) +
+      "<button type=\"button\" class=\"link-btn\" onmousedown=\"event.preventDefault();\" onclick=\"csdpRemoveIssueField(this);\" title=\"Remove " + esc(f.label) + "\">×</button>" +
+      "</span>";
+  }
+  /* Renders the whole "pick your own fields" block: already-added fields,
+     a row of +Field buttons for whatever's left, and a hidden input that
+     always mirrors which keys are currently present — read at submit
+     time. Adding/removing a field is done via plain DOM manipulation
+     (see csdpAddIssueField/csdpRemoveIssueField below), not a re-render,
+     so nothing else being typed in the form gets disturbed. */
+  function issueFieldsBlockHtml(enabledKeys, values) {
+    enabledKeys = enabledKeys || [];
+    values = values || {};
+    var rows = enabledKeys.map(function (key) { return issueFieldRowHtml(key, values[key]); }).join("");
+    var addButtons = ISSUE_FIELD_POOL.map(function (f) {
+      var used = enabledKeys.indexOf(f.key) !== -1;
+      return "<button type=\"button\" class=\"add-field-btn\" data-key=\"" + f.key + "\"" + (used ? " style=\"display:none;\"" : "") +
+        " onmousedown=\"event.preventDefault();\" onclick=\"csdpAddIssueField(this);\">+" + esc(f.label) + "</button>";
+    }).join("");
+    return "<div class=\"issue-fields-wrap\">" +
+      "<div class=\"issue-fields-container\">" + rows + "</div>" +
+      "<div class=\"issue-fields-add-row\">" + addButtons + "</div>" +
+      "<input type=\"hidden\" name=\"enabledFields\" value=\"" + esc(enabledKeys.join(",")) + "\">" +
+      "</div>";
   }
   function issueEditFormHtml(it) {
-    var schoolOptsEdit = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (s) { return "<option value=\"" + s.id + "\"" + (s.id === it.schoolId ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
     var vaOptsEdit = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === it.reportedBy ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var editTypeId = ui.editingIssueType || it.type;
-    var editType = issueTypeById(editTypeId);
-    var editFieldSet = editType && editType.fieldSet;
     var typeOptsEdit = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === editTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
@@ -1989,18 +2061,55 @@ function appMain() {
        anything filled in when it was first created. */
     var remarksHtml = "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>";
     return "<div class=\"row-item\" style=\"flex-direction:column; align-items:stretch;\">" +
-      "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\">" +
-      "<select class=\"text-input\" name=\"schoolId\" required>" + schoolOptsEdit + "</select>" +
-      "<select class=\"text-input\" name=\"type\" data-action-change=\"select-edit-issue-type\">" + typeOptsEdit + "</select>" +
-      "<input class=\"text-input\" name=\"description\" placeholder=\"" + esc(issueDescriptionLabel(editFieldSet)) + "\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
+      "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\" style=\"flex-wrap:wrap;\">" +
+      "<span class=\"add-row-form\" style=\"padding:0; margin:0;\">" +
+      "<select class=\"text-input\" name=\"type\">" + typeOptsEdit + "</select>" +
+      "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
       "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
-      issueExtraFieldsHtml(editFieldSet, it) +
+      "</span>" +
+      "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml(it.enabledFields || [], it) + "</span>" +
       remarksHtml +
       "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
       "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-issue\">Cancel</button></div>" +
       "</form></div>";
   }
 
+  /* One table per issue type, columns = every pool field (blank where an
+     entry didn't use it) plus Issue/Remarks/Reported by/Status. */
+  function issueTypeSectionHtml(title, typeList, statusOptions) {
+    var tableCols = 1 + ISSUE_FIELD_POOL.length + 3 + 1;
+    var headerCells = "<th>Issue / concern</th>" +
+      ISSUE_FIELD_POOL.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") +
+      "<th>Remarks</th><th>Reported by</th><th>Status</th><th></th>";
+    var rowsHtml = typeList.map(function (it) {
+      if (ui.editingIssueId === it.id) {
+        return "<tr><td colspan=\"" + tableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
+      }
+      var enabled = it.enabledFields || [];
+      var cells = ISSUE_FIELD_POOL.map(function (f) {
+        if (enabled.indexOf(f.key) === -1) return "<td></td>";
+        if (f.key === "schoolId") {
+          var sch = schoolById(it.schoolId);
+          return "<td>" + esc(sch ? sch.name : "") + "</td>";
+        }
+        return "<td class=\"wrap\">" + esc(it[f.key] || "") + "</td>";
+      }).join("");
+      return "<tr>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        cells +
+        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
+        "<td>" + esc(it.reportedBy) + "</td>" +
+        "<td>" + statusControlOptions(statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(title) +
+      (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+      (rowsHtml || "<tr><td colspan=\"" + tableCols + "\">" + emptyState("No " + esc(title) + " entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+  }
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
@@ -2011,8 +2120,6 @@ function appMain() {
     });
     var schoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (s) { return "<option value=\"" + s.id + "\"" + (f.school === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
-    var addSchoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (s) { return "<option value=\"" + s.id + "\">" + esc(s.name) + "</option>"; }).join("");
     var vaOpts = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === getStoredIdentity() ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var typeFilterOpts = state.issueTypes.map(function (ty) {
@@ -2020,14 +2127,9 @@ function appMain() {
     }).join("");
 
     var newTypeId = ui.newIssueType && issueTypeById(ui.newIssueType) ? ui.newIssueType : (state.issueTypes[0] ? state.issueTypes[0].id : "");
-    var newType = issueTypeById(newTypeId);
-    var newFieldSet = newType && newType.fieldSet;
     var newTypeOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === newTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
-    /* No Remarks field here on purpose — it's meant to be filled in later,
-       from Edit, once there's something to report back. */
-    var extraFieldsHtml = issueExtraFieldsHtml(newFieldSet, {});
 
     var typeEditorHtml = "";
     if (ui.issueTypeEditorOpen) {
@@ -2048,104 +2150,29 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    var normalList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.fieldSet); }), ui.issuesSort, function (it) { return it.description; });
-    var recordList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "record_update"; }), ui.issuesSort, function (it) { return it.studentName; });
-    var recheckList = sortRecords(list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "recheck"; }), ui.issuesSort, function (it) { return it.studentName; });
-
-    var normalTableCols = 6;
-    var rows = normalList.map(function (it) {
-      if (ui.editingIssueId === it.id) {
-        return "<tr><td colspan=\"" + normalTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
-      }
-      var ty = issueTypeById(it.type);
-      return "<tr>" +
-        "<td>" + esc(ty ? ty.name : "Removed type") + "</td>" +
-        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
-        "<td>" + esc(it.reportedBy) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
-        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
-        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
-        "</tr>";
+    var knownTypeIds = state.issueTypes.map(function (ty) { return ty.id; });
+    var typeSections = state.issueTypes.map(function (ty) {
+      var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description; });
+      return issueTypeSectionHtml(ty.name, typeList, ty.statusOptions);
     }).join("");
-
-    var recordTableCols = 11;
-    var recordRows = recordList.map(function (it) {
-      if (ui.editingIssueId === it.id) {
-        return "<tr><td colspan=\"" + recordTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
-      }
-      var sch = schoolById(it.schoolId);
-      var ty = issueTypeById(it.type);
-      return "<tr>" +
-        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
-        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
-        "<td>" + esc(it.studentName) + "</td>" +
-        "<td>" + esc(it.dob) + "</td>" +
-        "<td>" + esc(it.insuranceNumber) + "</td>" +
-        "<td>" + esc(it.category) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.correctInfo) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
-        "<td>" + esc(it.reportedBy) + "</td>" +
-        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
-        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
-        "</tr>";
-    }).join("");
-    var recordTableHtml = "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Record Updates" +
-      (recordList.length ? " <span class=\"count-chip\">" + recordList.length + "</span>" : "") + "</div></div>" +
-      "<div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr>" +
-      "<th>Issue / concern</th><th>School</th><th>Student</th><th>DOB</th><th>Insurance #</th>" +
-      "<th>Correcting</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
-      "</tr></thead><tbody>" +
-      (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
-      "</tbody></table></div></div></div>";
-
-    var recheckTableCols = 12;
-    var recheckRows = recheckList.map(function (it) {
-      if (ui.editingIssueId === it.id) {
-        return "<tr><td colspan=\"" + recheckTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
-      }
-      var sch = schoolById(it.schoolId);
-      var ty = issueTypeById(it.type);
-      return "<tr>" +
-        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
-        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
-        "<td>" + esc(it.studentName) + "</td>" +
-        "<td>" + esc(it.dob) + "</td>" +
-        "<td>" + esc(it.schoolYear) + "</td>" +
-        "<td>" + esc(it.insuranceNumber) + "</td>" +
-        "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
-        "<td>" + esc(it.pageNumber) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
-        "<td>" + esc(it.reportedBy) + "</td>" +
-        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
-        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
-        "</tr>";
-    }).join("");
-    var recheckTableHtml = "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Record Needs Rechecking" +
-      (recheckList.length ? " <span class=\"count-chip\">" + recheckList.length + "</span>" : "") + "</div></div>" +
-      "<div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr>" +
-      "<th>Issue needs to recheck</th><th>School</th><th>Student</th><th>DOB</th><th>School year</th><th>Insurance #</th><th>File</th><th>Page</th>" +
-      "<th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
-      "</tr></thead><tbody>" +
-      (recheckRows || "<tr><td colspan=\"" + recheckTableCols + "\">" + emptyState("No records need rechecking right now.") + "</td></tr>") +
-      "</tbody></table></div></div></div>";
+    var orphanedList = sortRecords(list.filter(function (it) { return knownTypeIds.indexOf(it.type) === -1; }), ui.issuesSort, function (it) { return it.description; });
+    var orphanedHtml = orphanedList.length ? issueTypeSectionHtml("Other (removed type)", orphanedList, NEW_ISSUE_TYPE_STATUS_OPTIONS) : "";
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div></div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Add an issue</div>" +
         "<div class=\"card-actions\"><button class=\"link-btn\" data-action=\"toggle-issue-type-editor\">" + (ui.issueTypeEditorOpen ? "Close editor" : "Edit types") + "</button></div></div>" +
         "<div class=\"card-body\">" + typeEditorHtml +
-        "<form class=\"add-row-form\" data-action=\"add-issue\">" +
-        /* A plain issue (software issue, etc.) isn't tied to a school, so
-           it doesn't need one — only Record Update and Record Needs
-           Rechecking do. */
-        (newFieldSet ? "<select class=\"text-input\" name=\"schoolId\" required><option value=\"\" disabled selected>School…</option>" + addSchoolOpts + "</select>" : "") +
-        "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
-        "<input class=\"text-input\" name=\"description\" placeholder=\"" + esc(issueDescriptionLabel(newFieldSet)) + "\" required style=\"flex:2;\">" +
+        "<form class=\"add-row-form\" data-action=\"add-issue\" style=\"flex-wrap:wrap;\">" +
+        "<span class=\"add-row-form\" style=\"padding:0; margin:0;\">" +
+        "<select class=\"text-input\" name=\"type\">" + newTypeOpts + "</select>" +
+        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
         "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
-        extraFieldsHtml +
-        (!newFieldSet ? "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / notes (optional)\" style=\"margin-top:8px; min-height:56px; width:100%; box-sizing:border-box;\"></textarea>" : "") +
-        "<button class=\"btn\" type=\"submit\">Add</button></form>" +
+        "</span>" +
+        /* No fields pre-added — click a +Field button for whatever this
+           particular issue actually needs. Remarks stays edit-only, added
+           after saving once there's something to report back. */
+        "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>" +
+        "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet, so “Reported by” has nothing to pick from — add your team there first.</div>" : "") +
         "</div></div>" +
       "<div class=\"filters-row\">" +
@@ -2154,14 +2181,7 @@ function appMain() {
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
       sortControlHtml(ui.issuesSort, "set-issues-sort") +
       "</div>" +
-      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr>" +
-      "<th>Type</th><th>Issue / concern</th><th>Reported by</th><th>Remarks</th><th>Status</th><th></th>" +
-      "</tr></thead><tbody>" +
-      (rows || "<tr><td colspan=\"" + normalTableCols + "\">" + emptyState("No issues match these filters.") + "</td></tr>") +
-      "</tbody></table></div></div></div>" +
-      recordTableHtml +
-      recheckTableHtml;
+      typeSections + orphanedHtml;
   }
 
   /* ---------- Email Templates ---------- */
@@ -3003,30 +3023,20 @@ function appMain() {
           var typeId = (fd.get("type") || "").toString();
           var typeObj = issueTypeById(typeId);
           var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
-          var fieldSet = typeObj && typeObj.fieldSet;
+          var enabledFields = (fd.get("enabledFields") || "").toString().split(",").filter(Boolean);
           var issue = {
-            id: uid("issue"), schoolId: (fd.get("schoolId") || "").toString(),
+            id: uid("issue"),
             type: typeId,
             description: (fd.get("description") || "").toString().trim(),
             reportedBy: (fd.get("reportedBy") || "").toString(),
             status: statusOpts[0] || "Open",
-            remarks: !fieldSet ? (fd.get("remarks") || "").toString().trim() : "",
+            remarks: "",
+            enabledFields: enabledFields,
             createdAt: new Date().toISOString()
           };
-          if (fieldSet === "record_update") {
-            issue.studentName = (fd.get("studentName") || "").toString().trim();
-            issue.dob = (fd.get("dob") || "").toString().trim();
-            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
-            issue.category = (fd.get("category") || "").toString();
-            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
-          } else if (fieldSet === "recheck") {
-            issue.studentName = (fd.get("studentName") || "").toString().trim();
-            issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
-            issue.dob = (fd.get("dob") || "").toString().trim();
-            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
-            issue.fileName = (fd.get("fileName") || "").toString().trim();
-            issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
-          }
+          enabledFields.forEach(function (key) {
+            if (ISSUE_FIELD_POOL_BY_KEY[key]) issue[key] = (fd.get(key) || "").toString().trim();
+          });
           state.issues.push(issue);
           ui.newIssueType = null;
           persist();
@@ -3036,32 +3046,16 @@ function appMain() {
           var id = form.getAttribute("data-id");
           var issue = state.issues.find(function (x) { return x.id === id; });
           if (!issue) return;
-          var typeId = (fd.get("type") || "").toString();
-          var typeObj = issueTypeById(typeId);
-          var fieldSet = typeObj && typeObj.fieldSet;
-          issue.schoolId = (fd.get("schoolId") || "").toString();
-          issue.type = typeId;
+          var enabledFields = (fd.get("enabledFields") || "").toString().split(",").filter(Boolean);
+          issue.type = (fd.get("type") || "").toString();
           issue.description = (fd.get("description") || "").toString().trim();
           issue.reportedBy = (fd.get("reportedBy") || "").toString();
           issue.remarks = (fd.get("remarks") || "").toString().trim();
-          delete issue.studentName; delete issue.schoolYear; delete issue.grade;
-          delete issue.dob; delete issue.insuranceNumber;
-          delete issue.fileName; delete issue.pageNumber;
-          delete issue.category; delete issue.correctInfo;
-          if (fieldSet === "record_update") {
-            issue.studentName = (fd.get("studentName") || "").toString().trim();
-            issue.dob = (fd.get("dob") || "").toString().trim();
-            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
-            issue.category = (fd.get("category") || "").toString();
-            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
-          } else if (fieldSet === "recheck") {
-            issue.studentName = (fd.get("studentName") || "").toString().trim();
-            issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
-            issue.dob = (fd.get("dob") || "").toString().trim();
-            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
-            issue.fileName = (fd.get("fileName") || "").toString().trim();
-            issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
-          }
+          ISSUE_FIELD_POOL.forEach(function (f) { delete issue[f.key]; });
+          enabledFields.forEach(function (key) {
+            if (ISSUE_FIELD_POOL_BY_KEY[key]) issue[key] = (fd.get(key) || "").toString().trim();
+          });
+          issue.enabledFields = enabledFields;
           ui.editingIssueId = null;
           ui.editingIssueType = null;
           persist();
