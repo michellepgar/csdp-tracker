@@ -298,7 +298,14 @@
   .stat-tile-sm .stat-num { font-size: 1.15rem; }
   .stat-tile-sm .stat-label { font-size: 0.7rem; }
   .card-compact .card-body { padding-top: 6px; padding-bottom: 6px; }
-  .alerts-card { border-color: var(--danger); background: var(--danger-soft); max-width: 360px; }
+  .alerts-card { border-color: var(--danger); background: var(--danger-soft); }
+  .urgent-pill { display: inline-block; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; align-self: flex-start; }
+  .clickable-card { cursor: pointer; }
+  .clickable-card:hover { filter: brightness(0.97); }
+  .alerts-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .alerts-row .card { flex: 1 1 200px; margin-bottom: 0; }
+  .eod-note-card .card-body { font-family: "IBM Plex Mono", monospace; }
+  .eod-note-line { font-size: 0.86rem; line-height: 1.6; color: var(--ink); }
   .alerts-card .card-title { color: var(--danger); }
   .alerts-card .nav-item .name { color: var(--danger); }
   .alerts-card .count-chip { background: var(--danger); color: #fff; }
@@ -342,7 +349,8 @@
 
   .table-scroll { overflow-x: auto; }
   .data-table { border-collapse: collapse; width: 100%; font-size: 0.84rem; }
-  .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
+  .data-table th, .data-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); text-align: left; white-space: nowrap; vertical-align: top; }
+  .data-table th:last-child, .data-table td:last-child { border-right: none; }
   .data-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
   .data-table td.wrap { white-space: normal; min-width: 160px; }
   .data-table tr:last-child td { border-bottom: none; }
@@ -1195,30 +1203,39 @@ function appMain() {
       "<div class=\"sidebar-label\">My Space</div>" +
       "<div class=\"nav-list\">" +
       navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }) +
+      (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
+      (isSuperAdmin() ? navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) : "") +
       "</div></div>" +
       "<div class=\"sidebar-divider\"></div>" +
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Team</div>" +
       "<div class=\"nav-list\">" +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
+      navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
-      (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
-      navItem("notes", "General Notes", 0, function (v) { return v.type === "notes"; }) +
+      navItem("notes", "General Notes/Announcements", 0, function (v) { return v.type === "notes"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
-      navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       "</div></div>"
     );
+  }
+
+  function contactsPageHtml() {
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-body\">" +
+      "<p style=\"margin:0;\">Contact details for each school will go here — coming soon.</p>" +
+      "</div></div>";
   }
 
   function pageHtml() {
     switch (ui.view.type) {
       case "school": return schoolPageHtml(ui.view.id);
       case "issues": return issuesPageHtml();
+      case "contacts": return contactsPageHtml();
       case "templates": return templatesPageHtml();
       case "team": return isSuperAdmin() ? teamPageHtml() : homePageHtml();
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
-      case "eod": return eodPageHtml();
+      case "eod": return isSuperAdmin() ? eodPageHtml() : homePageHtml();
       case "private-notes": return privateNotesPageHtml();
       default: return homePageHtml();
     }
@@ -1262,17 +1279,25 @@ function appMain() {
       "<div class=\"card-body\">" + (progressRows || emptyState("No schools yet.")) + "</div></div>";
 
     var issuesTotal = issuesAttnCount();
-    html += "<div class=\"card card-compact alerts-card\"><div class=\"card-head\"><div class=\"card-title\">Alerts</div></div>" +
-      "<div class=\"card-body\"><div class=\"nav-list\">" +
-      "<div class=\"nav-item\"><span class=\"name\">Emails needing attention</span>" + (emailAttn > 0 ? "<span class=\"count-chip\">" + emailAttn + "</span>" : "") + "</div>" +
-      "<button class=\"nav-item\" data-action=\"nav-view\" data-view=\"issues\"><span class=\"name\">Issues & concerns pending</span>" + (issuesTotal > 0 ? "<span class=\"count-chip\">" + issuesTotal + "</span>" : "") + "</button>" +
-      "</div></div></div>";
+    html += "<div class=\"alerts-row\">" +
+      "<div class=\"card card-compact" + (emailAttn > 0 ? " alerts-card" : "") + "\"><div class=\"card-head\"><div class=\"card-title\">Emails Needing Attention</div></div>" +
+      "<div class=\"card-body\"><div class=\"stat-num mono\">" + emailAttn + "</div><div class=\"stat-label\">needing attention</div></div></div>" +
+      "<div class=\"card card-compact clickable-card" + (issuesTotal > 0 ? " alerts-card" : "") + "\" data-action=\"nav-view\" data-view=\"issues\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns</div></div>" +
+      "<div class=\"card-body\"><div class=\"stat-num mono\">" + issuesTotal + "</div><div class=\"stat-label\">still open</div></div></div>" +
+      "</div>";
 
-    html += "<div class=\"card card-compact\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns</div></div>" +
-      "<div class=\"card-body\">" +
-      "<div class=\"stat-num mono\">" + issuesTotal + "</div>" +
-      "<div class=\"stat-label\">still open (pending / in progress)</div>" +
-      "</div></div>";
+    var urgentNotes = state.generalNotes.filter(function (n) { return n.urgency === "Urgent"; })
+      .slice().reverse();
+    if (urgentNotes.length) {
+      var urgentRows = urgentNotes.map(function (n) {
+        return "<button class=\"nav-item\" data-action=\"nav-view\" data-view=\"notes\">" +
+          "<span class=\"name\">" + esc((n.text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "(empty note)") + "</span>" +
+          "</button>";
+      }).join("");
+      html += "<div class=\"card card-compact alerts-card\"><div class=\"card-head\"><div class=\"card-title\">Urgent Announcements" +
+        " <span class=\"count-chip\">" + urgentNotes.length + "</span></div></div>" +
+        "<div class=\"card-body\"><div class=\"nav-list\">" + urgentRows + "</div></div></div>";
+    }
 
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
@@ -1783,7 +1808,7 @@ function appMain() {
   }
 
   /* ---------- Sticky notes (General Notes + Private Notes) ---------- */
-  function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, showAuthor, isEditing) {
+  function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, showAuthor, isEditing, initialUrgency) {
     var editorId = "note-editor-" + (id || "new");
     var swatches = NOTE_COLORS.map(function (c) {
       return "<label class=\"note-color-swatch\" style=\"background:" + c.hex + ";\" title=\"" + c.id + "\">" +
@@ -1809,6 +1834,11 @@ function appMain() {
       "</div>" +
       "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\">" + (initialHtml || "") + "</div>" +
       (showAuthor ? "<input class=\"text-input\" style=\"width:180px; margin-top:8px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" : "") +
+      (scope === "general" ? "<div style=\"margin-top:8px;\"><span class=\"field-mini-label\">Urgency</span> " +
+        "<select class=\"text-input\" style=\"display:inline-block; width:140px;\" name=\"urgency\">" +
+        "<option value=\"Normal\"" + ((initialUrgency || "Normal") === "Normal" ? " selected" : "") + ">Normal</option>" +
+        "<option value=\"Urgent\"" + (initialUrgency === "Urgent" ? " selected" : "") + ">Urgent</option>" +
+        "</select></div>" : "") +
       "<div style=\"margin-top:8px; display:flex; gap:8px;\">" +
       "<button class=\"btn\" type=\"submit\">" + (isEditing ? "Save" : "Add note") + "</button>" +
       (isEditing ? "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-note\">Cancel</button>" : "") +
@@ -1820,13 +1850,14 @@ function appMain() {
 
   function stickyNotesSectionHtml(scope, notes, addAction) {
     var showAuthorOnAdd = scope === "general";
-    var addFormHtml = noteEditorFormHtml(addAction, null, scope, "", DEFAULT_NOTE_COLOR, showAuthorOnAdd, false);
+    var addFormHtml = noteEditorFormHtml(addAction, null, scope, "", DEFAULT_NOTE_COLOR, showAuthorOnAdd, false, "Normal");
     var cards = notes.slice().reverse().map(function (n) {
       if (ui.editingNoteId === n.id) {
-        return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, false, true);
+        return noteEditorFormHtml("save-note-edit", n.id, scope, n.text, n.color, false, true, n.urgency);
       }
       var pendingDelete = isPending("note", n.id);
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
+        (scope === "general" && n.urgency === "Urgent" ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
         "<div class=\"sticky-note-text\">" + renderNoteCheckboxes(n.text, n.id, scope) + "</div>" +
         "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
         "<div class=\"sticky-note-actions\">" +
@@ -1842,7 +1873,7 @@ function appMain() {
 
   /* ---------- General notes ---------- */
   function generalNotesPageHtml() {
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes</div></div></div>" +
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">General Notes/Announcements</div></div></div>" +
       stickyNotesSectionHtml("general", state.generalNotes, "add-general-note");
   }
 
@@ -1860,17 +1891,21 @@ function appMain() {
   }
 
   /* ---------- EOD Reports ---------- */
+  /* Every line here uses the exact same font/size on purpose (no bold
+     title, no smaller meta text) — this view is meant to be copied
+     straight into the official EOD report as plain, uniform text. The
+     author isn't shown; each entry is treated as the VA's own personal
+     record, not something that needs attributing here. */
   function eodNoteEntryHtml(e) {
-    var taskLines = (e.tasks || []).map(function (t) { return "<div>" + esc(t) + "</div>"; }).join("");
+    var taskLines = (e.tasks || []).map(function (t) { return "<div class=\"eod-note-line\">" + esc(t) + "</div>"; }).join("");
     var line1 = "EOD " + esc(fmtEodDate(e.date)) + (e.totalHours ? " (TOTAL HOURS: " + esc(e.totalHours) + ")" : "");
     var line2 = (e.timeIn ? "IN- " + esc(fmtTime12(e.timeIn)) : "") + (e.breakStart ? " BREAK- " + esc(fmtTime12(e.breakStart)) : "");
     var line3 = (e.breakEnd ? "RESUME- " + esc(fmtTime12(e.breakEnd)) : "") + (e.timeOut ? " - OUT- " + esc(fmtTime12(e.timeOut)) : "");
-    return "<div class=\"card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
-      "<div class=\"row-title\" style=\"font-weight:600;\">" + line1 + "</div>" +
-      (line2.trim() ? "<div class=\"row-meta\">" + line2.trim() + "</div>" : "") +
-      (line3.trim() ? "<div class=\"row-meta\">" + line3.trim() + "</div>" : "") +
-      (taskLines ? "<div style=\"margin-top:8px;\">" + taskLines + "</div>" : "") +
-      "<div class=\"note-meta\" style=\"margin-top:8px;\">" + esc(e.author || "Unnamed") + " · " + fmtDateTime(e.createdAt) + "</div>" +
+    return "<div class=\"card eod-note-card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
+      "<div class=\"eod-note-line\">" + line1 + "</div>" +
+      (line2.trim() ? "<div class=\"eod-note-line\">" + line2.trim() + "</div>" : "") +
+      (line3.trim() ? "<div class=\"eod-note-line\">" + line3.trim() + "</div>" : "") +
+      taskLines +
       "</div></div>";
   }
   function eodTableHtml(list) {
@@ -2309,7 +2344,8 @@ function appMain() {
           var author = (fd.get("author") || "").toString().trim();
           addVaIfNew(author);
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
-          state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, createdAt: new Date().toISOString() });
+          var urgency = (fd.get("urgency") || "Normal").toString();
+          state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, urgency: urgency, createdAt: new Date().toISOString() });
           persist();
         })(); break;
       case "add-private-note":
@@ -2330,9 +2366,10 @@ function appMain() {
           syncNoteCheckboxAttrs(editorEl);
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
+          var urgency = (fd.get("urgency") || "Normal").toString();
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
           var note = arr.find(function (x) { return x.id === id; });
-          if (note) { note.text = html; note.color = color; }
+          if (note) { note.text = html; note.color = color; if (scope === "general") note.urgency = urgency; }
           ui.editingNoteId = null;
           persist();
         })(); break;
