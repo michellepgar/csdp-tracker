@@ -1808,7 +1808,10 @@ function appMain() {
       return "<div class=\"va-chip\">" + esc(v.name) +
         "<button class=\"icon-btn\" data-action=\"remove-va\" data-id=\"" + v.id + "\" title=\"Remove from list\">✕</button>" + "</div>";
     }).join("");
-    var accessRows = state.vas.map(function (v) {
+    /* The superadmin always has full access to everything regardless of
+       these toggles, so their own name is left off this list entirely —
+       a checkbox here would be meaningless (and confusing) for them. */
+    var accessRows = state.vas.filter(function (v) { return v.name !== SUPERADMIN_NAME; }).map(function (v) {
       return "<div class=\"row-item\"><div class=\"row-main\">" + esc(v.name) + "</div>" +
         "<label class=\"field-row\" style=\"gap:6px; cursor:pointer;\">" +
         "<input type=\"checkbox\" data-action-change=\"toggle-va-eod-access\" data-id=\"" + v.id + "\"" + (v.eodAccess ? " checked" : "") + "> EOD Reports" +
