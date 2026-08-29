@@ -548,6 +548,14 @@ function appMain() {
     }
     return n;
   }
+  function tasksAttnCount(schoolId) {
+    var sd = state.schoolData[schoolId] || { tasks: [] };
+    return countNotDone(sd.tasks || []);
+  }
+  function emailAttnCount(schoolId) {
+    var sd = state.schoolData[schoolId] || { emailTracker: [] };
+    return countNotDone(sd.emailTracker || []);
+  }
   function issuesAttnCount() {
     var n = 0;
     for (var i = 0; i < state.issues.length; i++) if (STATUS_TIER[state.issues[i].status] !== "done") n++;
@@ -685,18 +693,20 @@ function appMain() {
 
   /* ---------- Home ---------- */
   function homePageHtml() {
-    var totalAttn = 0;
+    var tasksAttn = 0;
+    var emailAttn = 0;
     var completedSchools = [];
     for (var i = 0; i < state.schools.length; i++) {
-      totalAttn += schoolAttnCount(state.schools[i].id);
+      tasksAttn += tasksAttnCount(state.schools[i].id);
+      emailAttn += emailAttnCount(state.schools[i].id);
       if (isSchoolYearComplete(state.schools[i].id)) completedSchools.push(state.schools[i]);
     }
     var html = "<div class=\"page-header\"><div><div class=\"page-title display\">Overview</div>" +
       "<div class=\"page-sub\">Pick a school on the left, or jump into a shared workspace page.</div></div></div>";
     html += "<div class=\"stat-grid\">" +
       statTile(state.schools.length, "Schools") +
-      statTile(state.vas.length, "VAs on the team") +
-      statTile(totalAttn, "Items needing attention") +
+      statTile(tasksAttn, "Tasks in progress") +
+      statTile(emailAttn, "Emails needing attention") +
       statTile(completedSchools.length, "Completed for the year") +
       "</div>";
     if (state.schools.length === 0) {
