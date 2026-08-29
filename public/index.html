@@ -917,6 +917,17 @@ function appMain() {
     });
     return true;
   }
+  /* "Superadmin" (grantable to others) was renamed to "Admin" — carries
+     forward anyone already toggled on under the old field name. */
+  function migrateVaAdminField(parsed) {
+    if (parsed._migratedVaAdminField) return false;
+    parsed._migratedVaAdminField = true;
+    (parsed.vas || []).forEach(function (v) {
+      if (v.superAdmin && !v.admin) v.admin = true;
+      delete v.superAdmin;
+    });
+    return true;
+  }
   /* Normalizes a school name to Title Case when a new one is added by
      hand, so casing stays consistent regardless of how it was typed.
      Short all-caps/alphanumeric tokens (like "K-8") are left as-is rather
@@ -968,19 +979,18 @@ function appMain() {
   function setStoredIdentity(name) {
     try { localStorage.setItem(IDENTITY_KEY, name); } catch (e) {}
   }
-  /* Team-page access is limited to the superadmin. This is a client-side
-     UI gate only (like Private Notes' author filter) — it hides the page
-     from everyone else, but doesn't lock the underlying shared data down
-     at the database level. */
-  /* Michelle is always superadmin, no matter what — a permanent safety net
-     so the team can never end up with nobody able to reach the Team page.
-     Beyond that, any VA can be promoted from the Team page itself. */
+  /* Team-page access is limited to Michelle (the one superadmin) and
+     anyone she's made an admin. This is a client-side UI gate only (like
+     Private Notes' author filter) — it hides the page from everyone else,
+     but doesn't lock the underlying shared data down at the database
+     level. Michelle's own status isn't a data field anyone can edit, so
+     no admin can ever remove or change it. */
   var SUPERADMIN_NAME = "Michelle";
   function isSuperAdmin() {
     var name = getStoredIdentity();
     if (name === SUPERADMIN_NAME) return true;
     var va = state.vas.find(function (v) { return v.name === name; });
-    return !!(va && va.superAdmin);
+    return !!(va && va.admin);
   }
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
@@ -1182,6 +1192,7 @@ function appMain() {
       migrateDavisSchool(fresh);
       migrateSchoolRenames(fresh);
       migrateVaColors(fresh);
+      migrateVaAdminField(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1242,13 +1253,14 @@ function appMain() {
       var justMigratedDavis = migrateDavisSchool(state);
       var justMigratedRenames = migrateSchoolRenames(state);
       var justMigratedVaColors = migrateVaColors(state);
+      var justMigratedVaAdminField = migrateVaAdminField(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -2174,10 +2186,10 @@ function appMain() {
         "<input type=\"color\" class=\"va-color-input\" value=\"" + esc(v.color || "#888888") + "\" data-action-change=\"set-va-color\" data-id=\"" + v.id + "\" title=\"Pick " + esc(v.name) + "'s color\"></div>";
     }).join("");
     var promotableVas = sortedVas.filter(function (v) { return v.name !== SUPERADMIN_NAME; });
-    var superAdminRows = promotableVas.map(function (v) {
+    var adminRows = promotableVas.map(function (v) {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"font-weight:600;\">" + esc(v.name) + "</div>" +
         "<label class=\"field-row\" style=\"gap:6px; cursor:pointer;\">" +
-        "<input type=\"checkbox\" data-action-change=\"toggle-va-superadmin\" data-id=\"" + v.id + "\"" + (v.superAdmin ? " checked" : "") + "> Superadmin" +
+        "<input type=\"checkbox\" data-action-change=\"toggle-va-admin\" data-id=\"" + v.id + "\"" + (v.admin ? " checked" : "") + "> Admin" +
         "</label></div>";
     }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
@@ -2191,10 +2203,9 @@ function appMain() {
       "<div class=\"checklist-note\">Pick a color for each VA — used for their signature on files and for their assigned schools' names. New VAs default to an auto-picked color until you set one here.</div>" +
       "<div class=\"row-list\" style=\"margin-top:10px;\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
       "</div></div>" +
-      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Superadmin Access</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Admin</div></div>" +
       "<div class=\"card-body\">" +
-      "<div class=\"checklist-note\">Michelle is always superadmin as a permanent safety net. Check anyone else here to give them the same full access — Team page, EOD Reports for everyone, and everything below.</div>" +
-      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (superAdminRows || emptyState("No other VAs yet.")) + "</div>" +
+      "<div class=\"row-list\">" + (adminRows || emptyState("No other VAs yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
       "<div class=\"card-body\">" +
@@ -2675,11 +2686,11 @@ function appMain() {
           if (va) va.color = t.value;
           persist();
         })(); break;
-      case "toggle-va-superadmin":
+      case "toggle-va-admin":
         (function () {
           if (!isSuperAdmin()) return;
           var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (va) va.superAdmin = !!t.checked;
+          if (va) va.admin = !!t.checked;
           persist();
         })(); break;
       case "toggle-task-status":
