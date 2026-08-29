@@ -1146,8 +1146,7 @@ function appMain() {
     return header +
       tasksCardHtml(schoolId, sd) +
       checklistCardHtml(schoolId) +
-      emailTrackerCardHtml(schoolId, sd) +
-      notesCardHtml("school", schoolId, sd.notes);
+      emailTrackerCardHtml(schoolId, sd);
   }
 
   function taskRowHtml(t, schoolId) {
