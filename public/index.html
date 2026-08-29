@@ -261,6 +261,9 @@
   .stack-btns button:last-child { border-radius: 0 0 4px 4px; }
 
   .filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .view-toggle { display: inline-flex; gap: 4px; margin-left: auto; }
+  .view-toggle button { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 0.8rem; cursor: pointer; color: var(--ink-soft); }
+  .view-toggle button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   .template-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .tmpl-item { border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
@@ -295,6 +298,14 @@
   .stat-tile-sm .stat-num { font-size: 1.15rem; }
   .stat-tile-sm .stat-label { font-size: 0.7rem; }
   .card-compact .card-body { padding-top: 6px; padding-bottom: 6px; }
+  .alerts-card { border-color: var(--danger); background: var(--danger-soft); max-width: 360px; }
+  .alerts-card .card-title { color: var(--danger); }
+  .alerts-card .nav-item .name { color: var(--danger); }
+  .alerts-card .count-chip { background: var(--danger); color: #fff; }
+  .school-progress-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  .school-progress-row .school-progress-name { flex: 0 0 160px; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .school-progress-row .progress-bar-track { flex: 1; }
+  .school-progress-row .school-progress-pct { flex: 0 0 40px; text-align: right; font-size: 0.8rem; color: var(--ink-soft); font-family: "IBM Plex Mono", monospace; }
   .progress-bar-track { background: var(--border); border-radius: 999px; height: 10px; overflow: hidden; }
   .progress-bar-fill { background: var(--accent); height: 100%; border-radius: 999px; transition: width 0.3s ease; }
   .progress-bar-label { font-size: 0.8rem; color: var(--ink-soft); margin-top: 8px; }
@@ -441,8 +452,8 @@ function appMain() {
      what's being corrected (category + correct info), shown in a table view. */
   var DEFAULT_ISSUE_TYPES = [
     { id: "software_issue", name: "Software issue", statusOptions: ["Open", "In Progress", "Resolved"] },
-    { id: "recheck", name: "Recheck", statusOptions: ["Pending", "Rechecked", "Needs Re-check"] },
-    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], extraFields: true }
+    { id: "recheck", name: "Record Needs Rechecking", statusOptions: ["Pending", "Rechecked", "Needs Re-check"], fieldSet: "recheck" },
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "In Progress", "Resolved"], fieldSet: "record_update" }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Open", "In Progress", "Resolved"];
 
@@ -714,6 +725,17 @@ function appMain() {
     var existingIds = parsed.issueTypes.map(function (t) { return t.id; });
     DEFAULT_ISSUE_TYPES.forEach(function (dt) {
       if (existingIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
+    });
+    /* "Record Update" and "Recheck" already existed under the old
+       `extraFields: true` flag before each type got its own distinct field
+       set — bring an already-saved copy of either up to the current shape. */
+    parsed.issueTypes.forEach(function (ty) {
+      if (ty.id === "record_update") { ty.fieldSet = "record_update"; delete ty.extraFields; }
+      if (ty.id === "recheck") {
+        if (ty.name === "Recheck") ty.name = "Record Needs Rechecking";
+        ty.fieldSet = "recheck";
+        delete ty.extraFields;
+      }
     });
   }
   /* Appends any of the standard checklist items that aren't already present
@@ -999,6 +1021,7 @@ function appMain() {
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "" },
       eodFilterAuthor: "",
+      eodViewMode: "notes",
       editingNoteId: null
     };
     render();
@@ -1021,15 +1044,14 @@ function appMain() {
     for (var i = 0; i < list.length; i++) if (STATUS_TIER[list[i].status] !== "green") n++;
     return n;
   }
+  /* The sidebar badge next to each school name shows only how many Yearly
+     Checklist items are still unchecked — not open tasks/emails/issues too
+     (those have their own counts on the school's own page). */
   function schoolAttnCount(schoolId) {
-    var sd = state.schoolData[schoolId] || { tasks: [], emailTracker: [] };
-    var n = countNotDone(sd.tasks || []) + countNotDone(sd.emailTracker || []);
+    var n = 0;
     for (var i = 0; i < state.checklistTemplate.length; i++) {
       var prog = state.checklistProgress[schoolId + ":" + state.checklistTemplate[i].id];
       if (!prog || prog.status !== "Done") n++;
-    }
-    for (var j = 0; j < state.issues.length; j++) {
-      if (state.issues[j].schoolId === schoolId && STATUS_TIER[state.issues[j].status] !== "green") n++;
     }
     return n;
   }
@@ -1203,16 +1225,16 @@ function appMain() {
   }
 
   /* ---------- Home ---------- */
-  function taskProgressStats() {
-    var total = 0, done = 0;
-    state.schools.forEach(function (s) {
+  function taskProgressBySchool() {
+    return state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).map(function (s) {
       var sd = state.schoolData[s.id] || { tasks: [] };
+      var total = 0, done = 0;
       (sd.tasks || []).forEach(function (t) {
         total++;
         if (STATUS_TIER[t.status] === "green") done++;
       });
+      return { school: s, total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
     });
-    return { total: total, done: done, pct: total ? Math.round((done / total) * 100) : 0 };
   }
   function homePageHtml() {
     var emailAttn = 0;
@@ -1228,29 +1250,29 @@ function appMain() {
       statTile(completedSchools.length, "Completed for the year", true) +
       "</div>";
 
-    var prog = taskProgressStats();
-    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Task Progress</div></div>" +
-      "<div class=\"card-body\">" +
-      "<div class=\"progress-bar-track\"><div class=\"progress-bar-fill\" style=\"width:" + prog.pct + "%;\"></div></div>" +
-      "<div class=\"progress-bar-label\">" + prog.pct + "% complete" + (prog.total ? " (" + prog.done + " of " + prog.total + " files done)" : " — no files added yet") + "</div>" +
-      "</div></div>";
+    var schoolProgress = taskProgressBySchool();
+    var progressRows = schoolProgress.map(function (p) {
+      return "<div class=\"school-progress-row\">" +
+        "<span class=\"school-progress-name\">" + esc(p.school.name) + "</span>" +
+        "<div class=\"progress-bar-track\"><div class=\"progress-bar-fill\" style=\"width:" + p.pct + "%;\"></div></div>" +
+        "<span class=\"school-progress-pct\">" + p.pct + "%</span>" +
+        "</div>";
+    }).join("");
+    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Task Progress by School</div></div>" +
+      "<div class=\"card-body\">" + (progressRows || emptyState("No schools yet.")) + "</div></div>";
 
     var issuesTotal = issuesAttnCount();
-    html += "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Alerts</div></div>" +
+    html += "<div class=\"card card-compact alerts-card\"><div class=\"card-head\"><div class=\"card-title\">Alerts</div></div>" +
       "<div class=\"card-body\"><div class=\"nav-list\">" +
       "<div class=\"nav-item\"><span class=\"name\">Emails needing attention</span>" + (emailAttn > 0 ? "<span class=\"count-chip\">" + emailAttn + "</span>" : "") + "</div>" +
       "<button class=\"nav-item\" data-action=\"nav-view\" data-view=\"issues\"><span class=\"name\">Issues & concerns pending</span>" + (issuesTotal > 0 ? "<span class=\"count-chip\">" + issuesTotal + "</span>" : "") + "</button>" +
       "</div></div></div>";
 
-    var breakdown = issuesStatusBreakdown();
-    var breakdownRows = breakdown.map(function (row) {
-      return "<button class=\"nav-item\" data-action=\"nav-issues-status\" data-status=\"" + esc(row.status) + "\">" +
-        "<span class=\"name\">" + esc(row.status) + "</span>" +
-        "<span class=\"count-chip\">" + row.count + "</span></button>";
-    }).join("");
-    html += "<div class=\"card card-compact\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns — Still Open" +
-      (issuesTotal > 0 ? " <span class=\"count-chip\">" + issuesTotal + "</span>" : "") + "</div></div>" +
-      "<div class=\"card-body\"><div class=\"nav-list\">" + (breakdownRows || emptyState("No open issues or concerns right now.")) + "</div></div></div>";
+    html += "<div class=\"card card-compact\"><div class=\"card-head\"><div class=\"card-title\">Issues & Concerns</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"stat-num mono\">" + issuesTotal + "</div>" +
+      "<div class=\"stat-label\">still open (pending / in progress)</div>" +
+      "</div></div>";
 
     if (state.schools.length === 0) {
       html += "<div class=\"card\"><div class=\"card-body\"><p style=\"margin-bottom:10px;\">No schools yet. Use <strong>+ Add school</strong> in the sidebar to create the first one — each school gets its own page for tasks, the yearly checklist, an email tracker, and notes.</p></div></div>";
@@ -1480,6 +1502,40 @@ function appMain() {
   }
 
   /* ---------- Issues & Concerns ---------- */
+  /* Each issue type carries its own field set beyond the shared School /
+     Issue / Reported by / Status fields: Record Update needs what's being
+     corrected, Record Needs Rechecking needs the file/page it lives on.
+     `v` supplies current values (empty object for a blank Add form). */
+  function issueExtraFieldsHtml(fieldSet, v) {
+    v = v || {};
+    if (fieldSet === "record_update") {
+      return "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+        "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === v.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
+        "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(v.studentName) + "\">" +
+        "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(v.dob) + "\">" +
+        "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(v.insuranceNumber) + "\">" +
+        "</div>" +
+        "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+        "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(v.correctInfo) + "\">" +
+        "</div>";
+    }
+    if (fieldSet === "recheck") {
+      return "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+        "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(v.studentName) + "\">" +
+        "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\" value=\"" + esc(v.schoolYear) + "\">" +
+        "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(v.dob) + "\">" +
+        "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(v.insuranceNumber) + "\">" +
+        "</div>" +
+        "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
+        "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(v.fileName) + "\">" +
+        "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(v.pageNumber) + "\">" +
+        "</div>";
+    }
+    return "";
+  }
+  function issueDescriptionLabel(fieldSet) {
+    return fieldSet === "recheck" ? "What needs to be rechecked?" : "What's the issue?";
+  }
   function issueEditFormHtml(it) {
     var schoolOptsEdit = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (s) { return "<option value=\"" + s.id + "\"" + (s.id === it.schoolId ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
@@ -1487,31 +1543,21 @@ function appMain() {
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (v.name === it.reportedBy ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var editTypeId = ui.editingIssueType || it.type;
     var editType = issueTypeById(editTypeId);
+    var editFieldSet = editType && editType.fieldSet;
     var typeOptsEdit = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === editTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
-    var extraFieldsEditHtml = editType && editType.extraFields ?
-      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" value=\"" + esc(it.studentName) + "\">" +
-      "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\" value=\"" + esc(it.schoolYear) + "\">" +
-      "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\" value=\"" + esc(it.grade) + "\">" +
-      "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\" value=\"" + esc(it.dob) + "\">" +
-      "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\" value=\"" + esc(it.insuranceNumber) + "\">" +
-      "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\" value=\"" + esc(it.fileName) + "\">" +
-      "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\" value=\"" + esc(it.pageNumber) + "\">" +
-      "</div>" +
-      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-      "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\"" + (c === it.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select>" +
-      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\" value=\"" + esc(it.correctInfo) + "\">" +
-      "</div>" +
-      "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>" : "";
+    /* Remarks can always be added here, on any type, whether or not it had
+       anything filled in when it was first created. */
+    var remarksHtml = "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks\" style=\"margin-top:8px; min-height:56px;\">" + esc(it.remarks) + "</textarea>";
     return "<div class=\"row-item\" style=\"flex-direction:column; align-items:stretch;\">" +
       "<form class=\"add-row-form\" data-action=\"save-issue-edit\" data-id=\"" + it.id + "\">" +
       "<select class=\"text-input\" name=\"schoolId\" required>" + schoolOptsEdit + "</select>" +
       "<select class=\"text-input\" name=\"type\" data-action-change=\"select-edit-issue-type\">" + typeOptsEdit + "</select>" +
-      "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
+      "<input class=\"text-input\" name=\"description\" placeholder=\"" + esc(issueDescriptionLabel(editFieldSet)) + "\" required style=\"flex:2;\" value=\"" + esc(it.description) + "\">" +
       "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOptsEdit + "</select>" +
-      extraFieldsEditHtml +
+      issueExtraFieldsHtml(editFieldSet, it) +
+      remarksHtml +
       "<div class=\"tmpl-actions\"><button class=\"btn\" type=\"submit\">Save</button>" +
       "<button class=\"btn ghost\" type=\"button\" data-action=\"cancel-edit-issue\">Cancel</button></div>" +
       "</form></div>";
@@ -1537,24 +1583,13 @@ function appMain() {
 
     var newTypeId = ui.newIssueType && issueTypeById(ui.newIssueType) ? ui.newIssueType : (state.issueTypes[0] ? state.issueTypes[0].id : "");
     var newType = issueTypeById(newTypeId);
+    var newFieldSet = newType && newType.fieldSet;
     var newTypeOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === newTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
-    var extraFieldsHtml = newType && newType.extraFields ?
-      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\">" +
-      "<input class=\"text-input\" name=\"schoolYear\" placeholder=\"School year, e.g. 2025–2026\">" +
-      "<input class=\"text-input\" name=\"grade\" placeholder=\"Grade\" style=\"max-width:100px;\">" +
-      "<span class=\"field-mini-label\">Date of birth</span><input class=\"text-input\" type=\"date\" name=\"dob\" style=\"max-width:160px;\">" +
-      "<input class=\"text-input\" name=\"insuranceNumber\" placeholder=\"Insurance number\">" +
-      "<input class=\"text-input mono\" name=\"fileName\" placeholder=\"File name\">" +
-      "<input class=\"text-input\" name=\"pageNumber\" placeholder=\"Page #\" style=\"max-width:100px;\">" +
-      "</div>" +
-      "<div class=\"add-row-form\" style=\"margin-top:8px;\">" +
-      "<span class=\"field-mini-label\">Correcting</span><select class=\"text-input\" name=\"category\">" + CORRECTION_CATEGORIES.map(function (c) { return "<option value=\"" + esc(c) + "\">" + esc(c) + "</option>"; }).join("") + "</select>" +
-      "<input class=\"text-input\" name=\"correctInfo\" placeholder=\"Correct info\" style=\"flex:2;\">" +
-      "</div>" +
-      "<textarea class=\"text-input\" name=\"remarks\" placeholder=\"Remarks / resolution plan\" style=\"margin-top:8px; min-height:56px;\"></textarea>" : "";
+    /* No Remarks field here on purpose — it's meant to be filled in later,
+       from Edit, once there's something to report back. */
+    var extraFieldsHtml = issueExtraFieldsHtml(newFieldSet, {});
 
     var typeEditorHtml = "";
     if (ui.issueTypeEditorOpen) {
@@ -1575,27 +1610,27 @@ function appMain() {
         "<button class=\"btn\" type=\"submit\">Add</button></form></div>";
     }
 
-    var normalList = list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.extraFields); });
-    var recordList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.extraFields; });
+    var normalList = list.filter(function (it) { var ty = issueTypeById(it.type); return !(ty && ty.fieldSet); });
+    var recordList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "record_update"; });
+    var recheckList = list.filter(function (it) { var ty = issueTypeById(it.type); return ty && ty.fieldSet === "recheck"; });
 
     var normalTableCols = 6;
     var rows = normalList.map(function (it) {
       if (ui.editingIssueId === it.id) {
         return "<tr><td colspan=\"" + normalTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
       }
-      var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       return "<tr>" +
-        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
         "<td>" + esc(ty ? ty.name : "Removed type") + "</td>" +
         "<td class=\"wrap\">" + esc(it.description) + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
         "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
         "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
     }).join("");
 
-    var recordTableCols = 15;
+    var recordTableCols = 11;
     var recordRows = recordList.map(function (it) {
       if (ui.editingIssueId === it.id) {
         return "<tr><td colspan=\"" + recordTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
@@ -1603,18 +1638,14 @@ function appMain() {
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       return "<tr>" +
+        "<td>" + esc(it.category) + "</td>" +
         "<td>" + esc(it.studentName) + "</td>" +
         "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
-        "<td>" + esc(it.schoolYear) + "</td>" +
-        "<td>" + esc(it.grade) + "</td>" +
         "<td>" + esc(it.dob) + "</td>" +
         "<td>" + esc(it.insuranceNumber) + "</td>" +
-        "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
-        "<td>" + esc(it.pageNumber) + "</td>" +
         "<td class=\"wrap\">" + esc(it.description) + "</td>" +
-        "<td>" + esc(it.category) + "</td>" +
         "<td class=\"wrap\">" + esc(it.correctInfo) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.remarks) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
         "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
         "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
@@ -1624,10 +1655,42 @@ function appMain() {
       (recordList.length ? " <span class=\"count-chip\">" + recordList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
-      "<th>Student</th><th>School</th><th>School year</th><th>Grade</th><th>DOB</th><th>Insurance #</th>" +
-      "<th>File</th><th>Page</th><th>Issue / concern</th><th>Correcting</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
+      "<th>Correcting</th><th>Student</th><th>School</th><th>DOB</th><th>Insurance #</th>" +
+      "<th>Issue / concern</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+
+    var recheckTableCols = 12;
+    var recheckRows = recheckList.map(function (it) {
+      if (ui.editingIssueId === it.id) {
+        return "<tr><td colspan=\"" + recheckTableCols + "\">" + issueEditFormHtml(it) + "</td></tr>";
+      }
+      var sch = schoolById(it.schoolId);
+      var ty = issueTypeById(it.type);
+      return "<tr>" +
+        "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
+        "<td>" + esc(it.schoolYear) + "</td>" +
+        "<td>" + esc(it.studentName) + "</td>" +
+        "<td>" + esc(it.dob) + "</td>" +
+        "<td>" + esc(it.insuranceNumber) + "</td>" +
+        "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
+        "<td>" + esc(it.pageNumber) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
+        "<td>" + esc(it.reportedBy) + "</td>" +
+        "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td><button class=\"link-btn\" data-action=\"edit-issue\" data-id=\"" + it.id + "\">Edit</button>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    var recheckTableHtml = "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Record Needs Rechecking" +
+      (recheckList.length ? " <span class=\"count-chip\">" + recheckList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" +
+      "<th>School</th><th>School year</th><th>Student</th><th>DOB</th><th>Insurance #</th><th>File</th><th>Page</th>" +
+      "<th>Issue needs to recheck</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
+      "</tr></thead><tbody>" +
+      (recheckRows || "<tr><td colspan=\"" + recheckTableCols + "\">" + emptyState("No records need rechecking right now.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Issues &amp; Concerns</div></div></div>" +
@@ -1637,7 +1700,7 @@ function appMain() {
         "<form class=\"add-row-form\" data-action=\"add-issue\">" +
         "<select class=\"text-input\" name=\"schoolId\" required><option value=\"\" disabled selected>School…</option>" + addSchoolOpts + "</select>" +
         "<select class=\"text-input\" name=\"type\" data-action-change=\"select-new-issue-type\">" + newTypeOpts + "</select>" +
-        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
+        "<input class=\"text-input\" name=\"description\" placeholder=\"" + esc(issueDescriptionLabel(newFieldSet)) + "\" required style=\"flex:2;\">" +
         "<select class=\"text-input\" name=\"reportedBy\"><option value=\"\">Reported by…</option>" + vaOpts + "</select>" +
         extraFieldsHtml +
         "<button class=\"btn\" type=\"submit\">Add</button></form>" +
@@ -1650,11 +1713,12 @@ function appMain() {
       "</div>" +
       "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
-      "<th>School</th><th>Type</th><th>Issue / concern</th><th>Reported by</th><th>Status</th><th></th>" +
+      "<th>Type</th><th>Issue / concern</th><th>Reported by</th><th>Remarks</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (rows || "<tr><td colspan=\"" + normalTableCols + "\">" + emptyState("No issues match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>" +
-      recordTableHtml;
+      recordTableHtml +
+      recheckTableHtml;
   }
 
   /* ---------- Email Templates ---------- */
@@ -1796,6 +1860,39 @@ function appMain() {
   }
 
   /* ---------- EOD Reports ---------- */
+  function eodNoteEntryHtml(e) {
+    var taskLines = (e.tasks || []).map(function (t) { return "<div>" + esc(t) + "</div>"; }).join("");
+    var line1 = "EOD " + esc(fmtEodDate(e.date)) + (e.totalHours ? " (TOTAL HOURS: " + esc(e.totalHours) + ")" : "");
+    var line2 = (e.timeIn ? "IN- " + esc(fmtTime12(e.timeIn)) : "") + (e.breakStart ? " BREAK- " + esc(fmtTime12(e.breakStart)) : "");
+    var line3 = (e.breakEnd ? "RESUME- " + esc(fmtTime12(e.breakEnd)) : "") + (e.timeOut ? " - OUT- " + esc(fmtTime12(e.timeOut)) : "");
+    return "<div class=\"card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
+      "<div class=\"row-title\" style=\"font-weight:600;\">" + line1 + "</div>" +
+      (line2.trim() ? "<div class=\"row-meta\">" + line2.trim() + "</div>" : "") +
+      (line3.trim() ? "<div class=\"row-meta\">" + line3.trim() + "</div>" : "") +
+      (taskLines ? "<div style=\"margin-top:8px;\">" + taskLines + "</div>" : "") +
+      "<div class=\"note-meta\" style=\"margin-top:8px;\">" + esc(e.author || "Unnamed") + " · " + fmtDateTime(e.createdAt) + "</div>" +
+      "</div></div>";
+  }
+  function eodTableHtml(list) {
+    var rows = list.map(function (e) {
+      return "<tr>" +
+        "<td>" + esc(fmtEodDate(e.date)) + "</td>" +
+        "<td>" + esc(e.author || "Unnamed") + "</td>" +
+        "<td>" + esc(fmtTime12(e.timeIn)) + "</td>" +
+        "<td>" + esc(fmtTime12(e.breakStart)) + "</td>" +
+        "<td>" + esc(fmtTime12(e.breakEnd)) + "</td>" +
+        "<td>" + esc(fmtTime12(e.timeOut)) + "</td>" +
+        "<td>" + esc(e.totalHours || "") + "</td>" +
+        "<td class=\"wrap\">" + (e.tasks || []).map(esc).join("; ") + "</td>" +
+        "</tr>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" +
+      "<th>Date</th><th>By</th><th>In</th><th>Break</th><th>Resume</th><th>Out</th><th>Total hours</th><th>Tasks</th>" +
+      "</tr></thead><tbody>" +
+      (rows || "<tr><td colspan=\"8\">" + emptyState("No EOD reports yet.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+  }
   function eodPageHtml() {
     var vaOptsFilter = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (ui.eodFilterAuthor === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
@@ -1803,19 +1900,8 @@ function appMain() {
     var list = state.eodReports.slice().reverse().filter(function (e) {
       return !ui.eodFilterAuthor || e.author === ui.eodFilterAuthor;
     });
-    var rows = list.map(function (e) {
-      var taskItems = (e.tasks || []).map(function (t) { return "<li>" + esc(t) + "</li>"; }).join("");
-      return "<div class=\"card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
-        "<div class=\"row-title\" style=\"font-weight:600;\">EOD " + esc(fmtEodDate(e.date)) +
-        (e.totalHours ? " (Total " + esc(e.totalHours) + " hours)" : "") + "</div>" +
-        (e.timeIn || e.timeOut ? "<div class=\"row-meta\">In: " + esc(fmtTime12(e.timeIn)) +
-          (e.breakStart ? " · Break: " + esc(fmtTime12(e.breakStart)) : "") +
-          (e.breakEnd ? " · Resume: " + esc(fmtTime12(e.breakEnd)) : "") +
-          (e.timeOut ? " - Out: " + esc(fmtTime12(e.timeOut)) : "") + "</div>" : "") +
-        (taskItems ? "<ul style=\"margin:8px 0 0 18px; padding:0;\">" + taskItems + "</ul>" : "") +
-        "<div class=\"note-meta\" style=\"margin-top:8px;\">" + esc(e.author || "Unnamed") + " · " + fmtDateTime(e.createdAt) + "</div>" +
-        "</div></div>";
-    }).join("");
+    var viewMode = ui.eodViewMode === "table" ? "table" : "notes";
+    var content = viewMode === "table" ? eodTableHtml(list) : (list.map(eodNoteEntryHtml).join("") || emptyState("No EOD reports yet."));
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">EOD Reports</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
@@ -1833,8 +1919,12 @@ function appMain() {
       "</form></div></div>" +
       "<div class=\"filters-row\">" +
       "<select class=\"text-input\" data-action-change=\"filter-eod\"><option value=\"\">All team members</option>" + vaOptsFilter + "</select>" +
+      "<div class=\"view-toggle\">" +
+      "<button class=\"" + (viewMode === "notes" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"notes\">Notes</button>" +
+      "<button class=\"" + (viewMode === "table" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"table\">Table</button>" +
       "</div>" +
-      (rows || emptyState("No EOD reports yet."));
+      "</div>" +
+      content;
   }
 
   /* ============ navigation ============ */
@@ -1909,6 +1999,7 @@ function appMain() {
           persist();
         })(); break;
       case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
+      case "set-eod-view": ui.eodViewMode = t.getAttribute("data-mode"); render(); break;
       case "edit-issue":
         ui.editingIssueId = t.getAttribute("data-id");
         ui.editingIssueType = null;
@@ -2273,24 +2364,28 @@ function appMain() {
           var typeId = (fd.get("type") || "").toString();
           var typeObj = issueTypeById(typeId);
           var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
+          var fieldSet = typeObj && typeObj.fieldSet;
           var issue = {
             id: uid("issue"), schoolId: (fd.get("schoolId") || "").toString(),
             type: typeId,
             description: (fd.get("description") || "").toString().trim(),
             reportedBy: (fd.get("reportedBy") || "").toString(),
-            status: statusOpts[0] || "Open"
+            status: statusOpts[0] || "Open",
+            remarks: ""
           };
-          if (typeObj && typeObj.extraFields) {
+          if (fieldSet === "record_update") {
+            issue.studentName = (fd.get("studentName") || "").toString().trim();
+            issue.dob = (fd.get("dob") || "").toString().trim();
+            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
+            issue.category = (fd.get("category") || "").toString();
+            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
+          } else if (fieldSet === "recheck") {
             issue.studentName = (fd.get("studentName") || "").toString().trim();
             issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
-            issue.grade = (fd.get("grade") || "").toString().trim();
             issue.dob = (fd.get("dob") || "").toString().trim();
             issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
-            issue.category = (fd.get("category") || "").toString();
-            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
-            issue.remarks = (fd.get("remarks") || "").toString().trim();
           }
           state.issues.push(issue);
           ui.newIssueType = null;
@@ -2303,26 +2398,29 @@ function appMain() {
           if (!issue) return;
           var typeId = (fd.get("type") || "").toString();
           var typeObj = issueTypeById(typeId);
+          var fieldSet = typeObj && typeObj.fieldSet;
           issue.schoolId = (fd.get("schoolId") || "").toString();
           issue.type = typeId;
           issue.description = (fd.get("description") || "").toString().trim();
           issue.reportedBy = (fd.get("reportedBy") || "").toString();
-          if (typeObj && typeObj.extraFields) {
+          issue.remarks = (fd.get("remarks") || "").toString().trim();
+          delete issue.studentName; delete issue.schoolYear; delete issue.grade;
+          delete issue.dob; delete issue.insuranceNumber;
+          delete issue.fileName; delete issue.pageNumber;
+          delete issue.category; delete issue.correctInfo;
+          if (fieldSet === "record_update") {
+            issue.studentName = (fd.get("studentName") || "").toString().trim();
+            issue.dob = (fd.get("dob") || "").toString().trim();
+            issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
+            issue.category = (fd.get("category") || "").toString();
+            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
+          } else if (fieldSet === "recheck") {
             issue.studentName = (fd.get("studentName") || "").toString().trim();
             issue.schoolYear = (fd.get("schoolYear") || "").toString().trim();
-            issue.grade = (fd.get("grade") || "").toString().trim();
             issue.dob = (fd.get("dob") || "").toString().trim();
             issue.insuranceNumber = (fd.get("insuranceNumber") || "").toString().trim();
             issue.fileName = (fd.get("fileName") || "").toString().trim();
             issue.pageNumber = (fd.get("pageNumber") || "").toString().trim();
-            issue.category = (fd.get("category") || "").toString();
-            issue.correctInfo = (fd.get("correctInfo") || "").toString().trim();
-            issue.remarks = (fd.get("remarks") || "").toString().trim();
-          } else {
-            delete issue.studentName; delete issue.schoolYear; delete issue.grade;
-            delete issue.dob; delete issue.insuranceNumber;
-            delete issue.fileName; delete issue.pageNumber; delete issue.remarks;
-            delete issue.category; delete issue.correctInfo;
           }
           ui.editingIssueId = null;
           ui.editingIssueType = null;
