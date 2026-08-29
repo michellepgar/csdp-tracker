@@ -2076,12 +2076,12 @@ function appMain() {
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       return "<tr>" +
-        "<td>" + esc(it.category) + "</td>" +
-        "<td>" + esc(it.studentName) + "</td>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
         "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
+        "<td>" + esc(it.studentName) + "</td>" +
         "<td>" + esc(it.dob) + "</td>" +
         "<td>" + esc(it.insuranceNumber) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
+        "<td>" + esc(it.category) + "</td>" +
         "<td class=\"wrap\">" + esc(it.correctInfo) + "</td>" +
         "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
@@ -2093,8 +2093,8 @@ function appMain() {
       (recordList.length ? " <span class=\"count-chip\">" + recordList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
-      "<th>Correcting</th><th>Student</th><th>School</th><th>DOB</th><th>Insurance #</th>" +
-      "<th>Issue / concern</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
+      "<th>Issue / concern</th><th>School</th><th>Student</th><th>DOB</th><th>Insurance #</th>" +
+      "<th>Correcting</th><th>Correct info</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (recordRows || "<tr><td colspan=\"" + recordTableCols + "\">" + emptyState("No Record Update entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
@@ -2107,14 +2107,14 @@ function appMain() {
       var sch = schoolById(it.schoolId);
       var ty = issueTypeById(it.type);
       return "<tr>" +
+        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
         "<td>" + esc(sch ? sch.name : "Unknown school") + "</td>" +
-        "<td>" + esc(it.schoolYear) + "</td>" +
         "<td>" + esc(it.studentName) + "</td>" +
         "<td>" + esc(it.dob) + "</td>" +
+        "<td>" + esc(it.schoolYear) + "</td>" +
         "<td>" + esc(it.insuranceNumber) + "</td>" +
         "<td class=\"mono\">" + esc(it.fileName) + "</td>" +
         "<td>" + esc(it.pageNumber) + "</td>" +
-        "<td class=\"wrap\">" + esc(it.description) + "</td>" +
         "<td class=\"wrap\">" + esc(it.remarks || "") + "</td>" +
         "<td>" + esc(it.reportedBy) + "</td>" +
         "<td>" + statusControlOptions(ty ? ty.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS, it.id, it.status, "change-issue-status") + "</td>" +
@@ -2125,8 +2125,8 @@ function appMain() {
       (recheckList.length ? " <span class=\"count-chip\">" + recheckList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
-      "<th>School</th><th>School year</th><th>Student</th><th>DOB</th><th>Insurance #</th><th>File</th><th>Page</th>" +
-      "<th>Issue needs to recheck</th><th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
+      "<th>Issue needs to recheck</th><th>School</th><th>Student</th><th>DOB</th><th>School year</th><th>Insurance #</th><th>File</th><th>Page</th>" +
+      "<th>Remarks</th><th>Reported by</th><th>Status</th><th></th>" +
       "</tr></thead><tbody>" +
       (recheckRows || "<tr><td colspan=\"" + recheckTableCols + "\">" + emptyState("No records need rechecking right now.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
