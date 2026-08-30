@@ -712,6 +712,28 @@ function appMain() {
     })(doc.body);
     return doc.body.innerHTML;
   }
+  /* Inserts a real checkbox (plus a trailing space so typed text doesn't
+     hug it) at the very start of a checklist <li>, if it doesn't already
+     have one. Shared by the toolbar button (seeding an existing line) and
+     the Enter-key handler below (seeding a freshly split-off line). */
+  function insertChecklistCheckbox(li) {
+    if (li.querySelector(":scope > input[type=checkbox]")) return null;
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    li.insertBefore(document.createTextNode(" "), li.firstChild);
+    li.insertBefore(cb, li.firstChild);
+    return cb;
+  }
+  /* Puts the caret immediately after a given node — used after inserting a
+     checkbox so the next thing typed lands right beside it, not before it. */
+  function placeCaretAfter(node) {
+    var range = document.createRange();
+    range.setStartAfter(node);
+    range.collapse(true);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
   /* Dash and checklist buttons reuse the browser's native bullet-list
      toggle (so Enter continues the list, clicking again removes it — same
      behavior as the bullet button) and just tag the resulting <ul> with a
@@ -734,20 +756,46 @@ function appMain() {
            already have one. */
         if (cls === "list-check") {
           var items = node.querySelectorAll(":scope > li");
-          for (var i = 0; i < items.length; i++) {
-            if (!items[i].querySelector(":scope > input[type=checkbox]")) {
-              var cb = document.createElement("input");
-              cb.type = "checkbox";
-              items[i].insertBefore(document.createTextNode(" "), items[i].firstChild);
-              items[i].insertBefore(cb, items[i].firstChild);
-            }
-          }
+          for (var i = 0; i < items.length; i++) { insertChecklistCheckbox(items[i]); }
         }
         break;
       }
       node = node.parentNode;
     }
   };
+  /* Pressing Enter inside a checklist line only ever continued the <ul>
+     natively — the freshly split-off line had no checkbox of its own until
+     someone re-clicked the toolbar button. Let the browser finish its
+     native split, then seed the new line the same way, right after. */
+  function onNoteEditorKeydown(e) {
+    if (e.key !== "Enter") return;
+    var editor = e.target.closest && e.target.closest(".note-editor-area");
+    if (!editor) return;
+    setTimeout(function () {
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      var node = sel.anchorNode;
+      while (node && node !== editor && !(node.nodeType === 1 && node.tagName === "LI")) node = node.parentNode;
+      if (!node || node === editor) return;
+      var ul = node.parentNode;
+      if (!ul || ul.tagName !== "UL" || ul.className !== "list-check") return;
+      var cb = insertChecklistCheckbox(node);
+      if (cb && cb.nextSibling) placeCaretAfter(cb.nextSibling);
+    }, 0);
+  }
+  /* Clicking a checkbox inside contenteditable is a known browser quirk —
+     the caret often lands right *before* the checkbox instead of after it,
+     so typing next to it types on the wrong side. Nudge it back after. */
+  function onNoteEditorClick(e) {
+    var cb = e.target.closest && e.target.closest(".note-editor-area input[type=checkbox]");
+    if (!cb) return;
+    setTimeout(function () {
+      var after = cb.nextSibling;
+      placeCaretAfter(after || cb);
+      var editor = cb.closest(".note-editor-area");
+      if (editor) editor.focus();
+    }, 0);
+  }
   /* Issue "+Field" buttons work the same way as the note toolbar — plain
      DOM insertion instead of a full render(), so nothing else typed into
      the Add/Edit issue form gets wiped out when a field is toggled on or
@@ -4265,6 +4313,8 @@ function appMain() {
   document.addEventListener("change", onChange);
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
+  document.addEventListener("keydown", onNoteEditorKeydown);
+  document.addEventListener("click", onNoteEditorClick);
 
   boot();
 }
