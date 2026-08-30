@@ -1844,6 +1844,14 @@ function appMain() {
       return n.urgency === "Urgent" && n.author !== me && (!n.ackBy || n.ackBy.indexOf(me) === -1);
     });
   }
+  /* Same idea, for a private note someone shared with you — blinks until
+     you click "Mark as checked" on it. */
+  function hasUnreadSharedPrivateNotes() {
+    var me = getStoredIdentity();
+    return state.privateNotes.some(function (n) {
+      return n.author !== me && (n.sharedWith || []).indexOf(me) !== -1 && (!n.ackBy || n.ackBy.indexOf(me) === -1);
+    });
+  }
 
   function sidebarHtml() {
     var q = ui.search.trim().toLowerCase();
@@ -1882,7 +1890,7 @@ function appMain() {
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">My Space</div>" +
       "<div class=\"nav-list\">" +
-      navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }) +
+      navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }, hasUnreadSharedPrivateNotes() ? "blink-alert" : "") +
       (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
       "</div></div>" +
       "<div class=\"sidebar-divider\"></div>" +
@@ -3073,13 +3081,14 @@ function appMain() {
       }
       var pendingDelete = isPending("note", n.id);
       var isUrgentGeneral = scope === "general" && n.urgency === "Urgent";
+      var isSharedPrivate = scope === "private" && n.author !== me;
       var ackBy = n.ackBy || [];
       var isAuthor = n.author === me;
       var ackHtml = "";
-      if (isUrgentGeneral && !isAuthor) {
+      if ((isUrgentGeneral && !isAuthor) || isSharedPrivate) {
         ackHtml = ackBy.indexOf(me) !== -1
           ? "<span class=\"field-mini-label\">✓ You checked this</span>"
-          : "<button data-action=\"ack-note\" data-id=\"" + n.id + "\">Mark as checked</button>";
+          : "<button data-action=\"ack-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Mark as checked</button>";
       }
       var seenByHtml = (isUrgentGeneral && ackBy.length)
         ? "<div class=\"sticky-note-meta\">Seen by: " + ackBy.map(esc).join(", ") + "</div>" : "";
@@ -3499,7 +3508,9 @@ function appMain() {
       case "ack-note":
         (function () {
           var id = t.getAttribute("data-id");
-          var note = state.generalNotes.find(function (x) { return x.id === id; });
+          var scope = t.getAttribute("data-scope");
+          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
+          var note = arr.find(function (x) { return x.id === id; });
           if (!note) return;
           note.ackBy = note.ackBy || [];
           var me = getStoredIdentity();
@@ -3961,7 +3972,7 @@ function appMain() {
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           if (!html || html === "<br>") return;
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
-          state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, sharedWith: [], createdAt: new Date().toISOString() });
+          state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, sharedWith: [], ackBy: [], createdAt: new Date().toISOString() });
           saveDraft("private-note-new", "");
           persist();
         })(); break;
