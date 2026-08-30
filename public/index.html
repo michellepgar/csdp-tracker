@@ -815,6 +815,7 @@ function appMain() {
     parts.forEach(function (p) { map[p.type] = p.value; });
     return map.year + "-" + map.month + "-" + map.day;
   }
+  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   function fmtEodDate(iso) {
     /* Plain "YYYY-MM-DD" parsed manually, not via `new Date(iso)` — that
        treats a bare date as UTC midnight, which can shift a day backward
@@ -822,10 +823,27 @@ function appMain() {
     if (!iso) return "";
     var parts = iso.split("-");
     if (parts.length !== 3) return iso;
-    var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     var mi = parseInt(parts[1], 10) - 1;
     if (mi < 0 || mi > 11) return iso;
-    return months[mi] + " " + parseInt(parts[2], 10) + ", " + parts[0];
+    return MONTH_NAMES[mi] + " " + parseInt(parts[2], 10) + ", " + parts[0];
+  }
+  /* "2026-08" -> "August 2026", for the EOD month filter dropdown. */
+  function fmtMonthLabel(ym) {
+    var parts = String(ym || "").split("-");
+    if (parts.length !== 2) return ym;
+    var mi = parseInt(parts[1], 10) - 1;
+    if (mi < 0 || mi > 11) return ym;
+    return MONTH_NAMES[mi] + " " + parts[0];
+  }
+  /* Reverses formatMinutesAsHours' "H:MM" back into minutes, so several
+     entries' hours can be added together for a monthly total. */
+  function parseHoursMinutesToMinutes(str) {
+    if (!str) return 0;
+    var parts = String(str).split(":");
+    if (parts.length !== 2) return 0;
+    var h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return 0;
+    return h * 60 + m;
   }
   function fmtTime12(t) {
     if (!t) return "";
@@ -1649,6 +1667,7 @@ function appMain() {
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "", va: "" },
       eodFilterAuthor: "",
+      eodFilterMonth: "",
       eodViewMode: "notes",
       editingNoteId: null,
       taskSort: { field: "date", dir: "desc" },
@@ -3119,10 +3138,27 @@ function appMain() {
        below is available to all, not just the superadmin. */
     var vaOptsFilter = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (ui.eodFilterAuthor === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
+    /* Every distinct "YYYY-MM" that actually has an entry, newest first —
+       picking a VA + month here is exactly what's needed to pull that
+       person's total hours for the end-of-month invoice. */
+    var monthSet = {};
+    state.eodReports.forEach(function (e) { if (e.date) monthSet[e.date.slice(0, 7)] = true; });
+    var months = Object.keys(monthSet).sort().reverse();
+    var monthOptsFilter = months.map(function (ym) {
+      return "<option value=\"" + ym + "\"" + (ui.eodFilterMonth === ym ? " selected" : "") + ">" + esc(fmtMonthLabel(ym)) + "</option>";
+    }).join("");
 
     var list = state.eodReports.slice().reverse().filter(function (e) {
-      return !ui.eodFilterAuthor || e.author === ui.eodFilterAuthor;
+      if (ui.eodFilterAuthor && e.author !== ui.eodFilterAuthor) return false;
+      if (ui.eodFilterMonth && (e.date || "").slice(0, 7) !== ui.eodFilterMonth) return false;
+      return true;
     });
+    var totalMinutes = list.reduce(function (sum, e) { return sum + parseHoursMinutesToMinutes(e.totalHours); }, 0);
+    var totalsHtml = "<div class=\"page-sub\" style=\"margin:-4px 0 14px;\">Total Hours" +
+      (ui.eodFilterMonth ? " for " + esc(fmtMonthLabel(ui.eodFilterMonth)) : "") +
+      (ui.eodFilterAuthor ? " (" + esc(ui.eodFilterAuthor) + ")" : "") +
+      ": <strong>" + esc(formatMinutesAsHours(totalMinutes) || "0:00") + "</strong>" +
+      (list.length ? " across " + list.length + " " + (list.length === 1 ? "entry" : "entries") : "") + "</div>";
     var viewMode = ui.eodViewMode === "table" ? "table" : "notes";
     var content = viewMode === "table" ? eodTableHtml(list) : (list.map(eodNoteEntryHtml).join("") || emptyState("No EOD reports yet."));
 
@@ -3142,11 +3178,13 @@ function appMain() {
       "</form></div></div>" +
       "<div class=\"filters-row\">" +
       "<select class=\"text-input\" data-action-change=\"filter-eod\"><option value=\"\">All team members</option>" + vaOptsFilter + "</select>" +
+      "<select class=\"text-input\" data-action-change=\"filter-eod-month\"><option value=\"\">All months</option>" + monthOptsFilter + "</select>" +
       "<div class=\"view-toggle\">" +
       "<button class=\"" + (viewMode === "notes" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"notes\">Notes</button>" +
       "<button class=\"" + (viewMode === "table" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"table\">Table</button>" +
       "</div>" +
       "</div>" +
+      totalsHtml +
       content;
   }
 
@@ -3667,6 +3705,9 @@ function appMain() {
         render(); break;
       case "filter-eod":
         ui.eodFilterAuthor = t.value;
+        render(); break;
+      case "filter-eod-month":
+        ui.eodFilterMonth = t.value;
         render(); break;
       case "select-new-issue-type":
         ui.newIssueType = t.value;
