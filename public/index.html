@@ -427,6 +427,10 @@
   .contact-cell-view { padding: 4px 6px; font-size: 0.83rem; line-height: 1.35; white-space: normal; overflow-wrap: break-word; }
   .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .contact-leader-row .text-input { max-width: 260px; }
+  /* Read-only mirror of a school's contact row, shown at the bottom of its
+     own page — label/value pairs instead of a table since it's just one
+     school at a time. */
+  .contact-card-grid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; align-items: start; }
   /* Each grade-band group renders as its own <table>, and a plain table
      auto-sizes its columns to fit only its own content — so the same
      column (e.g. Nurse Email) ends up a different width in every group.
@@ -2028,7 +2032,42 @@ function appMain() {
     return header +
       tasksCardHtml(schoolId, sd) +
       checklistCardHtml(schoolId) +
-      emailTrackerCardHtml(schoolId, sd);
+      emailTrackerCardHtml(schoolId, sd) +
+      schoolContactCardHtml(school);
+  }
+
+  /* Looks up this school's row on the Schools Contact Information page by
+     matching its name — that page stays the one place contact info is
+     edited, this just mirrors it here for quick reference. */
+  function findContactRowBySchoolName(name) {
+    var target = String(name || "").trim().toLowerCase();
+    if (!target) return null;
+    var found = null;
+    (state.contactGroups || []).some(function (g) {
+      var row = (g.rows || []).find(function (r) { return String(r.school || "").trim().toLowerCase() === target; });
+      if (row) { found = row; return true; }
+      return false;
+    });
+    return found;
+  }
+  function schoolContactCardHtml(school) {
+    var row = findContactRowBySchoolName(school.name);
+    var manageLink = "<button class=\"link-btn\" data-action=\"nav-view\" data-view=\"contacts\">" + (row ? "Edit in Schools Contact Info" : "Add in Schools Contact Info") + "</button>";
+    var body;
+    if (!row) {
+      body = emptyState("No contact info on file for this school yet.");
+    } else {
+      var fields = CONTACT_FIELDS.filter(function (f) { return f.key !== "school"; });
+      var rowsHtml = fields.map(function (f) {
+        var v = row[f.key];
+        if (!v) return "";
+        return "<div class=\"field-label\">" + esc(f.label) + "</div><div class=\"contact-cell-view\" style=\"padding:0;\">" + contactCellViewHtml(v) + "</div>";
+      }).join("");
+      body = rowsHtml ? "<div class=\"contact-card-grid\">" + rowsHtml + "</div>" : emptyState("No contact details filled in yet for this school.");
+    }
+    return "<div class=\"card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Contact Info</div>" +
+      "<div class=\"card-actions\">" + manageLink + "</div></div>" +
+      "<div class=\"card-body\">" + body + "</div></div>";
   }
 
   function taskRowHtml(t, schoolId) {
