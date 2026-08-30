@@ -2431,7 +2431,7 @@ function appMain() {
       (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
-      (rowsHtml || "<tr><td colspan=\"" + tableCols + "\">" + emptyState("No " + esc(title) + " entries match these filters.") + "</td></tr>") +
+      (rowsHtml || "<tr><td colspan=\"" + tableCols + "\">" + emptyState("No " + title + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
   /* Fixed-column table for the Insurance & Date of Birth Correction type —
@@ -2466,7 +2466,7 @@ function appMain() {
       (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
-      (rowsHtml || "<tr><td colspan=\"" + CORRECTION_TABLE_COLS + "\">" + emptyState("No " + esc(ty.name) + " entries match these filters.") + "</td></tr>") +
+      (rowsHtml || "<tr><td colspan=\"" + CORRECTION_TABLE_COLS + "\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div>" +
       "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
       "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
