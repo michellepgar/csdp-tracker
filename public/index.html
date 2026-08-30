@@ -2060,8 +2060,12 @@ function appMain() {
       var fields = CONTACT_FIELDS.filter(function (f) { return f.key !== "school"; });
       var rowsHtml = fields.map(function (f) {
         var v = row[f.key];
-        if (!v) return "";
-        return "<div class=\"field-label\">" + esc(f.label) + "</div><div class=\"contact-cell-view\" style=\"padding:0;\">" + contactCellViewHtml(v) + "</div>";
+        /* Every other field just skips when blank, but Notes always shows
+           a row — it's easy to miss a note that's there, and just as easy
+           to forget one was never filled in. */
+        if (!v && f.key !== "notes") return "";
+        var valueHtml = v ? contactCellViewHtml(v) : "<span style=\"color:var(--ink-faint);\">No notes yet.</span>";
+        return "<div class=\"field-label\">" + esc(f.label) + "</div><div class=\"contact-cell-view\" style=\"padding:0;\">" + valueHtml + "</div>";
       }).join("");
       body = rowsHtml ? "<div class=\"contact-card-grid\">" + rowsHtml + "</div>" : emptyState("No contact details filled in yet for this school.");
     }
