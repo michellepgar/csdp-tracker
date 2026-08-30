@@ -3012,15 +3012,13 @@ function appMain() {
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Communication Access</div></div>" +
       "<div class=\"card-body\">" +
-      "<div class=\"checklist-note\">Only this person can change the Communication status on Initial/Recheck tasks — even Admins and the Owner can't override it, only change who it is here.</div>" +
       (sortedVas.length
         ? "<select class=\"text-input\" style=\"max-width:200px; margin-top:10px;\" data-action-change=\"set-communication-editor\">" + commOpts + "</select>"
         : emptyState("No VAs added yet.")) +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">VA Colors</div></div>" +
       "<div class=\"card-body\">" +
-      "<div class=\"checklist-note\">Pick a color for each VA — used for their signature on files and for their assigned schools' names. New VAs default to an auto-picked color until you set one here.</div>" +
-      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
+      "<div class=\"row-list\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Admin</div></div>" +
       "<div class=\"card-body\">" +
@@ -3028,13 +3026,13 @@ function appMain() {
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
       "<div class=\"card-body\">" +
-      "<div class=\"checklist-note\">Change who's responsible for a school here whenever assignments shift — this is the one place it's set.</div>" +
-      "<div class=\"row-list\" style=\"margin-top:10px;\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
+      "<div class=\"row-list\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card danger-zone\"><div class=\"card-head\"><div class=\"card-title\">Start New School Year</div></div>" +
       "<div class=\"card-body\">" +
       "<p style=\"margin:0 0 10px;\">Clears every school's Tasks list — file names, statuses, Counts, and VA signatures — so each school starts the new year with an empty Tasks section. " +
-      "Schools themselves, VA assignments, the Yearly Checklist, Email Tracker, Notes, and Issues &amp; Concerns are <strong>not</strong> touched. This cannot be undone.</p>" +
+      "Also clears every school's Yearly Checklist progress (who checked off what, and when) back to unchecked — the checklist's own items are <strong>not</strong> deleted, just the checkmarks. " +
+      "Schools themselves, VA assignments, Email Tracker, Notes, and Issues &amp; Concerns are <strong>not</strong> touched. This cannot be undone.</p>" +
       "<form class=\"add-row-form\" data-action=\"reset-all-tasks\">" +
       "<input class=\"text-input\" name=\"confirm\" placeholder=\"Type RESET to confirm\" autocomplete=\"off\" style=\"max-width:220px;\">" +
       "<button class=\"btn danger\" type=\"submit\">Reset all tasks</button>" +
@@ -3108,8 +3106,15 @@ function appMain() {
           ? "<span class=\"field-mini-label\">✓ You checked this</span>"
           : "<button data-action=\"ack-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Mark as checked</button>";
       }
-      var seenByHtml = (isUrgentGeneral && ackBy.length)
-        ? "<div class=\"sticky-note-meta\">Seen by: " + ackBy.map(esc).join(", ") + "</div>" : "";
+      var seenByHtml = "";
+      if (isUrgentGeneral && ackBy.length) {
+        seenByHtml = "<div class=\"sticky-note-meta\">Seen by: " + ackBy.map(esc).join(", ") + "</div>";
+      } else if (scope === "private" && isAuthor && (n.sharedWith || []).length) {
+        /* Whoever shared it should be able to tell whether it's actually
+           been checked, not just that it was shared. */
+        var checkedSharedNames = (n.sharedWith || []).filter(function (name) { return ackBy.indexOf(name) !== -1; });
+        seenByHtml = "<div class=\"sticky-note-meta\">Checked by: " + (checkedSharedNames.length ? checkedSharedNames.map(esc).join(", ") : "no one yet") + "</div>";
+      }
       /* Private notes can be shared with specific teammates — only the
          author can change who it's shared with (matches the pattern used
          for assigning a file to a task: chips + a self-serve dropdown to
@@ -4224,7 +4229,11 @@ function appMain() {
           Object.keys(state.schoolData).forEach(function (schoolId) {
             state.schoolData[schoolId].tasks = [];
           });
-          showToast("All schools' Tasks lists have been reset for the new school year.");
+          /* Clears every school's checkmarks (who/when it was done) but
+             leaves the checklist's own items alone — same template, just
+             starting the new year unchecked. */
+          state.checklistProgress = {};
+          showToast("All schools' Tasks lists and Yearly Checklist progress have been reset for the new school year.");
           persist();
         })(); break;
       case "save-template":
