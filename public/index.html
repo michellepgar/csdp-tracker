@@ -1276,12 +1276,24 @@ function appMain() {
   /* Seeds each VA's chosen color once, matching the fixed colors that were
      hardcoded before this became editable from the Team page — same
      colors, just now stored per-VA instead of baked into the code. */
-  var DEFAULT_VA_COLORS = { "Michelle": "#E8821E", "Therese": "#2E9E4F", "Nikki": "#D8B300", "Rexanne": "#D9453D" };
+  var DEFAULT_VA_COLORS = { "Michelle": "#D9368F", "Therese": "#2E9E4F", "Nikki": "#7B4FD1", "Rexanne": "#D9453D" };
   function migrateVaColors(parsed) {
     if (parsed._migratedVaColors) return false;
     parsed._migratedVaColors = true;
     (parsed.vas || []).forEach(function (v) {
       if (!v.color && DEFAULT_VA_COLORS.hasOwnProperty(v.name)) v.color = DEFAULT_VA_COLORS[v.name];
+    });
+    return true;
+  }
+  /* One-time re-assignment requested directly: Michelle -> pink,
+     Nikki -> violet (was orange/gold). Runs once, then never again, even
+     if someone later picks a different color from the Team page. */
+  var VA_COLOR_REASSIGN_2 = { "Michelle": "#D9368F", "Nikki": "#7B4FD1" };
+  function migrateVaColors2(parsed) {
+    if (parsed._migratedVaColors2) return false;
+    parsed._migratedVaColors2 = true;
+    (parsed.vas || []).forEach(function (v) {
+      if (VA_COLOR_REASSIGN_2.hasOwnProperty(v.name)) v.color = VA_COLOR_REASSIGN_2[v.name];
     });
     return true;
   }
@@ -1596,6 +1608,7 @@ function appMain() {
       migrateDavisSchool(fresh);
       migrateSchoolRenames(fresh);
       migrateVaColors(fresh);
+      migrateVaColors2(fresh);
       migrateVaAdminField(fresh);
       migrateFaithOwner(fresh);
       migrateIssueStatusUniform(fresh);
@@ -1664,6 +1677,7 @@ function appMain() {
       var justMigratedDavis = migrateDavisSchool(state);
       var justMigratedRenames = migrateSchoolRenames(state);
       var justMigratedVaColors = migrateVaColors(state);
+      var justMigratedVaColors2 = migrateVaColors2(state);
       var justMigratedVaAdminField = migrateVaAdminField(state);
       var justMigratedFaithOwner = migrateFaithOwner(state);
       var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
@@ -1675,7 +1689,7 @@ function appMain() {
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
