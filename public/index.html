@@ -1630,6 +1630,7 @@ function appMain() {
       editingNurseLeader: false,
       editingCorrectionId: null,
       editingSimpleIssueId: null,
+      editingChartingId: null,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "" },
       eodFilterAuthor: "",
@@ -2655,6 +2656,55 @@ function appMain() {
       "</tbody></table></div>" +
       "</div></div>";
   }
+  /* Matched by name rather than a stored flag — Charting Questions is a
+     team-added type (its id is a random uid, not a fixed built-in one
+     like software_issue), and there's no rename UI for issue types, so
+     the name is a stable enough hook. */
+  function isChartingQuestionsType(ty) {
+    return !!ty && String(ty.name || "").trim().toLowerCase() === "charting questions";
+  }
+  /* Charting Questions' own table — a link to the student's record, the
+     question itself, who reported it, status, and a note + signature from
+     whoever answers/fixes it (reusing the same self-sign Fixed By
+     mechanism already used elsewhere, including its auto-resolve). */
+  function chartingLinkCellHtml(editing, it) {
+    if (editing) {
+      return "<input class=\"contact-cell-input\" data-action-change=\"set-charting-field\" data-id=\"" + it.id + "\" data-field=\"studentRecordLink\" placeholder=\"Link to student record\" value=\"" + esc(it.studentRecordLink || "") + "\">";
+    }
+    var link = String(it.studentRecordLink || "").trim();
+    if (!link) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
+    var href = /^https?:\/\//i.test(link) ? link : "https://" + link;
+    return "<div class=\"contact-cell-view\"><a href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + esc(link) + "</a></div>";
+  }
+  function chartingSectionHtml(ty, typeList) {
+    var headerCells = "<th>Student Record</th><th>Question / Concern</th><th>Reported by</th><th>Status</th><th>Note</th><th>Fixed by</th><th></th>";
+    var rowsHtml = typeList.map(function (it) {
+      var editing = ui.editingChartingId === it.id;
+      var questionCell = editing
+        ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.description) + "\" data-action-change=\"set-charting-field\" data-id=\"" + it.id + "\" data-field=\"description\">" + esc(it.description || "") + "</textarea>"
+        : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.description || "") + "</div>";
+      var noteCell = editing
+        ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-charting-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea>"
+        : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.remarks || "") + "</div>";
+      var editBtn = "<button class=\"link-btn\" data-action=\"" + (editing ? "done-edit-charting" : "edit-charting") + "\" data-id=\"" + it.id + "\">" + (editing ? "Done" : "Edit") + "</button>";
+      return "<tr>" +
+        "<td>" + chartingLinkCellHtml(editing, it) + "</td>" +
+        "<td>" + questionCell + "</td>" +
+        "<td>" + esc(it.reportedBy || "") + "</td>" +
+        "<td>" + statusControlOptions(ty.statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td>" + noteCell + "</td>" +
+        "<td>" + issueFixedByHtml(it) + "</td>" +
+        "<td>" + editBtn + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
+      (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+      (rowsHtml || "<tr><td colspan=\"7\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div>" +
+      "</div></div>";
+  }
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
@@ -2713,6 +2763,7 @@ function appMain() {
       var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description || it.studentName || ""; });
       if (ty.customCorrection) return correctionTypeSectionHtml(ty, typeList);
       if (ty.simpleIssueTable) return simpleIssueSectionHtml(ty, typeList);
+      if (isChartingQuestionsType(ty)) return chartingSectionHtml(ty, typeList);
       return issueTypeSectionHtml(ty.name, typeList, ty.statusOptions);
     }).join("");
     var orphanedList = sortRecords(list.filter(function (it) { return knownTypeIds.indexOf(it.type) === -1; }), ui.issuesSort, function (it) { return it.description; });
@@ -2733,7 +2784,7 @@ function appMain() {
            show here follows the type picked above. */
         (newType && newType.customCorrection
           ? "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required style=\"flex:2;\">"
-          : "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">") +
+          : "<input class=\"text-input\" name=\"description\" placeholder=\"" + (isChartingQuestionsType(newType) ? "What's the question or concern?" : "What's the issue?") + "\" required style=\"flex:2;\">") +
         "<span class=\"field-mini-label\">Reported by " + esc(getStoredIdentity() || "—") + "</span>" +
         "</span>" +
         (newType && newType.customCorrection
@@ -2745,10 +2796,12 @@ function appMain() {
             "</span>"
           : newType && newType.simpleIssueTable
             ? ""
-            /* No fields pre-added — click a +Field button for whatever this
-               particular issue actually needs. Remarks stays edit-only,
-               added after saving once there's something to report back. */
-            : "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>") +
+            : isChartingQuestionsType(newType)
+              ? "<span style=\"width:100%; margin-top:8px;\"><input class=\"text-input\" name=\"studentRecordLink\" placeholder=\"Link to student record (optional)\"></span>"
+              /* No fields pre-added — click a +Field button for whatever this
+                 particular issue actually needs. Remarks stays edit-only,
+                 added after saving once there's something to report back. */
+              : "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>") +
         "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet — add your team there first.</div>" : "") +
         "</div></div>" +
@@ -3204,6 +3257,8 @@ function appMain() {
       case "edit-correction-row": ui.editingCorrectionId = t.getAttribute("data-id"); render(); break;
       case "edit-simple-issue": ui.editingSimpleIssueId = t.getAttribute("data-id"); render(); break;
       case "done-edit-simple-issue": ui.editingSimpleIssueId = null; render(); break;
+      case "edit-charting": ui.editingChartingId = t.getAttribute("data-id"); render(); break;
+      case "done-edit-charting": ui.editingChartingId = null; render(); break;
       case "done-edit-correction-row": ui.editingCorrectionId = null; render(); break;
       case "remove-issue-field-pool":
         requestDelete("issue-field-pool", t.getAttribute("data-id"), function () {
@@ -3501,6 +3556,12 @@ function appMain() {
           if (issue) issue[t.getAttribute("data-field")] = t.value;
           persist();
         })(); break;
+      case "set-charting-field":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue[t.getAttribute("data-field")] = t.value;
+          persist();
+        })(); break;
       case "set-correction-checkbox":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
@@ -3778,6 +3839,23 @@ function appMain() {
               id: uid("issue"),
               type: typeId,
               description: simpleDescription,
+              remarks: "",
+              reportedBy: getStoredIdentity(),
+              status: statusOpts[0] || "Pending",
+              createdAt: new Date().toISOString()
+            });
+            ui.newIssueType = null;
+            persist();
+            return;
+          }
+          if (isChartingQuestionsType(typeObj)) {
+            var chartingDescription = (fd.get("description") || "").toString().trim();
+            if (!chartingDescription) return;
+            state.issues.push({
+              id: uid("issue"),
+              type: typeId,
+              description: chartingDescription,
+              studentRecordLink: (fd.get("studentRecordLink") || "").toString().trim(),
               remarks: "",
               reportedBy: getStoredIdentity(),
               status: statusOpts[0] || "Pending",
