@@ -558,7 +558,12 @@ function appMain() {
   var DEFAULT_ISSUE_TYPES = [
     { id: "software_issue", name: "Software issue", statusOptions: ["Pending", "Resolved"] },
     { id: "recheck", name: "Record Needs Rechecking", statusOptions: ["Pending", "Resolved"], fieldSet: "recheck" },
-    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "Resolved"], fieldSet: "record_update" }
+    { id: "record_update", name: "Record Update", statusOptions: ["Pending", "Resolved"], fieldSet: "record_update" },
+    /* Its own fixed-column table (built by correctionTypeSectionHtml)
+       instead of the generic +Field pool every other type uses — every
+       column always shows, and DOB/Insurance #/etc. are click-to-edit
+       cells like the Schools Contact Information page. */
+    { id: "insurance_dob_correction", name: "Insurance & Date of Birth Correction", statusOptions: ["Pending", "Resolved"], customCorrection: true }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Pending", "Resolved"];
   /* Shared, editable "+Field" options for any issue — no type forces any
@@ -2429,6 +2434,45 @@ function appMain() {
       (rowsHtml || "<tr><td colspan=\"" + tableCols + "\">" + emptyState("No " + esc(title) + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
+  /* Fixed-column table for the Insurance & Date of Birth Correction type —
+     every column always shows (no per-row +Field toggles), and most cells
+     are click-to-edit in place, the same pattern as the Schools Contact
+     Information page, instead of needing to open "Edit" first. */
+  var CORRECTION_TABLE_COLS = 12;
+  function correctionTypeSectionHtml(ty, typeList) {
+    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Date of Birth</th><th>Correct DOB</th>" +
+      "<th>Insurance #</th><th>Correct Insurance #</th><th>Note</th><th>Reported by</th><th>Verified</th><th>Status</th><th></th>";
+    var sortedSchools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var rowsHtml = typeList.map(function (it) {
+      var schoolOpts = "<option value=\"\">School…</option>" + sortedSchools.map(function (s) {
+        return "<option value=\"" + s.id + "\"" + (s.id === it.schoolId ? " selected" : "") + ">" + esc(s.name) + "</option>";
+      }).join("");
+      return "<tr>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"studentName\" value=\"" + esc(it.studentName || "") + "\"></td>" +
+        "<td><select class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"schoolId\">" + schoolOpts + "</select></td>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"grade\" value=\"" + esc(it.grade || "") + "\"></td>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"dob\" value=\"" + esc(it.dob || "") + "\" placeholder=\"MM/DD/YYYY\"></td>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"correctDob\" value=\"" + esc(it.correctDob || "") + "\" placeholder=\"Correct DOB\"></td>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"insuranceNumber\" value=\"" + esc(it.insuranceNumber || "") + "\"></td>" +
+        "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"correctInsurance\" value=\"" + esc(it.correctInsurance || "") + "\" placeholder=\"Correct Insurance #\"></td>" +
+        "<td><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea></td>" +
+        "<td>" + esc(it.reportedBy || "") + "</td>" +
+        "<td style=\"text-align:center;\"><input type=\"checkbox\" data-action-change=\"set-correction-verified\" data-id=\"" + it.id + "\"" + (it.verified ? " checked" : "") + "></td>" +
+        "<td>" + statusControlOptions(ty.statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
+      (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+      (rowsHtml || "<tr><td colspan=\"" + CORRECTION_TABLE_COLS + "\">" + emptyState("No " + esc(ty.name) + " entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div>" +
+      "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
+      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
+      "<button class=\"btn small\" type=\"submit\">+ Add</button></form>" +
+      "</div></div>";
+  }
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
@@ -2483,7 +2527,8 @@ function appMain() {
 
     var knownTypeIds = state.issueTypes.map(function (ty) { return ty.id; });
     var typeSections = state.issueTypes.map(function (ty) {
-      var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description; });
+      var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description || it.studentName || ""; });
+      if (ty.customCorrection) return correctionTypeSectionHtml(ty, typeList);
       return issueTypeSectionHtml(ty.name, typeList, ty.statusOptions);
     }).join("");
     var orphanedList = sortRecords(list.filter(function (it) { return knownTypeIds.indexOf(it.type) === -1; }), ui.issuesSort, function (it) { return it.description; });
@@ -3205,6 +3250,24 @@ function appMain() {
           if (item) item.status = t.value;
           persist();
         })(); break;
+      case "set-correction-field":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue[t.getAttribute("data-field")] = t.value;
+          persist();
+        })(); break;
+      case "set-correction-verified":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) {
+            issue.verified = !!t.checked;
+            /* Same idea as Fixed By: checking it off is the resolution —
+               unchecking it later doesn't reopen it on its own, someone
+               changes the status directly for that. */
+            if (issue.verified) issue.status = "Resolved";
+          }
+          persist();
+        })(); break;
       case "filter-issues":
         ui.issueFilters[t.getAttribute("data-field")] = t.value;
         render(); break;
@@ -3448,6 +3511,31 @@ function appMain() {
           });
           state.issues.push(issue);
           ui.newIssueType = null;
+          persist();
+        })(); break;
+      case "add-correction-row":
+        (function () {
+          var typeId = form.getAttribute("data-type");
+          var typeObj = issueTypeById(typeId);
+          var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
+          var studentName = (fd.get("studentName") || "").toString().trim();
+          if (!studentName) return;
+          state.issues.push({
+            id: uid("issue"),
+            type: typeId,
+            studentName: studentName,
+            schoolId: "",
+            grade: "",
+            dob: "",
+            correctDob: "",
+            insuranceNumber: "",
+            correctInsurance: "",
+            remarks: "",
+            reportedBy: getStoredIdentity(),
+            verified: false,
+            status: statusOpts[0] || "Pending",
+            createdAt: new Date().toISOString()
+          });
           persist();
         })(); break;
       case "save-issue-edit":
