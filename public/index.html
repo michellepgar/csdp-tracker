@@ -433,7 +433,7 @@
      nurses/front-desk staff shows one name/email per line and a single
      click-drag selects and copies just that one line. */
   .contact-cell-view { padding: 4px 6px; font-size: 0.83rem; line-height: 1.35; white-space: normal; overflow-wrap: break-word; }
-  .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 1.05rem; font-weight: 600; }
   .contact-leader-row .text-input { max-width: 260px; }
   /* Read-only mirror of a school's contact row, shown at the bottom of its
      own page — label/value pairs instead of a table since it's just one
@@ -2167,13 +2167,12 @@ function appMain() {
 
     var highlightMode = !!ui.contactHighlightMode;
     var highlightColor = ui.contactHighlightColor || "yellow";
-    var highlightToolbarHtml = "<div class=\"card\"><div class=\"card-body\">" +
-      "<div class=\"contact-highlight-toolbar\">" +
+    var highlightToolbarHtml = "<div class=\"contact-highlight-toolbar\">" +
       "<button class=\"btn small\" data-action=\"toggle-contact-highlight-mode\">" + (highlightMode ? "Save All" : "Edit All (Highlight cells)") + "</button>" +
       (highlightMode ? CONTACT_HIGHLIGHT_COLORS.map(function (c) {
         return "<button type=\"button\" class=\"highlight-swatch hl-" + c + (highlightColor === c ? " selected" : "") + "\" data-action=\"set-contact-highlight-color\" data-color=\"" + c + "\" title=\"" + c + "\"></button>";
       }).join("") + "<span class=\"field-mini-label\">Click a cell to highlight it — click again to clear</span>" : "") +
-      "</div></div></div>";
+      "</div>";
 
     var addSchoolHtml = "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-contact-row\">" +
@@ -2239,8 +2238,8 @@ function appMain() {
       "<input class=\"text-input\" name=\"name\" placeholder=\"New group name (e.g. ELEMENTARY)\" required>" +
       "<button class=\"btn\" type=\"submit\">+ Add group</button></form></div></div>";
 
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div></div>" +
-      leaderHtml + highlightToolbarHtml + addSchoolHtml + groupsHtml + addGroupForm;
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div>" + highlightToolbarHtml + "</div>" +
+      leaderHtml + addSchoolHtml + groupsHtml + addGroupForm;
   }
 
   function pageHtml() {
