@@ -1668,6 +1668,7 @@ function appMain() {
       issueFilters: { school: "", type: "", status: "", va: "" },
       eodFilterAuthor: "",
       eodFilterMonth: "",
+      eodShowArchive: false,
       eodViewMode: "notes",
       editingNoteId: null,
       taskSort: { field: "date", dir: "desc" },
@@ -3138,11 +3139,14 @@ function appMain() {
        below is available to all, not just the superadmin. */
     var vaOptsFilter = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (ui.eodFilterAuthor === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
-    /* Every distinct "YYYY-MM" that actually has an entry, newest first —
-       picking a VA + month here is exactly what's needed to pull that
-       person's total hours for the end-of-month invoice. */
+    var currentMonth = todayIsoDate().slice(0, 7);
+    var showArchive = !!ui.eodShowArchive;
+    /* Every distinct "YYYY-MM" that actually has an entry, excluding the
+       current month on this side, newest first — the Archive is where
+       past months live once the new month starts, so the main page stays
+       just this month instead of piling up every entry ever logged. */
     var monthSet = {};
-    state.eodReports.forEach(function (e) { if (e.date) monthSet[e.date.slice(0, 7)] = true; });
+    state.eodReports.forEach(function (e) { if (e.date && e.date.slice(0, 7) !== currentMonth) monthSet[e.date.slice(0, 7)] = true; });
     var months = Object.keys(monthSet).sort().reverse();
     var monthOptsFilter = months.map(function (ym) {
       return "<option value=\"" + ym + "\"" + (ui.eodFilterMonth === ym ? " selected" : "") + ">" + esc(fmtMonthLabel(ym)) + "</option>";
@@ -3150,20 +3154,27 @@ function appMain() {
 
     var list = state.eodReports.slice().reverse().filter(function (e) {
       if (ui.eodFilterAuthor && e.author !== ui.eodFilterAuthor) return false;
-      if (ui.eodFilterMonth && (e.date || "").slice(0, 7) !== ui.eodFilterMonth) return false;
+      var entryMonth = (e.date || "").slice(0, 7);
+      if (showArchive) {
+        if (entryMonth === currentMonth) return false;
+        if (ui.eodFilterMonth && entryMonth !== ui.eodFilterMonth) return false;
+      } else if (entryMonth !== currentMonth) {
+        return false;
+      }
       return true;
     });
     var totalMinutes = list.reduce(function (sum, e) { return sum + parseHoursMinutesToMinutes(e.totalHours); }, 0);
     var totalsHtml = "<div class=\"page-sub\" style=\"margin:-4px 0 14px;\">Total Hours" +
-      (ui.eodFilterMonth ? " for " + esc(fmtMonthLabel(ui.eodFilterMonth)) : "") +
+      (showArchive
+        ? (ui.eodFilterMonth ? " for " + esc(fmtMonthLabel(ui.eodFilterMonth)) : "")
+        : " for " + esc(fmtMonthLabel(currentMonth))) +
       (ui.eodFilterAuthor ? " (" + esc(ui.eodFilterAuthor) + ")" : "") +
       ": <strong>" + esc(formatMinutesAsHours(totalMinutes) || "0:00") + "</strong>" +
       (list.length ? " across " + list.length + " " + (list.length === 1 ? "entry" : "entries") : "") + "</div>";
     var viewMode = ui.eodViewMode === "table" ? "table" : "notes";
-    var content = viewMode === "table" ? eodTableHtml(list) : (list.map(eodNoteEntryHtml).join("") || emptyState("No EOD reports yet."));
+    var content = viewMode === "table" ? eodTableHtml(list) : (list.map(eodNoteEntryHtml).join("") || emptyState(showArchive ? "No archived reports match these filters." : "No EOD reports yet for " + fmtMonthLabel(currentMonth) + "."));
 
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">EOD Reports</div></div></div>" +
-      "<div class=\"card\"><div class=\"card-body\">" +
+    var addFormHtml = showArchive ? "" : "<div class=\"card\"><div class=\"card-body\">" +
       "<form data-action=\"add-eod\">" +
       "<div class=\"add-row-form\">" +
       "<span class=\"field-mini-label\">Date</span><input class=\"text-input\" type=\"date\" name=\"date\" value=\"" + esc(todayIsoDate()) + "\" style=\"max-width:160px;\" required>" +
@@ -3175,10 +3186,15 @@ function appMain() {
       "<div class=\"field-mini-label\" style=\"margin-top:6px;\">Total hours are calculated automatically from Time in/out, minus your break.</div>" +
       "<textarea class=\"text-input\" name=\"tasks\" placeholder=\"What did you work on today? One item per line…\" style=\"margin-top:8px; min-height:90px; width:100%; box-sizing:border-box;\" required></textarea>" +
       "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add EOD report</button>" +
-      "</form></div></div>" +
+      "</form></div></div>";
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">EOD Reports</div></div>" +
+      "<button class=\"btn ghost\" data-action=\"toggle-eod-archive\">" + (showArchive ? "← Back to this month" : "View Archive (previous months)") + "</button>" +
+      "</div>" +
+      addFormHtml +
       "<div class=\"filters-row\">" +
       "<select class=\"text-input\" data-action-change=\"filter-eod\"><option value=\"\">All team members</option>" + vaOptsFilter + "</select>" +
-      "<select class=\"text-input\" data-action-change=\"filter-eod-month\"><option value=\"\">All months</option>" + monthOptsFilter + "</select>" +
+      (showArchive ? "<select class=\"text-input\" data-action-change=\"filter-eod-month\"><option value=\"\">All months</option>" + monthOptsFilter + "</select>" : "") +
       "<div class=\"view-toggle\">" +
       "<button class=\"" + (viewMode === "notes" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"notes\">Notes</button>" +
       "<button class=\"" + (viewMode === "table" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"table\">Table</button>" +
@@ -3321,6 +3337,10 @@ function appMain() {
           persist();
         })(); break;
       case "toggle-issue-type-editor": ui.issueTypeEditorOpen = !ui.issueTypeEditorOpen; render(); break;
+      case "toggle-eod-archive":
+        ui.eodShowArchive = !ui.eodShowArchive;
+        ui.eodFilterMonth = "";
+        render(); break;
       case "toggle-issue-field-editor": ui.issueFieldEditorOpen = !ui.issueFieldEditorOpen; render(); break;
       case "edit-contact-row": ui.editingContactRowId = t.getAttribute("data-id"); render(); break;
       case "done-edit-contact-row": ui.editingContactRowId = null; render(); break;
