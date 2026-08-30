@@ -1632,7 +1632,7 @@ function appMain() {
       editingSimpleIssueId: null,
       editingChartingId: null,
       pendingDelete: null,
-      issueFilters: { school: "", type: "", status: "" },
+      issueFilters: { school: "", type: "", status: "", va: "" },
       eodFilterAuthor: "",
       eodViewMode: "notes",
       editingNoteId: null,
@@ -2711,10 +2711,13 @@ function appMain() {
       if (f.school && it.schoolId !== f.school) return false;
       if (f.type && it.type !== f.type) return false;
       if (f.status && it.status !== f.status) return false;
+      if (f.va && it.reportedBy !== f.va) return false;
       return true;
     });
     var schoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (s) { return "<option value=\"" + s.id + "\"" + (f.school === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
+    var vaFilterOpts = state.vas.filter(function (v) { return v.role !== "owner"; }).sort(function (a, b) { return a.name.localeCompare(b.name); })
+      .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (f.va === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var typeFilterOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
@@ -2809,6 +2812,8 @@ function appMain() {
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"school\"><option value=\"\">All schools</option>" + schoolOpts + "</select>" +
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
+      "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"va\">" +
+      "<option value=\"\">All VAs</option>" + vaFilterOpts + "</select>" +
       sortControlHtml(ui.issuesSort, "set-issues-sort") +
       "</div>" +
       typeSections + orphanedHtml;
@@ -3129,7 +3134,7 @@ function appMain() {
         goTo({ type: t.getAttribute("data-view") });
         render(); break;
       case "nav-issues-status":
-        ui.issueFilters = { school: "", type: "", status: t.getAttribute("data-status") };
+        ui.issueFilters = { school: "", type: "", status: t.getAttribute("data-status"), va: "" };
         goTo({ type: "issues" });
         render(); break;
       case "toggle-sidebar": ui.sidebarOpen = !ui.sidebarOpen; render(); break;
