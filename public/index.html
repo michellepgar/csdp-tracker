@@ -3076,15 +3076,18 @@ function appMain() {
   /* ---------- EOD Reports ---------- */
   /* Every line here uses the exact same font/size on purpose (no bold
      title, no smaller meta text) — this view is meant to be copied
-     straight into the official EOD report as plain, uniform text. The
-     author isn't shown; each entry is treated as the VA's own personal
-     record, not something that needs attributing here. */
+     straight into the official EOD report as plain, uniform text. Now
+     that everyone can browse everyone's reports, a small author label
+     sits above the copyable text (not part of it, so copy-pasting the
+     report itself is unaffected). */
   function eodNoteEntryHtml(e) {
     var taskLines = (e.tasks || []).map(function (t) { return "<div class=\"eod-note-line\">" + esc(t) + "</div>"; }).join("");
     var line1 = "EOD " + esc(fmtEodDate(e.date)) + (e.totalHours ? " (TOTAL HOURS: " + esc(e.totalHours) + ")" : "");
     var line2 = (e.timeIn ? "IN- " + esc(fmtTime12(e.timeIn)) : "") + (e.breakStart ? " BREAK- " + esc(fmtTime12(e.breakStart)) : "");
     var line3 = (e.breakEnd ? "RESUME- " + esc(fmtTime12(e.breakEnd)) : "") + (e.timeOut ? " - OUT- " + esc(fmtTime12(e.timeOut)) : "");
-    return "<div class=\"card eod-note-card\" style=\"margin-bottom:14px;\"><div class=\"card-body\">" +
+    return "<div class=\"card eod-note-card\" style=\"margin-bottom:14px;\">" +
+      "<div style=\"padding:10px 16px 0; font-size:0.78rem; color:var(--ink-faint); font-weight:600;\">" + esc(e.author || "Unnamed") + "</div>" +
+      "<div class=\"card-body\">" +
       "<div class=\"eod-note-line\">" + line1 + "</div>" +
       (line2.trim() ? "<div class=\"eod-note-line\">" + line2.trim() + "</div>" : "") +
       (line3.trim() ? "<div class=\"eod-note-line\">" + line3.trim() + "</div>" : "") +
@@ -3112,15 +3115,12 @@ function appMain() {
       "</tbody></table></div></div></div>";
   }
   function eodPageHtml() {
-    /* Everyone except the superadmin only ever sees their own EOD reports —
-       no team-member filter for them, and the list is locked to their own
-       name regardless of what ui.eodFilterAuthor holds. */
-    var canSeeAll = isSuperAdmin();
+    /* Everyone can see everyone's EOD reports now — the team-member filter
+       below is available to all, not just the superadmin. */
     var vaOptsFilter = state.vas.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (ui.eodFilterAuthor === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
 
     var list = state.eodReports.slice().reverse().filter(function (e) {
-      if (!canSeeAll) return e.author === getStoredIdentity();
       return !ui.eodFilterAuthor || e.author === ui.eodFilterAuthor;
     });
     var viewMode = ui.eodViewMode === "table" ? "table" : "notes";
@@ -3141,7 +3141,7 @@ function appMain() {
       "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add EOD report</button>" +
       "</form></div></div>" +
       "<div class=\"filters-row\">" +
-      (canSeeAll ? "<select class=\"text-input\" data-action-change=\"filter-eod\"><option value=\"\">All team members</option>" + vaOptsFilter + "</select>" : "") +
+      "<select class=\"text-input\" data-action-change=\"filter-eod\"><option value=\"\">All team members</option>" + vaOptsFilter + "</select>" +
       "<div class=\"view-toggle\">" +
       "<button class=\"" + (viewMode === "notes" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"notes\">Notes</button>" +
       "<button class=\"" + (viewMode === "table" ? "active" : "") + "\" data-action=\"set-eod-view\" data-mode=\"table\">Table</button>" +
