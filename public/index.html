@@ -2262,13 +2262,13 @@ function appMain() {
         totalCountHtml = "<span class=\"count-chip\" title=\"Sum of each file's Count\">Total: " + totalCount + "</span>";
       }
       return "<div class=\"task-group\"><div class=\"task-group-title\"><span>" + esc(c.name) + "</span>" +
-        (items.length ? "<span class=\"count-chip\">" + items.length + "</span>" : "") + totalCountHtml + "</div>" +
+        totalCountHtml + "</div>" +
         "<div class=\"row-list\">" + (items.map(function (t) { return taskRowHtml(t, schoolId); }).join("") || emptyState("No files yet in this category.")) + "</div></div>";
     }).join("");
 
     var orphaned = sortRecords(sd.tasks.filter(function (t) { return catNames.indexOf(t.category) === -1; }).slice().reverse(), ui.taskSort, function (t) { return t.fileName; });
     if (orphaned.length) {
-      groupsHtml += "<div class=\"task-group\"><div class=\"task-group-title\"><span>Other</span><span class=\"count-chip\">" + orphaned.length + "</span></div>" +
+      groupsHtml += "<div class=\"task-group\"><div class=\"task-group-title\"><span>Other</span></div>" +
         "<div class=\"row-list\">" + orphaned.map(function (t) { return taskRowHtml(t, schoolId); }).join("") + "</div></div>";
     }
 
