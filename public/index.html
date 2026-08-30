@@ -2615,24 +2615,12 @@ function appMain() {
         "<td>" + editBtn + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
     }).join("");
-    /* Adding a new entry is always available, whether or not the table is
-       unlocked for editing — it's a fresh row, not a change to anything
-       already there, so it isn't the kind of accidental edit Edit mode
-       guards against. */
-    var addFormHtml = "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
-      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
-      "<span class=\"field-mini-label\">Needs correction:</span>" +
-      CORRECTION_NEEDS_FIELDS.map(function (f) {
-        return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
-      }).join("") +
-      "<button class=\"btn small\" type=\"submit\">+ Add</button></form>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
       (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
       (rowsHtml || "<tr><td colspan=\"" + CORRECTION_TABLE_COLS + "\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div>" +
-      addFormHtml +
       "</div></div>";
   }
   /* Software Issue's own simple table — just the issue, a note, who
@@ -2659,16 +2647,12 @@ function appMain() {
         "<td>" + editBtn + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
     }).join("");
-    var addFormHtml = "<form class=\"add-row-form\" data-action=\"add-simple-issue\" data-type=\"" + ty.id + "\">" +
-      "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
-      "<button class=\"btn small\" type=\"submit\">+ Add</button></form>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
       (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
       (rowsHtml || "<tr><td colspan=\"5\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div>" +
-      addFormHtml +
       "</div></div>";
   }
   function issuesPageHtml() {
@@ -2685,14 +2669,11 @@ function appMain() {
       return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
 
-    /* Software Issue and Insurance & DOB Correction each have their own
-       dedicated add form on their own table now — only types still using
-       the generic dynamic +Field pool belong in this shared form. */
-    var addableTypes = state.issueTypes.filter(function (ty) { return !ty.customCorrection && !ty.simpleIssueTable; });
-    var newTypeId = ui.newIssueType && addableTypes.some(function (ty) { return ty.id === ui.newIssueType; }) ? ui.newIssueType : (addableTypes[0] ? addableTypes[0].id : "");
-    var newTypeOpts = addableTypes.map(function (ty) {
+    var newTypeId = ui.newIssueType && issueTypeById(ui.newIssueType) ? ui.newIssueType : (state.issueTypes[0] ? state.issueTypes[0].id : "");
+    var newTypeOpts = state.issueTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === newTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
+    var newType = issueTypeById(newTypeId);
 
     var typeEditorHtml = "";
     if (ui.issueTypeEditorOpen) {
@@ -2746,14 +2727,28 @@ function appMain() {
         "<div class=\"card-body\">" + typeEditorHtml + fieldEditorHtml +
         "<form class=\"add-row-form\" data-action=\"add-issue\" style=\"flex-wrap:wrap;\">" +
         "<span class=\"add-row-form\" style=\"padding:0; margin:0;\">" +
-        "<select class=\"text-input\" name=\"type\">" + newTypeOpts + "</select>" +
-        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
+        "<select class=\"text-input\" data-action-change=\"select-new-issue-type\" name=\"type\">" + newTypeOpts + "</select>" +
+        /* Insurance & DOB Correction asks for the student's name instead
+           of a free-text description — everything else about what fields
+           show here follows the type picked above. */
+        (newType && newType.customCorrection
+          ? "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required style=\"flex:2;\">"
+          : "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">") +
         "<span class=\"field-mini-label\">Reported by " + esc(getStoredIdentity() || "—") + "</span>" +
         "</span>" +
-        /* No fields pre-added — click a +Field button for whatever this
-           particular issue actually needs. Remarks stays edit-only, added
-           after saving once there's something to report back. */
-        "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>" +
+        (newType && newType.customCorrection
+          ? "<span style=\"width:100%; margin-top:8px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;\">" +
+            "<span class=\"field-mini-label\">Needs correction:</span>" +
+            CORRECTION_NEEDS_FIELDS.map(function (f) {
+              return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
+            }).join("") +
+            "</span>"
+          : newType && newType.simpleIssueTable
+            ? ""
+            /* No fields pre-added — click a +Field button for whatever this
+               particular issue actually needs. Remarks stays edit-only,
+               added after saving once there's something to report back. */
+            : "<span style=\"width:100%; margin-top:8px;\">" + issueFieldsBlockHtml([], {}) + "</span>") +
         "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add</button></form>" +
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet — add your team there first.</div>" : "") +
         "</div></div>" +
@@ -3747,6 +3742,51 @@ function appMain() {
           var typeId = (fd.get("type") || "").toString();
           var typeObj = issueTypeById(typeId);
           var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
+          /* Which fields this form actually collected depends on the type
+             picked above — Insurance & DOB Correction and Software issue
+             each have their own shape, everything else uses the generic
+             +Field pool. */
+          if (typeObj && typeObj.customCorrection) {
+            var studentName = (fd.get("studentName") || "").toString().trim();
+            if (!studentName) return;
+            state.issues.push({
+              id: uid("issue"),
+              type: typeId,
+              studentName: studentName,
+              schoolId: "",
+              grade: "",
+              needsNameCorrection: !!fd.get("needsNameCorrection"),
+              needsDobCorrection: !!fd.get("needsDobCorrection"),
+              needsInsuranceCorrection: !!fd.get("needsInsuranceCorrection"),
+              dob: "",
+              insuranceNumber: "",
+              correctInfo: "",
+              remarks: "",
+              reportedBy: getStoredIdentity(),
+              verified: false,
+              status: statusOpts[0] || "Pending",
+              createdAt: new Date().toISOString()
+            });
+            ui.newIssueType = null;
+            persist();
+            return;
+          }
+          if (typeObj && typeObj.simpleIssueTable) {
+            var simpleDescription = (fd.get("description") || "").toString().trim();
+            if (!simpleDescription) return;
+            state.issues.push({
+              id: uid("issue"),
+              type: typeId,
+              description: simpleDescription,
+              remarks: "",
+              reportedBy: getStoredIdentity(),
+              status: statusOpts[0] || "Pending",
+              createdAt: new Date().toISOString()
+            });
+            ui.newIssueType = null;
+            persist();
+            return;
+          }
           var enabledFields = (fd.get("enabledFields") || "").toString().split(",").filter(Boolean);
           var poolByKey = issueFieldPoolByKey();
           var issue = {
@@ -3765,51 +3805,6 @@ function appMain() {
           });
           state.issues.push(issue);
           ui.newIssueType = null;
-          persist();
-        })(); break;
-      case "add-correction-row":
-        (function () {
-          var typeId = form.getAttribute("data-type");
-          var typeObj = issueTypeById(typeId);
-          var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
-          var studentName = (fd.get("studentName") || "").toString().trim();
-          if (!studentName) return;
-          state.issues.push({
-            id: uid("issue"),
-            type: typeId,
-            studentName: studentName,
-            schoolId: "",
-            grade: "",
-            needsNameCorrection: !!fd.get("needsNameCorrection"),
-            needsDobCorrection: !!fd.get("needsDobCorrection"),
-            needsInsuranceCorrection: !!fd.get("needsInsuranceCorrection"),
-            dob: "",
-            insuranceNumber: "",
-            correctInfo: "",
-            remarks: "",
-            reportedBy: getStoredIdentity(),
-            verified: false,
-            status: statusOpts[0] || "Pending",
-            createdAt: new Date().toISOString()
-          });
-          persist();
-        })(); break;
-      case "add-simple-issue":
-        (function () {
-          var typeId = form.getAttribute("data-type");
-          var typeObj = issueTypeById(typeId);
-          var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
-          var description = (fd.get("description") || "").toString().trim();
-          if (!description) return;
-          state.issues.push({
-            id: uid("issue"),
-            type: typeId,
-            description: description,
-            remarks: "",
-            reportedBy: getStoredIdentity(),
-            status: statusOpts[0] || "Pending",
-            createdAt: new Date().toISOString()
-          });
           persist();
         })(); break;
       case "save-issue-edit":
