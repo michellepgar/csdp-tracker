@@ -2342,7 +2342,7 @@ function appMain() {
     if (!me) return "";
     var reqKey = recordKind + "|" + targetId;
     var pendingReq = findAccessRequestForRecord(schoolId, targetId, me, ["pending"]);
-    if (pendingReq) return "<span class=\"field-mini-label\" title=\"Waiting on the assigned VA or an Admin/Owner\">Request pending</span>";
+    if (pendingReq) return "<span class=\"field-mini-label\" title=\"Request pending — waiting on the assigned VA or an Admin/Owner\">⏳</span>";
     if (ui.requestingAccessFor === reqKey) {
       var actionOpts = Object.keys(ACCESS_REQUEST_ACTION_TYPE[recordKind] || { remove: 1 }).map(function (a) {
         return "<option value=\"" + a + "\">" + (a === "edit" ? "Edit" : "Remove") + "</option>";
@@ -2358,7 +2358,7 @@ function appMain() {
         "<button class=\"link-btn\" type=\"button\" data-action=\"cancel-request-access\">Cancel</button>" +
         "</form>";
     }
-    return "<button class=\"link-btn\" data-action=\"toggle-request-access\" data-key=\"" + esc(reqKey) + "\">Request to edit/remove</button>";
+    return "<button class=\"icon-btn\" data-action=\"toggle-request-access\" data-key=\"" + esc(reqKey) + "\" title=\"Request to edit/remove\">🔓</button>";
   }
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
@@ -3271,9 +3271,17 @@ function appMain() {
   var ACCESS_REQUEST_STATUS_PILL = { pending: "orange", approved: "green", declined: "red", fulfilled: "neutral" };
   var ACCESS_REQUEST_STATUS_LABEL = { pending: "Pending", approved: "Approved", declined: "Declined", fulfilled: "Done" };
   function accessRequestRowHtml(r, showApproveDecline) {
+    var me = getStoredIdentity();
     var school = schoolById(r.schoolId);
     var statusLabel = ACCESS_REQUEST_STATUS_LABEL[r.status] || r.status;
     var actionVerb = r.action === "edit" ? "edit" : "remove";
+    var isMine = r.requestedBy === me;
+    /* Anyone can clear out their own request once it's no longer pending;
+       whoever manages that school can also clear its resolved history —
+       but a still-pending one has to actually be decided first, not just
+       deleted out from under the requester. */
+    var canRemoveRow = isMine || (r.status !== "pending" && canDeleteSchoolRecords(r.schoolId));
+    var removeLabel = (r.status === "pending" && isMine) ? "Cancel" : "Delete";
     return "<div class=\"row-item\" style=\"align-items:flex-start;\"><div class=\"row-main\">" +
       /* The record being requested, and who's asking, both up front — not
          buried in a second line. */
@@ -3288,20 +3296,24 @@ function appMain() {
           "<button class=\"btn small ghost\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\">Decline</button>" +
           "</div>"
         : "<span class=\"pill " + (ACCESS_REQUEST_STATUS_PILL[r.status] || "neutral") + "\">" + esc(statusLabel) + "</span>" +
-          (r.status === "pending" ? "<button class=\"link-btn danger\" data-action=\"cancel-access-request\" data-id=\"" + r.id + "\" style=\"margin-left:8px;\">Cancel</button>" : "")) +
+          (canRemoveRow ? "<button class=\"link-btn danger\" data-action=\"delete-access-request\" data-id=\"" + r.id + "\" style=\"margin-left:8px;\">" + removeLabel + "</button>" : "")) +
       "</div>";
   }
   function approvalsPageHtml() {
     var me = getStoredIdentity();
     var all = state.accessRequests || [];
-    var forMe = all.filter(function (r) { return r.status === "pending" && canDeleteSchoolRecords(r.schoolId); })
-      .sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
+    var forMe = all.filter(function (r) { return canDeleteSchoolRecords(r.schoolId); })
+      .sort(function (a, b) {
+        if ((a.status === "pending") !== (b.status === "pending")) return a.status === "pending" ? -1 : 1;
+        return (b.createdAt || "").localeCompare(a.createdAt || "");
+      });
+    var forMePending = forMe.filter(function (r) { return r.status === "pending"; }).length;
     var mine = all.filter(function (r) { return r.requestedBy === me; })
       .sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Approvals</div></div></div>" +
-      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Requests waiting on you" + (forMe.length ? " <span class=\"count-chip\">" + forMe.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Requests for your schools" + (forMePending ? " <span class=\"count-chip\">" + forMePending + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"row-list\">" +
-      (forMe.length ? forMe.map(function (r) { return accessRequestRowHtml(r, true); }).join("") : emptyState("Nothing waiting on your approval.")) +
+      (forMe.length ? forMe.map(function (r) { return accessRequestRowHtml(r, r.status === "pending"); }).join("") : emptyState("No requests for schools you manage.")) +
       "</div></div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Your requests</div></div>" +
       "<div class=\"card-body\"><div class=\"row-list\">" +
@@ -3507,11 +3519,14 @@ function appMain() {
           reqObj.resolvedAt = new Date().toISOString();
           persist();
         })(); break;
-      case "cancel-access-request":
+      case "delete-access-request":
         (function () {
           var reqId = t.getAttribute("data-id");
           var reqObj = (state.accessRequests || []).find(function (x) { return x.id === reqId; });
-          if (!reqObj || reqObj.requestedBy !== getStoredIdentity()) return;
+          if (!reqObj) return;
+          var isMine = reqObj.requestedBy === getStoredIdentity();
+          var canManage = reqObj.status !== "pending" && canDeleteSchoolRecords(reqObj.schoolId);
+          if (!isMine && !canManage) return;
           state.accessRequests = state.accessRequests.filter(function (x) { return x.id !== reqId; });
           persist();
         })(); break;
