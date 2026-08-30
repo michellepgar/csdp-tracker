@@ -2970,6 +2970,14 @@ function appMain() {
   /* ---------- Sticky notes (General Notes + Private Notes) ---------- */
   function noteEditorFormHtml(action, id, scope, initialHtml, initialColor, isEditing, initialUrgency) {
     var editorId = "note-editor-" + (id || "new");
+    /* Only the "add a new note" form drafts as you type — editing an
+       existing note already has its own real saved content, and drafting
+       there could show a stale draft instead of the note you opened. */
+    var draftKeyName = isEditing ? "" : scope + "-note-new";
+    if (draftKeyName) {
+      var draftHtml = loadDraft(draftKeyName);
+      if (draftHtml) initialHtml = sanitizeNoteHtml(draftHtml);
+    }
     var swatches = NOTE_COLORS.map(function (c) {
       return "<label class=\"note-color-swatch\" style=\"background:" + c.hex + ";\" title=\"" + c.id + "\">" +
         "<input type=\"radio\" name=\"color\" value=\"" + c.id + "\"" + (c.id === (initialColor || DEFAULT_NOTE_COLOR) ? " checked" : "") + "></label>";
@@ -2992,7 +3000,7 @@ function appMain() {
       "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
       "</div>" +
-      "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\">" + (initialHtml || "") + "</div>" +
+      "<div id=\"" + editorId + "\" class=\"note-editor-area\" contenteditable=\"true\"" + (draftKeyName ? " data-draft-key=\"" + draftKeyName + "\"" : "") + ">" + (initialHtml || "") + "</div>" +
       (scope === "general" ? "<div style=\"margin-top:8px;\"><span class=\"field-mini-label\">Urgency</span> " +
         "<select class=\"text-input\" style=\"display:inline-block; width:140px;\" name=\"urgency\">" +
         "<option value=\"Normal\"" + ((initialUrgency || "Normal") === "Normal" ? " selected" : "") + ">Normal</option>" +
@@ -3177,14 +3185,14 @@ function appMain() {
     var addFormHtml = showArchive ? "" : "<div class=\"card\"><div class=\"card-body\">" +
       "<form data-action=\"add-eod\">" +
       "<div class=\"add-row-form\">" +
-      "<span class=\"field-mini-label\">Date</span><input class=\"text-input\" type=\"date\" name=\"date\" value=\"" + esc(todayIsoDate()) + "\" style=\"max-width:160px;\" required>" +
-      "<span class=\"field-mini-label\">Time in</span><input class=\"text-input\" type=\"time\" name=\"timeIn\" style=\"max-width:130px;\">" +
-      "<span class=\"field-mini-label\">Break</span><input class=\"text-input\" type=\"time\" name=\"breakStart\" style=\"max-width:130px;\">" +
-      "<span class=\"field-mini-label\">Resume</span><input class=\"text-input\" type=\"time\" name=\"breakEnd\" style=\"max-width:130px;\">" +
-      "<span class=\"field-mini-label\">Time out</span><input class=\"text-input\" type=\"time\" name=\"timeOut\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Date</span><input class=\"text-input\" type=\"date\" name=\"date\" data-draft-key=\"eod-new-date\" value=\"" + esc(loadDraft("eod-new-date") || todayIsoDate()) + "\" style=\"max-width:160px;\" required>" +
+      "<span class=\"field-mini-label\">Time in</span><input class=\"text-input\" type=\"time\" name=\"timeIn\" data-draft-key=\"eod-new-timeIn\" value=\"" + esc(loadDraft("eod-new-timeIn")) + "\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Break</span><input class=\"text-input\" type=\"time\" name=\"breakStart\" data-draft-key=\"eod-new-breakStart\" value=\"" + esc(loadDraft("eod-new-breakStart")) + "\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Resume</span><input class=\"text-input\" type=\"time\" name=\"breakEnd\" data-draft-key=\"eod-new-breakEnd\" value=\"" + esc(loadDraft("eod-new-breakEnd")) + "\" style=\"max-width:130px;\">" +
+      "<span class=\"field-mini-label\">Time out</span><input class=\"text-input\" type=\"time\" name=\"timeOut\" data-draft-key=\"eod-new-timeOut\" value=\"" + esc(loadDraft("eod-new-timeOut")) + "\" style=\"max-width:130px;\">" +
       "</div>" +
       "<div class=\"field-mini-label\" style=\"margin-top:6px;\">Total hours are calculated automatically from Time in/out, minus your break.</div>" +
-      "<textarea class=\"text-input\" name=\"tasks\" placeholder=\"What did you work on today? One item per line…\" style=\"margin-top:8px; min-height:90px; width:100%; box-sizing:border-box;\" required></textarea>" +
+      "<textarea class=\"text-input\" name=\"tasks\" placeholder=\"What did you work on today? One item per line…\" data-draft-key=\"eod-new-tasks\" style=\"margin-top:8px; min-height:90px; width:100%; box-sizing:border-box;\" required>" + esc(loadDraft("eod-new-tasks")) + "</textarea>" +
       "<button class=\"btn\" type=\"submit\" style=\"margin-top:8px;\">Add EOD report</button>" +
       "</form></div></div>";
 
@@ -3759,7 +3767,11 @@ function appMain() {
     var t = e.target;
     if (t.matches && t.matches("[data-role='school-search']")) { ui.search = t.value; render(); focusSearch(); return; }
     var key = t.getAttribute && t.getAttribute("data-draft-key");
-    if (key) saveDraft(key, t.value);
+    if (!key) return;
+    /* A rich-text note editor is a contenteditable div, not a normal
+       input/textarea — it has no .value, its content lives in .innerHTML. */
+    if (t.isContentEditable) { saveDraft(key, t.innerHTML); return; }
+    saveDraft(key, t.value);
   }
   function focusSearch() {
     var el = document.querySelector("[data-role='school-search']");
@@ -3879,6 +3891,7 @@ function appMain() {
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
           var urgency = (fd.get("urgency") || "Normal").toString();
           state.generalNotes.push({ id: uid("note"), text: html, author: author, color: color, urgency: urgency, ackBy: [], createdAt: new Date().toISOString() });
+          saveDraft("general-note-new", "");
           persist();
         })(); break;
       case "add-private-note":
@@ -3889,6 +3902,7 @@ function appMain() {
           if (!html || html === "<br>") return;
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
           state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, sharedWith: [], createdAt: new Date().toISOString() });
+          saveDraft("private-note-new", "");
           persist();
         })(); break;
       case "save-note-edit":
@@ -3929,6 +3943,7 @@ function appMain() {
             createdAt: new Date().toISOString()
           };
           state.eodReports.push(entry);
+          ["eod-new-date", "eod-new-timeIn", "eod-new-breakStart", "eod-new-breakEnd", "eod-new-timeOut", "eod-new-tasks"].forEach(function (k) { saveDraft(k, ""); });
           persist();
         })(); break;
       case "add-issue":
