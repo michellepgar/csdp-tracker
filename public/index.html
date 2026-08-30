@@ -3265,6 +3265,7 @@ function appMain() {
   function accessRequestRowHtml(r, showApproveDecline) {
     var me = getStoredIdentity();
     var school = schoolById(r.schoolId);
+    var sd = school ? ensureSchoolData(school.id) : null;
     var statusLabel = ACCESS_REQUEST_STATUS_LABEL[r.status] || r.status;
     var isMine = r.requestedBy === me;
     /* Anyone can clear out their own request once it's no longer pending;
@@ -3273,13 +3274,24 @@ function appMain() {
        deleted out from under the requester. */
     var canRemoveRow = isMine || (r.status !== "pending" && canDeleteSchoolRecords(r.schoolId));
     var removeLabel = (r.status === "pending" && isMine) ? "Cancel" : "Delete";
+    /* Admins/Owner see every school's requests as a safety net (same as
+       everywhere else in the app), not just the assigned VA — showing the
+       school and who it's actually assigned to right up front makes it
+       obvious why a request for someone else's school still showed up. */
+    var schoolLineHtml = "<div class=\"row-meta\"><span class=\"pill neutral\">" + esc(school ? school.name : "Unknown school") + "</span>" +
+      (sd && sd.vaAssigned ? " Assigned to " + esc(sd.vaAssigned) : " Unassigned") + " · " + fmtDateTime(r.createdAt) + "</div>";
+    var resolvedLineHtml = "";
+    if (r.resolvedBy) {
+      var resolvedVerb = r.status === "fulfilled" ? "Approved and removed" : (r.status === "declined" ? "Declined" : statusLabel);
+      resolvedLineHtml = "<div class=\"row-meta\">" + esc(resolvedVerb) + " by " + esc(r.resolvedBy) + (r.resolvedAt ? " · " + fmtDateTime(r.resolvedAt) : "") + "</div>";
+    }
     return "<div class=\"row-item\" style=\"align-items:flex-start;\"><div class=\"row-main\">" +
       /* The record being requested, and who's asking, both up front — not
          buried in a second line. */
       "<div class=\"row-title\">" + esc(r.requestedBy) + " wants to <strong>remove</strong>: " + esc(r.label) + "</div>" +
-      "<div class=\"row-meta\">" + esc(school ? school.name : "Unknown school") + " · " + fmtDateTime(r.createdAt) + "</div>" +
+      schoolLineHtml +
       "<div class=\"row-meta\">Reason: " + esc(r.reason) + "</div>" +
-      (r.resolvedBy ? "<div class=\"row-meta\">" + esc(statusLabel) + " by " + esc(r.resolvedBy) + "</div>" : "") +
+      resolvedLineHtml +
       "</div>" +
       (showApproveDecline
         ? "<div style=\"display:flex; gap:8px;\">" +
