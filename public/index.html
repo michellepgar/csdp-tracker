@@ -763,24 +763,51 @@ function appMain() {
       node = node.parentNode;
     }
   };
-  /* Pressing Enter inside a checklist line only ever continued the <ul>
-     natively — the freshly split-off line had no checkbox of its own until
-     someone re-clicked the toolbar button. Let the browser finish its
-     native split, then seed the new line the same way, right after. */
+  function closestLi(node, editor) {
+    while (node && node !== editor) {
+      if (node.nodeType === 1 && node.tagName === "LI") return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+  /* Enter is supposed to continue any list (bullet, dash, or checklist)
+     with a fresh <li> — the browser usually does this natively, but it
+     isn't reliable enough to depend on alone, and even when it does, a
+     checklist line's new <li> never got its own checkbox. So: let the
+     native behavior run first, then check right after whether it actually
+     produced a new list item. If it did, just seed a checklist's checkbox.
+     If it didn't (still on the same <li>, or fell out of the list
+     entirely), build the new <li> by hand instead — same split either way,
+     just skipping the wait when we already know it's needed. */
   function onNoteEditorKeydown(e) {
-    if (e.key !== "Enter") return;
+    if (e.key !== "Enter" || e.shiftKey) return;
     var editor = e.target.closest && e.target.closest(".note-editor-area");
     if (!editor) return;
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var liBefore = closestLi(sel.anchorNode, editor);
+    if (!liBefore) return;
     setTimeout(function () {
-      var sel = window.getSelection();
-      if (!sel || !sel.rangeCount) return;
-      var node = sel.anchorNode;
-      while (node && node !== editor && !(node.nodeType === 1 && node.tagName === "LI")) node = node.parentNode;
-      if (!node || node === editor) return;
-      var ul = node.parentNode;
-      if (!ul || ul.tagName !== "UL" || ul.className !== "list-check") return;
-      var cb = insertChecklistCheckbox(node);
-      if (cb && cb.nextSibling) placeCaretAfter(cb.nextSibling);
+      var sel2 = window.getSelection();
+      var liAfter = sel2 && sel2.rangeCount ? closestLi(sel2.anchorNode, editor) : null;
+      var ul = liBefore.parentNode;
+      if (liAfter && liAfter !== liBefore) {
+        if (ul && ul.tagName === "UL" && ul.className === "list-check") {
+          var cb = insertChecklistCheckbox(liAfter);
+          if (cb && cb.nextSibling) placeCaretAfter(cb.nextSibling);
+        }
+        return;
+      }
+      if (!ul || ul.tagName !== "UL" || !document.contains(liBefore)) return;
+      var newLi = document.createElement("li");
+      ul.insertBefore(newLi, liBefore.nextSibling);
+      if (ul.className === "list-check") {
+        var cb2 = insertChecklistCheckbox(newLi);
+        placeCaretAfter(cb2.nextSibling);
+      } else {
+        newLi.appendChild(document.createElement("br"));
+        placeCaretAfter(newLi.firstChild);
+      }
     }, 0);
   }
   /* Clicking a checkbox inside contenteditable is a known browser quirk —
