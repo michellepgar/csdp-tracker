@@ -495,6 +495,7 @@
   .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: right; }
   .dist-table th.dist-col-center, .dist-table td.dist-col-center { text-align: center; }
   .dist-remarks-edit-btn, .contact-note-edit-btn { display: block; margin-top: 4px; font-size: 0.72rem; }
+  .contact-move-select { display: block; width: 100%; font-size: 0.72rem; padding: 3px 4px; margin-bottom: 6px; }
   /* Cell highlights are literal marker colors, fixed regardless of theme
      (same reasoning as sticky notes) — a light highlight with the app's
      own light ink stays readable no matter what --ink currently is. */
@@ -1297,6 +1298,19 @@ function appMain() {
     }
     return true;
   }
+  /* "PRE K - 5" read as a confusing label once schools moved out of Pre-K
+     proper — renamed to the plain grade-band name it always meant. */
+  function migrateContactGroupRename(parsed) {
+    if (parsed._migratedContactGroupRename) return false;
+    parsed._migratedContactGroupRename = true;
+    (parsed.contactGroups || []).forEach(function (g) {
+      if (g.name === "PRE K - 5") g.name = "Elementary School";
+    });
+    (parsed.distributionGroups || []).forEach(function (g) {
+      if (g.name === "Elementary") g.name = "Elementary School";
+    });
+    return true;
+  }
 
   /* ---------- Distribution List (consent form distribution tracking) ----------
      Same "grouped like a table, one card per grade band" shape as Contact
@@ -1385,7 +1399,7 @@ function appMain() {
      schools and grouping as Schools Contact Information, so entering
      numbers is just picking the school that's already there instead of
      retyping its name every year. */
-  var DISTRIBUTION_GROUP_LABELS = { "PRE K": "Pre-K", "PRE K - 5": "Elementary", "MIDDLE SCHOOL": "Middle School", "HIGH SCHOOL": "High School" };
+  var DISTRIBUTION_GROUP_LABELS = { "PRE K": "Pre-K", "PRE K - 5": "Elementary School", "MIDDLE SCHOOL": "Middle School", "HIGH SCHOOL": "High School" };
   function buildDefaultDistributionGroups() {
     return buildDefaultContactGroups().map(function (g) {
       return {
@@ -1777,6 +1791,7 @@ function appMain() {
       migrateFaithOwner(fresh);
       migrateIssueStatusUniform(fresh);
       migrateSchoolContacts(fresh);
+      migrateContactGroupRename(fresh);
       migrateContactMultiLineFields(fresh);
       migrateDistributionGroups(fresh);
       migrateDistributionSeedSchools(fresh);
@@ -1848,6 +1863,7 @@ function appMain() {
       var justMigratedFaithOwner = migrateFaithOwner(state);
       var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
       var justMigratedContacts = migrateSchoolContacts(state);
+      var justMigratedContactGroupRename = migrateContactGroupRename(state);
       var justMigratedContactMultiLine = migrateContactMultiLineFields(state);
       var justMigratedDistributionGroups = migrateDistributionGroups(state);
       var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(state);
@@ -1857,7 +1873,7 @@ function appMain() {
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -2149,7 +2165,7 @@ function appMain() {
      width everywhere, regardless of how much content that group has. */
   function contactColgroupHtml() {
     return "<colgroup>" + CONTACT_FIELDS.map(function (f) { return "<col style=\"width:" + f.width + "%;\">"; }).join("") +
-      "<col style=\"width:70px;\">" + "</colgroup>";
+      "<col style=\"width:130px;\">" + "</colgroup>";
   }
   /* Multi-line-safe text-to-HTML for the read-only view — keeps line
      breaks (so a school with two nurses shows one per line) while still
@@ -2217,8 +2233,12 @@ function appMain() {
           return "<td class=\"" + tdClass + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
         }).join("");
         var pendingRow = isPending("contact-row", r.id);
+        var moveGroupSelect = "<select class=\"text-input contact-move-select\" data-action-change=\"move-contact-row-group\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" title=\"Move to a different group\">" +
+          groups.map(function (og) { return "<option value=\"" + og.id + "\"" + (og.id === g.id ? " selected" : "") + ">" + esc(og.name) + "</option>"; }).join("") +
+          "</select>";
         var actionsCell = highlightMode ? "<td></td>" :
-          "<td>" + "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>" +
+          "<td>" + moveGroupSelect +
+          "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td>";
         return "<tr>" + cells + actionsCell + "</tr>";
       }).join("");
@@ -4375,6 +4395,19 @@ function appMain() {
           var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
           var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
           if (r) r[t.getAttribute("data-field")] = t.value;
+          persist();
+        })(); break;
+      case "move-contact-row-group":
+        (function () {
+          var fromGroup = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          var rowId = t.getAttribute("data-row");
+          var toGroup = state.contactGroups.find(function (x) { return x.id === t.value; });
+          if (!fromGroup || !toGroup || fromGroup.id === toGroup.id) return;
+          var row = fromGroup.rows.find(function (x) { return x.id === rowId; });
+          if (!row) return;
+          fromGroup.rows = fromGroup.rows.filter(function (x) { return x.id !== rowId; });
+          toGroup.rows = toGroup.rows || [];
+          toGroup.rows.push(row);
           persist();
         })(); break;
       case "toggle-distribution-distributed":
