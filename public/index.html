@@ -41,8 +41,10 @@
     --progress-soft: #F1E7C9;
     --done: #3E7D49;
     --done-soft: #DDEBDD;
+    --done-ink: #FFFFFF;
     --danger: #A23B32;
     --danger-soft: #F3DEDB;
+    --danger-ink: #FFFFFF;
     --shadow: 0 1px 2px rgba(27,36,30,0.06), 0 4px 14px rgba(27,36,30,0.06);
     --radius: 8px;
     --radius-lg: 12px;
@@ -70,8 +72,10 @@
       --progress-soft: #3A331A;
       --done: #7FC48A;
       --done-soft: #21331F;
+      --done-ink: #0B1E36;
       --danger: #E38076;
       --danger-soft: #3A211E;
+      --danger-ink: #0B1E36;
       --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
     }
   }
@@ -97,8 +101,10 @@
     --progress-soft: #3A331A;
     --done: #7FC48A;
     --done-soft: #21331F;
+    --done-ink: #0B1E36;
     --danger: #E38076;
     --danger-soft: #3A211E;
+    --danger-ink: #0B1E36;
     --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
   }
 
@@ -229,7 +235,7 @@
   .btn:hover { filter: brightness(1.06); }
   .btn.ghost { background: var(--surface-2); color: var(--ink); }
   .btn.small { padding: 5px 10px; font-size: 0.78rem; }
-  .btn.danger { background: var(--danger); color: #fff; }
+  .btn.danger { background: var(--danger); color: var(--danger-ink); }
   .danger-zone { border-color: var(--danger); }
   .danger-zone .card-title { color: var(--danger); }
 
@@ -292,7 +298,7 @@
   .filters-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .view-toggle { display: inline-flex; gap: 4px; margin-left: auto; }
   .view-toggle button { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 0.8rem; cursor: pointer; color: var(--ink-soft); }
-  .view-toggle button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .view-toggle button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
   .template-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .tmpl-item { border: 1px solid var(--border); border-radius: var(--radius-lg); margin-bottom: 10px; overflow: hidden; }
@@ -328,7 +334,7 @@
   .stat-tile-sm .stat-label { font-size: 0.7rem; }
   .card-compact .card-body { padding-top: 6px; padding-bottom: 6px; }
   .alerts-card { border-color: var(--danger); background: var(--danger-soft); }
-  .urgent-pill { display: inline-block; background: var(--danger); color: #fff; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; align-self: flex-start; }
+  .urgent-pill { display: inline-block; background: var(--danger); color: var(--danger-ink); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; align-self: flex-start; }
   .clickable-card { cursor: pointer; }
   @keyframes blink-alert { 0%, 100% { background: transparent; color: inherit; } 50% { background: var(--danger-soft); color: var(--danger); } }
   .nav-item.blink-alert { animation: blink-alert 1.1s ease-in-out infinite; font-weight: 600; }
@@ -342,7 +348,7 @@
   .eod-note-line { font-size: 0.86rem; line-height: 1.6; color: var(--ink); }
   .alerts-card .card-title { color: var(--danger); }
   .alerts-card .nav-item .name { color: var(--danger); }
-  .alerts-card .count-chip { background: var(--danger); color: #fff; }
+  .alerts-card .count-chip { background: var(--danger); color: var(--danger-ink); }
   .school-progress-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
   .school-progress-row:last-child { border-bottom: none; }
   .school-progress-row .school-progress-name { font-size: 0.95rem; font-weight: 700; margin-bottom: 5px; }
@@ -2142,8 +2148,80 @@ function appMain() {
   function vaTagColor(name) {
     return vaColorCss(name, 0.22);
   }
+  /* Some VA colors (picked freely from a color wheel, or the fixed
+     defaults) are too light to read as TEXT on a light background, or too
+     dark to read on a dark one — gold/yellow especially. Rather than
+     showing the color as-is, nudge only its lightness (hue/saturation
+     untouched, so it still reads as "that VA's color") until it passes
+     WCAG AA (4.5:1) against the current theme's background. Backgrounds
+     (vaTagColor, used as a soft tint behind var(--ink) text) don't need
+     this — only vaSolidColor, which is always used as the text color
+     itself. */
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4;
+      }
+      h /= 6;
+    }
+    return [h * 360, s * 100, l * 100];
+  }
+  function hslToRgb(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    var r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      var hue2rgb = function (p, q, t) {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      };
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1 / 3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+  function relLuminance(rgb) {
+    var a = rgb.map(function (v) {
+      v /= 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
+  }
+  function contrastRatio(rgb1, rgb2) {
+    var l1 = relLuminance(rgb1) + 0.05, l2 = relLuminance(rgb2) + 0.05;
+    return l1 > l2 ? l1 / l2 : l2 / l1;
+  }
+  function readableTextRgb(rgb) {
+    var isDark = currentEffectiveTheme() === "dark";
+    var refBg = isDark ? [14, 24, 38] : [255, 255, 255];
+    var hsl = rgbToHsl(rgb[0], rgb[1], rgb[2]);
+    var l = hsl[2], out = rgb;
+    for (var i = 0; i < 50; i++) {
+      out = hslToRgb(hsl[0], hsl[1], l);
+      if (contrastRatio(out, refBg) >= 4.5) break;
+      l = isDark ? Math.min(96, l + 2) : Math.max(4, l - 2);
+    }
+    return out;
+  }
   function vaSolidColor(name) {
-    return vaColorCss(name, null);
+    var css = vaColorCss(name, null);
+    var rgb = css.charAt(0) === "#" ? hexToRgb(css) : null;
+    if (!rgb) return css; // hash-fallback hsl() string already tuned for legibility
+    var readable = readableTextRgb([rgb.r, rgb.g, rgb.b]);
+    return "rgb(" + readable[0] + "," + readable[1] + "," + readable[2] + ")";
   }
   /* Colors a school's name to match whichever VA it's assigned to, so the
      sidebar reads at a glance like each VA's own signature color. */
@@ -3306,8 +3384,8 @@ function appMain() {
       "</div>" +
       (showApproveDecline
         ? "<div style=\"display:flex; gap:8px;\">" +
-          "<button class=\"btn small\" style=\"background:var(--done); color:#fff;\" data-action=\"approve-access-request\" data-id=\"" + r.id + "\" title=\"Approve\">✅ Approve</button>" +
-          "<button class=\"btn small\" style=\"background:var(--danger); color:#fff;\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\" title=\"Decline\">❌ Decline</button>" +
+          "<button class=\"btn small\" style=\"background:var(--done); color:var(--done-ink);\" data-action=\"approve-access-request\" data-id=\"" + r.id + "\" title=\"Approve\">✅ Approve</button>" +
+          "<button class=\"btn small\" style=\"background:var(--danger); color:var(--danger-ink);\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\" title=\"Decline\">❌ Decline</button>" +
           "</div>"
         : "<span class=\"pill " + (ACCESS_REQUEST_STATUS_PILL[r.status] || "neutral") + "\">" + esc(statusLabel) + "</span>" +
           (canRemoveRow ? "<button class=\"link-btn danger\" data-action=\"delete-access-request\" data-id=\"" + r.id + "\" style=\"margin-left:8px;\">" + removeLabel + "</button>" : "")) +
