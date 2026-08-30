@@ -590,7 +590,7 @@ function appMain() {
     schools: [], vas: [], schoolData: {},
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
-    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
+    issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
     contactGroups: [], nurseLeader: { name: "", email: "" }
   };
@@ -872,6 +872,17 @@ function appMain() {
       }
     }
   }
+  /* The team already removed "Record Needs Rechecking" once, before the
+     tombstone mechanism above existed to make that removal stick — replay
+     it now, one time, so it doesn't keep reappearing every reload. */
+  function migrateHonorRecheckRemoval(parsed) {
+    if (parsed._migratedHonorRecheckRemoval) return false;
+    parsed._migratedHonorRecheckRemoval = true;
+    parsed.removedIssueTypeIds = parsed.removedIssueTypeIds || [];
+    if (parsed.removedIssueTypeIds.indexOf("recheck") === -1) parsed.removedIssueTypeIds.push("recheck");
+    parsed.issueTypes = (parsed.issueTypes || []).filter(function (t) { return t.id !== "recheck"; });
+    return true;
+  }
   /* Once a database has saved its own copy of issueTypes, the DEFAULT_STATE
      merge above no longer applies (the key already exists) — so a new
      built-in type added here in code would never reach an existing database.
@@ -882,9 +893,14 @@ function appMain() {
        Record Update's extra fields instead — drop it if an earlier save
        already persisted it. */
     parsed.issueTypes = (parsed.issueTypes || []).filter(function (t) { return t.id !== "correction"; });
+    /* A built-in type the team deliberately removed must stay removed —
+       without this, this same "add any missing built-in id" step below
+       would resurrect it on the very next load, since a removed type looks
+       identical to one that was simply never added yet. */
+    var removedIds = parsed.removedIssueTypeIds || [];
     var existingIds = parsed.issueTypes.map(function (t) { return t.id; });
     DEFAULT_ISSUE_TYPES.forEach(function (dt) {
-      if (existingIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
+      if (existingIds.indexOf(dt.id) === -1 && removedIds.indexOf(dt.id) === -1) parsed.issueTypes.push(dt);
     });
     /* "Record Update" and "Recheck" already existed under the old
        `extraFields: true` flag before each type got its own distinct field
@@ -1439,6 +1455,7 @@ function appMain() {
       var fresh = data || {};
       for (var k in DEFAULT_STATE) { if (!(k in fresh)) fresh[k] = DEFAULT_STATE[k]; }
       migrateTaskFields(fresh);
+      migrateHonorRecheckRemoval(fresh);
       migrateIssueTypes(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
@@ -1500,6 +1517,7 @@ function appMain() {
       state = data;
       for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
       migrateTaskFields(state);
+      var justMigratedRecheckRemoval = migrateHonorRecheckRemoval(state);
       migrateIssueTypes(state);
       migrateChecklistTemplate(state);
       /* Save right away if this just ran for the first time, so the
@@ -1523,7 +1541,7 @@ function appMain() {
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -3042,7 +3060,13 @@ function appMain() {
         })(); break;
       case "remove-issue-type":
         requestDelete("issue-type", t.getAttribute("data-id"), function () {
-          state.issueTypes = state.issueTypes.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+          var removedId = t.getAttribute("data-id");
+          state.issueTypes = state.issueTypes.filter(function (x) { return x.id !== removedId; });
+          /* Remembered so a removed built-in type (Software issue, Record
+             Update, etc.) doesn't get silently re-added on the next load —
+             see migrateIssueTypes. */
+          state.removedIssueTypeIds = state.removedIssueTypeIds || [];
+          if (state.removedIssueTypeIds.indexOf(removedId) === -1) state.removedIssueTypeIds.push(removedId);
         }); break;
       case "move-issue-type":
         (function () {
