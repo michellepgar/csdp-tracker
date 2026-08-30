@@ -2501,11 +2501,12 @@ function appMain() {
       if (p && p.status === "Done") doneCount++;
     });
 
-    /* Only the VA assigned to this school (or the superadmin) can check
-       items off — with that restriction in place, a "Done by" label
-       doesn't add anything anymore, so it's gone. */
+    /* Only the VA assigned to this school can check items off — no
+       Owner/Admin/Superadmin override, same as Communication: with that
+       restriction in place, a "Done by" label doesn't add anything
+       anymore, so it's gone. */
     var checklistSd = state.schoolData[schoolId] || {};
-    var canCheckOff = isSuperAdmin() || (checklistSd.vaAssigned && checklistSd.vaAssigned === getStoredIdentity());
+    var canCheckOff = !!checklistSd.vaAssigned && checklistSd.vaAssigned === getStoredIdentity();
     var rows = tmpl.map(function (item) {
       var p = state.checklistProgress[schoolId + ":" + item.id] || { status: "Open" };
       var done = p.status === "Done";
@@ -3839,7 +3840,8 @@ function appMain() {
           var schoolId = t.getAttribute("data-school"), itemId = t.getAttribute("data-item");
           if (!schoolId || !itemId) return;
           var toggleSd = state.schoolData[schoolId] || {};
-          var canCheckOff = isSuperAdmin() || (toggleSd.vaAssigned && toggleSd.vaAssigned === getStoredIdentity());
+          /* No Owner/Admin/Superadmin override here — only the assigned VA. */
+          var canCheckOff = !!toggleSd.vaAssigned && toggleSd.vaAssigned === getStoredIdentity();
           if (!canCheckOff) return;
           var key = schoolId + ":" + itemId;
           var cur = state.checklistProgress[key];
