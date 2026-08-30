@@ -563,7 +563,11 @@ function appMain() {
      own status vocabulary. "Record Update" carries its own extra fields, including
      what's being corrected (category + correct info), shown in a table view. */
   var DEFAULT_ISSUE_TYPES = [
-    { id: "software_issue", name: "Software issue", statusOptions: ["Pending", "Resolved"] },
+    /* Its own simple fixed-column table (simpleIssueSectionHtml) — the VA
+       team reports these but doesn't fix them, so no Fixed By, no School/
+       Student/DOB/etc. fields, just the issue itself, a note, who reported
+       it, and status. */
+    { id: "software_issue", name: "Software issue", statusOptions: ["Pending", "Resolved"], simpleIssueTable: true },
     { id: "recheck", name: "Record Needs Rechecking", statusOptions: ["Pending", "Resolved"], fieldSet: "recheck" },
     { id: "record_update", name: "Record Update", statusOptions: ["Pending", "Resolved"], fieldSet: "record_update" },
     /* Its own fixed-column table (built by correctionTypeSectionHtml)
@@ -1621,6 +1625,7 @@ function appMain() {
       editingContactGroupId: null,
       editingNurseLeader: false,
       editingCorrectionId: null,
+      editingSimpleIssueId: null,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "" },
       eodFilterAuthor: "",
@@ -2626,6 +2631,42 @@ function appMain() {
       addFormHtml +
       "</div></div>";
   }
+  /* Software Issue's own simple table — just the issue, a note, who
+     reported it, and status. No Fixed By (the team reports these, they
+     don't fix them) and none of the dynamic +Field pool. Issue/Note are
+     locked behind the row's own Edit button, same reasoning as everywhere
+     else this session: unlocking one row never risks another. */
+  function simpleIssueSectionHtml(ty, typeList) {
+    var headerCells = "<th>Issue / Concern</th><th>Note</th><th>Reported by</th><th>Status</th><th></th>";
+    var rowsHtml = typeList.map(function (it) {
+      var editing = ui.editingSimpleIssueId === it.id;
+      var descCell = editing
+        ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.description) + "\" data-action-change=\"set-simple-issue-field\" data-id=\"" + it.id + "\" data-field=\"description\">" + esc(it.description || "") + "</textarea>"
+        : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.description || "") + "</div>";
+      var noteCell = editing
+        ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-simple-issue-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea>"
+        : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.remarks || "") + "</div>";
+      var editBtn = "<button class=\"link-btn\" data-action=\"" + (editing ? "done-edit-simple-issue" : "edit-simple-issue") + "\" data-id=\"" + it.id + "\">" + (editing ? "Done" : "Edit") + "</button>";
+      return "<tr>" +
+        "<td>" + descCell + "</td>" +
+        "<td>" + noteCell + "</td>" +
+        "<td>" + esc(it.reportedBy || "") + "</td>" +
+        "<td>" + statusControlOptions(ty.statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
+        "<td>" + editBtn + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
+        "</tr>";
+    }).join("");
+    var addFormHtml = "<form class=\"add-row-form\" data-action=\"add-simple-issue\" data-type=\"" + ty.id + "\">" +
+      "<input class=\"text-input\" name=\"description\" placeholder=\"What's the issue?\" required style=\"flex:2;\">" +
+      "<button class=\"btn small\" type=\"submit\">+ Add</button></form>";
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
+      (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+      (rowsHtml || "<tr><td colspan=\"5\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
+      "</tbody></table></div>" +
+      addFormHtml +
+      "</div></div>";
+  }
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
@@ -2640,8 +2681,12 @@ function appMain() {
       return "<option value=\"" + ty.id + "\"" + (f.type === ty.id ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
 
-    var newTypeId = ui.newIssueType && issueTypeById(ui.newIssueType) ? ui.newIssueType : (state.issueTypes[0] ? state.issueTypes[0].id : "");
-    var newTypeOpts = state.issueTypes.map(function (ty) {
+    /* Software Issue and Insurance & DOB Correction each have their own
+       dedicated add form on their own table now — only types still using
+       the generic dynamic +Field pool belong in this shared form. */
+    var addableTypes = state.issueTypes.filter(function (ty) { return !ty.customCorrection && !ty.simpleIssueTable; });
+    var newTypeId = ui.newIssueType && addableTypes.some(function (ty) { return ty.id === ui.newIssueType; }) ? ui.newIssueType : (addableTypes[0] ? addableTypes[0].id : "");
+    var newTypeOpts = addableTypes.map(function (ty) {
       return "<option value=\"" + ty.id + "\"" + (ty.id === newTypeId ? " selected" : "") + ">" + esc(ty.name) + "</option>";
     }).join("");
 
@@ -2682,6 +2727,7 @@ function appMain() {
     var typeSections = state.issueTypes.map(function (ty) {
       var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description || it.studentName || ""; });
       if (ty.customCorrection) return correctionTypeSectionHtml(ty, typeList);
+      if (ty.simpleIssueTable) return simpleIssueSectionHtml(ty, typeList);
       return issueTypeSectionHtml(ty.name, typeList, ty.statusOptions);
     }).join("");
     var orphanedList = sortRecords(list.filter(function (it) { return knownTypeIds.indexOf(it.type) === -1; }), ui.issuesSort, function (it) { return it.description; });
@@ -3157,6 +3203,8 @@ function appMain() {
           }
         })(); break;
       case "edit-correction-row": ui.editingCorrectionId = t.getAttribute("data-id"); render(); break;
+      case "edit-simple-issue": ui.editingSimpleIssueId = t.getAttribute("data-id"); render(); break;
+      case "done-edit-simple-issue": ui.editingSimpleIssueId = null; render(); break;
       case "done-edit-correction-row": ui.editingCorrectionId = null; render(); break;
       case "remove-issue-field-pool":
         requestDelete("issue-field-pool", t.getAttribute("data-id"), function () {
@@ -3448,6 +3496,12 @@ function appMain() {
           if (issue) issue[t.getAttribute("data-field")] = t.value;
           persist();
         })(); break;
+      case "set-simple-issue-field":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue[t.getAttribute("data-field")] = t.value;
+          persist();
+        })(); break;
       case "set-correction-checkbox":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
@@ -3731,6 +3785,24 @@ function appMain() {
             remarks: "",
             reportedBy: getStoredIdentity(),
             verified: false,
+            status: statusOpts[0] || "Pending",
+            createdAt: new Date().toISOString()
+          });
+          persist();
+        })(); break;
+      case "add-simple-issue":
+        (function () {
+          var typeId = form.getAttribute("data-type");
+          var typeObj = issueTypeById(typeId);
+          var statusOpts = typeObj ? typeObj.statusOptions : NEW_ISSUE_TYPE_STATUS_OPTIONS;
+          var description = (fd.get("description") || "").toString().trim();
+          if (!description) return;
+          state.issues.push({
+            id: uid("issue"),
+            type: typeId,
+            description: description,
+            remarks: "",
+            reportedBy: getStoredIdentity(),
             status: statusOpts[0] || "Pending",
             createdAt: new Date().toISOString()
           });
