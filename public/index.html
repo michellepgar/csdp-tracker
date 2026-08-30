@@ -470,6 +470,21 @@
   .data-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
   .data-table td.wrap { white-space: normal; min-width: 160px; }
   .data-table tr:last-child td { border-bottom: none; }
+  /* A school that hasn't distributed its forms yet for the year gets a
+     light red wash across the whole row, so it stands out while scanning
+     down the list — same idea as the alerts-card treatment elsewhere. */
+  .dist-row-pending { background: var(--danger-soft); }
+  .dist-row-pending:hover { background: var(--danger-soft); }
+  .dist-form { background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; margin-top: 4px; white-space: normal; }
+  .dist-form-grid { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .dist-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); flex: 1; min-width: 160px; }
+  .dist-checkbox-label { flex-direction: row !important; align-items: center; gap: 6px !important; }
+  .dist-classroom-block { margin-top: 12px; }
+  .dist-classroom-title { font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; }
+  .dist-breakdown-table input.text-input { max-width: 80px; }
+  .dist-remarks-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); margin-top: 10px; }
+  .dist-remarks-label textarea { width: 100%; }
+  .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
 
   /* Sticky notes always use a fixed dark ink on pastel backgrounds,
      regardless of app theme — like real sticky notes look the same in
@@ -611,7 +626,8 @@ function appMain() {
     checklistTemplate: [], checklistProgress: {},
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
-    contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: []
+    contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: [],
+    distributionGroups: []
   };
 
   /* ============ helpers ============ */
@@ -1255,6 +1271,102 @@ function appMain() {
     }
     return true;
   }
+
+  /* ---------- Distribution List (consent form distribution tracking) ----------
+     Same "grouped like a table, one card per grade band" shape as Contact
+     Info, but each row is far too wide for inline table-cell editing — a
+     school's row has 3 classroom types x 3 languages x 4 numbers (packets,
+     loose forms, extra packets, extra loose forms) on top of enrolled,
+     distributed, contact person and remarks. So rows are added/edited
+     through one form (opened by "+ Add school" or a row's "Edit" button)
+     and only the computed summary shows in the table itself. */
+  var DISTRIBUTION_SCHOOL_YEAR = "2026-2027";
+  var DISTRIBUTION_CLASSROOM_TYPES = [
+    { key: "regular", label: "Regular Classroom" },
+    { key: "launch", label: "Launch Classes" },
+    { key: "crr", label: "CRR Classes" }
+  ];
+  var DISTRIBUTION_LANGUAGES = [
+    { key: "engSpn", label: "ENG/SPN" },
+    { key: "porFr", label: "POR/FR" },
+    { key: "hc", label: "HC" }
+  ];
+  function emptyDistributionBreakdown() {
+    var out = {};
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+      out[c.key] = {};
+      DISTRIBUTION_LANGUAGES.forEach(function (l) {
+        out[c.key][l.key] = { packets: "", loose: "", extraPackets: "", extraLoose: "" };
+      });
+    });
+    return out;
+  }
+  function distributionRow(school) {
+    return {
+      id: uid("dist"), school: school || "", year: DISTRIBUTION_SCHOOL_YEAR,
+      enrolled: "", distributed: false,
+      classrooms: { regular: "", launch: "", crr: "" },
+      breakdown: emptyDistributionBreakdown(),
+      contactPerson: "", remarks: ""
+    };
+  }
+  function numOr0(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
+  /* Packets and forms both fold in whatever was typed into the matching
+     "extra" fields — from the numbers alone there's no way to tell a
+     planned packet from an extra one after the fact, so the totals just
+     represent everything that actually went out. */
+  function distributionRowTotalPackets(r) {
+    var total = 0;
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+      DISTRIBUTION_LANGUAGES.forEach(function (l) {
+        var cell = (r.breakdown[c.key] || {})[l.key] || {};
+        total += numOr0(cell.packets) + numOr0(cell.extraPackets);
+      });
+    });
+    return total;
+  }
+  function distributionRowTotalForms(r) {
+    var total = 0;
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+      DISTRIBUTION_LANGUAGES.forEach(function (l) {
+        var cell = (r.breakdown[c.key] || {})[l.key] || {};
+        total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * 25 + numOr0(cell.loose) + numOr0(cell.extraLoose);
+      });
+    });
+    return total;
+  }
+  function distributionRowLanguagesUsed(r) {
+    return DISTRIBUTION_LANGUAGES.filter(function (l) {
+      return DISTRIBUTION_CLASSROOM_TYPES.some(function (c) {
+        var cell = (r.breakdown[c.key] || {})[l.key] || {};
+        return numOr0(cell.packets) + numOr0(cell.loose) + numOr0(cell.extraPackets) + numOr0(cell.extraLoose) > 0;
+      });
+    }).map(function (l) { return l.label; }).join(", ");
+  }
+  function distributionRowClassroomsSummary(r) {
+    var c = r.classrooms || {};
+    var parts = [];
+    if (numOr0(c.regular) > 0) parts.push(c.regular + " Reg");
+    if (numOr0(c.launch) > 0) parts.push(c.launch + " Launch");
+    if (numOr0(c.crr) > 0) parts.push(c.crr + " CRR");
+    return parts.join(" / ");
+  }
+  function buildDefaultDistributionGroups() {
+    return [
+      { id: uid("dgrp"), name: "Pre-K", rows: [] },
+      { id: uid("dgrp"), name: "Elementary", rows: [] },
+      { id: uid("dgrp"), name: "Middle School", rows: [] },
+      { id: uid("dgrp"), name: "High School", rows: [] }
+    ];
+  }
+  function migrateDistributionGroups(parsed) {
+    if (parsed._migratedDistributionGroups) return false;
+    parsed._migratedDistributionGroups = true;
+    if (!Array.isArray(parsed.distributionGroups) || parsed.distributionGroups.length === 0) {
+      parsed.distributionGroups = buildDefaultDistributionGroups();
+    }
+    return true;
+  }
   /* Contact rows that originally packed multiple people into one cell
      separated by " / " (e.g. two nurses, two front-desk staff) are hard to
      copy cleanly — one-time reflow onto separate lines within the same
@@ -1615,6 +1727,7 @@ function appMain() {
       migrateIssueStatusUniform(fresh);
       migrateSchoolContacts(fresh);
       migrateContactMultiLineFields(fresh);
+      migrateDistributionGroups(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1684,13 +1797,14 @@ function appMain() {
       var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
       var justMigratedContacts = migrateSchoolContacts(state);
       var justMigratedContactMultiLine = migrateContactMultiLineFields(state);
+      var justMigratedDistributionGroups = migrateDistributionGroups(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedDistributionGroups || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -1956,8 +2070,8 @@ function appMain() {
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
-      navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
       navItem("distribution-list", "Distribution List", 0, function (v) { return v.type === "distribution-list"; }) +
+      navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>"
     );
@@ -3358,13 +3472,110 @@ function appMain() {
   }
 
   /* ---------- Distribution List ---------- */
-  /* Placeholder page — Michelle hasn't decided how this should be
-     organized yet. Just getting it on the sidebar for now. */
+  function distributionBreakdownFieldsHtml(row) {
+    return DISTRIBUTION_CLASSROOM_TYPES.map(function (c) {
+      var langRows = DISTRIBUTION_LANGUAGES.map(function (l) {
+        var cell = row.breakdown[c.key][l.key];
+        var fieldName = function (f) { return "breakdown__" + c.key + "__" + l.key + "__" + f; };
+        var numInput = function (f) {
+          return "<input class=\"text-input\" type=\"number\" min=\"0\" name=\"" + fieldName(f) + "\" value=\"" + esc(cell[f]) + "\" placeholder=\"0\">";
+        };
+        return "<tr><td>" + esc(l.label) + "</td>" +
+          "<td>" + numInput("packets") + "</td>" +
+          "<td>" + numInput("loose") + "</td>" +
+          "<td>" + numInput("extraPackets") + "</td>" +
+          "<td>" + numInput("extraLoose") + "</td>" +
+          "</tr>";
+      }).join("");
+      return "<div class=\"dist-classroom-block\">" +
+        "<div class=\"dist-classroom-title\">" + esc(c.label) + "</div>" +
+        "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
+        "<th>Language</th><th>Packets</th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose Forms</th>" +
+        "</tr></thead><tbody>" + langRows + "</tbody></table></div></div>";
+    }).join("");
+  }
+  function distributionFormHtml(groupId, row, isEdit) {
+    return "<form class=\"dist-form\" data-action=\"save-distribution-row\" data-group=\"" + groupId + "\" data-row=\"" + (isEdit ? row.id : "") + "\">" +
+      "<div class=\"dist-form-grid\">" +
+      "<label>School<input class=\"text-input\" name=\"school\" required value=\"" + esc(row.school) + "\" placeholder=\"School name\"></label>" +
+      "<label>Enrolled<input class=\"text-input\" type=\"number\" min=\"0\" name=\"enrolled\" value=\"" + esc(row.enrolled) + "\" placeholder=\"0\"></label>" +
+      "<label class=\"dist-checkbox-label\"><input type=\"checkbox\" name=\"distributed\"" + (row.distributed ? " checked" : "") + "> Distributed</label>" +
+      "</div>" +
+      "<div class=\"dist-form-grid\">" +
+      "<label>Regular Classroom (count)<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__regular\" value=\"" + esc(row.classrooms.regular) + "\" placeholder=\"0\"></label>" +
+      "<label>Launch Classes (count)<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__launch\" value=\"" + esc(row.classrooms.launch) + "\" placeholder=\"0\"></label>" +
+      "<label>CRR Classes (count)<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__crr\" value=\"" + esc(row.classrooms.crr) + "\" placeholder=\"0\"></label>" +
+      "</div>" +
+      "<div class=\"field-mini-label\" style=\"margin-top:12px;\">Consent Packets — by Classroom Type &amp; Language (each packet = 25 forms)</div>" +
+      distributionBreakdownFieldsHtml(row) +
+      "<div class=\"dist-form-grid\" style=\"margin-top:10px;\">" +
+      "<label>Contact Person<input class=\"text-input\" name=\"contactPerson\" value=\"" + esc(row.contactPerson) + "\"></label>" +
+      "</div>" +
+      "<label class=\"dist-remarks-label\">Remarks<textarea class=\"text-input\" name=\"remarks\" rows=\"2\">" + esc(row.remarks) + "</textarea></label>" +
+      "<div class=\"dist-form-actions\">" +
+      "<button class=\"btn small\" type=\"submit\">" + (isEdit ? "Save changes" : "+ Add school") + "</button>" +
+      "<button class=\"link-btn\" type=\"button\" data-action=\"cancel-distribution-form\">Cancel</button>" +
+      "</div></form>";
+  }
   function distributionListPageHtml() {
-    return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div></div></div>" +
-      "<div class=\"card\"><div class=\"card-body\">" +
-      emptyState("Nothing here yet — this page is a placeholder while we figure out how to organize it.") +
-      "</div></div>";
+    var groups = state.distributionGroups || [];
+    var formTarget = ui.distributionFormFor;
+    var groupsHtml = groups.map(function (g) {
+      var addingHere = formTarget && formTarget.groupId === g.id && !formTarget.rowId;
+      var editingRowId = formTarget && formTarget.groupId === g.id ? formTarget.rowId : null;
+
+      var rowsHtml = (g.rows || []).map(function (r) {
+        if (editingRowId === r.id) {
+          return "<tr><td colspan=\"10\">" + distributionFormHtml(g.id, r, true) + "</td></tr>";
+        }
+        var pendingRow = isPending("distribution-row", r.id);
+        var totalPackets = distributionRowTotalPackets(r);
+        var totalForms = distributionRowTotalForms(r);
+        var languagesUsed = distributionRowLanguagesUsed(r);
+        var classroomsSummary = distributionRowClassroomsSummary(r);
+        return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
+          "<td>" + esc(r.school) + "</td>" +
+          "<td class=\"mono\">" + esc(r.enrolled || "—") + "</td>" +
+          "<td><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
+          "<td>" + (classroomsSummary ? esc(classroomsSummary) : "—") + "</td>" +
+          "<td class=\"mono\">" + totalPackets + "</td>" +
+          "<td>" + (languagesUsed ? esc(languagesUsed) : "—") + "</td>" +
+          "<td class=\"mono\">" + totalForms + "</td>" +
+          "<td>" + esc(r.contactPerson || "—") + "</td>" +
+          "<td class=\"wrap\">" + esc(r.remarks || "") + "</td>" +
+          "<td>" +
+          "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\">Edit</button>" +
+          "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
+          "</td></tr>";
+      }).join("");
+
+      var pendingGroup = isPending("distribution-group", g.id);
+      var groupEditing = ui.editingDistributionGroupId === g.id;
+      var titleHtml = groupEditing
+        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
+
+      return "<div class=\"card\"><div class=\"card-head\">" +
+        titleHtml +
+        "<div class=\"card-actions\">" +
+        "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
+        "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
+        "</div></div><div class=\"card-body\">" +
+        "<div class=\"table-scroll\"><table class=\"data-table dist-table\"><thead><tr>" +
+        "<th>School</th><th>Enrolled</th><th>Distributed</th><th>Classrooms</th><th>Packets</th><th>Languages</th><th>Total Forms</th><th>Contact Person</th><th>Remarks</th><th></th>" +
+        "</tr></thead><tbody>" +
+        (rowsHtml || "<tr><td colspan=\"10\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
+        "</tbody></table></div>" +
+        (addingHere ? distributionFormHtml(g.id, distributionRow(""), false) :
+          "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\" data-group=\"" + g.id + "\">+ Add school</button>") +
+        "</div></div>";
+    }).join("");
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div><div class=\"page-sub\">School Year " + esc(DISTRIBUTION_SCHOOL_YEAR) + "</div></div></div>" +
+      groupsHtml +
+      "<form class=\"mini-form\" data-action=\"add-distribution-group\">" +
+      "<input class=\"text-input\" name=\"name\" placeholder=\"New group name\" required>" +
+      "<button class=\"btn small\" type=\"submit\">+ Add group</button></form>";
   }
 
   /* ---------- Private Notes ---------- */
@@ -3712,6 +3923,30 @@ function appMain() {
         requestDelete("contact-group", t.getAttribute("data-id"), function () {
           state.contactGroups = state.contactGroups.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
+      case "remove-distribution-row":
+        (function () {
+          var groupId = t.getAttribute("data-group"), rowId = t.getAttribute("data-id");
+          requestDelete("distribution-row", rowId, function () {
+            var g = state.distributionGroups.find(function (x) { return x.id === groupId; });
+            if (g) g.rows = g.rows.filter(function (r) { return r.id !== rowId; });
+            if (ui.distributionFormFor && ui.distributionFormFor.rowId === rowId) ui.distributionFormFor = null;
+          });
+        })(); break;
+      case "remove-distribution-group":
+        requestDelete("distribution-group", t.getAttribute("data-id"), function () {
+          state.distributionGroups = state.distributionGroups.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+        }); break;
+      case "open-add-distribution-row":
+        ui.distributionFormFor = { groupId: t.getAttribute("data-group"), rowId: null };
+        render(); break;
+      case "edit-distribution-row":
+        ui.distributionFormFor = { groupId: t.getAttribute("data-group"), rowId: t.getAttribute("data-id") };
+        render(); break;
+      case "cancel-distribution-form":
+        ui.distributionFormFor = null;
+        render(); break;
+      case "edit-distribution-group": ui.editingDistributionGroupId = t.getAttribute("data-id"); render(); break;
+      case "done-edit-distribution-group": ui.editingDistributionGroupId = null; render(); break;
       case "move-task-category":
         (function () {
           var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
@@ -3989,6 +4224,19 @@ function appMain() {
           if (r) r[t.getAttribute("data-field")] = t.value;
           persist();
         })(); break;
+      case "toggle-distribution-distributed":
+        (function () {
+          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
+          if (r) r.distributed = !!t.checked;
+          persist();
+        })(); break;
+      case "set-distribution-group-name":
+        (function () {
+          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          if (g) g.name = t.value;
+          persist();
+        })(); break;
       case "set-contact-group-name":
         (function () {
           var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
@@ -4237,6 +4485,47 @@ function appMain() {
           if (!name) return;
           state.contactGroups = state.contactGroups || [];
           state.contactGroups.push({ id: uid("cgrp"), name: name, rows: [] });
+          persist();
+        })(); break;
+      case "save-distribution-row":
+        (function () {
+          var groupId = form.getAttribute("data-group");
+          var rowId = form.getAttribute("data-row");
+          var school = (fd.get("school") || "").toString().trim();
+          if (!school) return;
+          var g = state.distributionGroups.find(function (x) { return x.id === groupId; });
+          if (!g) return;
+          g.rows = g.rows || [];
+          var row = rowId ? g.rows.find(function (x) { return x.id === rowId; }) : null;
+          if (!row) { row = distributionRow(""); g.rows.push(row); }
+          row.school = school;
+          row.enrolled = (fd.get("enrolled") || "").toString().trim();
+          row.distributed = !!fd.get("distributed");
+          row.classrooms = {
+            regular: (fd.get("classrooms__regular") || "").toString().trim(),
+            launch: (fd.get("classrooms__launch") || "").toString().trim(),
+            crr: (fd.get("classrooms__crr") || "").toString().trim()
+          };
+          row.breakdown = row.breakdown || emptyDistributionBreakdown();
+          DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+            DISTRIBUTION_LANGUAGES.forEach(function (l) {
+              var cell = row.breakdown[c.key][l.key];
+              ["packets", "loose", "extraPackets", "extraLoose"].forEach(function (f) {
+                cell[f] = (fd.get("breakdown__" + c.key + "__" + l.key + "__" + f) || "").toString().trim();
+              });
+            });
+          });
+          row.contactPerson = (fd.get("contactPerson") || "").toString().trim();
+          row.remarks = (fd.get("remarks") || "").toString().trim();
+          ui.distributionFormFor = null;
+          persist();
+        })(); break;
+      case "add-distribution-group":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          if (!name) return;
+          state.distributionGroups = state.distributionGroups || [];
+          state.distributionGroups.push({ id: uid("dgrp"), name: name, rows: [] });
           persist();
         })(); break;
       case "add-email-item":
