@@ -2312,14 +2312,20 @@ function appMain() {
     });
   }
   /* Actually performs the removal an approved request describes — called
-     once, at the moment it's approved. */
+     once, at the moment it's approved. Normalizes the type from recordKind
+     first: a request made while this feature still had an Edit/Remove
+     choice could be sitting in someone's Approvals with a type like
+     "edit-task" or "change-email-status" that has no removal to perform —
+     recordKind still says what it's actually about, so re-derive the
+     correct type from that rather than silently doing nothing. */
   function performApprovedRemoval(reqObj) {
     var sd = ensureSchoolData(reqObj.schoolId);
-    if (reqObj.type === "remove-task") {
+    var type = ACCESS_REQUEST_TYPE_FOR_KIND[reqObj.recordKind] || reqObj.type;
+    if (type === "remove-task") {
       sd.tasks = sd.tasks.filter(function (x) { return x.id !== reqObj.targetId; });
-    } else if (reqObj.type === "remove-email-item") {
+    } else if (type === "remove-email-item") {
       sd.emailTracker = sd.emailTracker.filter(function (x) { return x.id !== reqObj.targetId; });
-    } else if (reqObj.type === "remove-va-from-task") {
+    } else if (type === "remove-va-from-task") {
       var sepIdx = reqObj.targetId.indexOf("|");
       var taskId = sepIdx === -1 ? reqObj.targetId : reqObj.targetId.slice(0, sepIdx);
       var va = sepIdx === -1 ? "" : reqObj.targetId.slice(sepIdx + 1);
