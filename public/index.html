@@ -472,7 +472,8 @@
   .sticky-note-text { flex: 1; font-size: 0.9rem; word-break: break-word; }
   .sticky-note-text ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
   .sticky-note-text ul.list-dash { list-style-type: "- "; }
-  .sticky-note-text ul.list-check { list-style-type: "☐ "; }
+  .sticky-note-text ul.list-check { list-style: none; margin-left: 4px; }
+  .sticky-note-text ul.list-check li { display: flex; align-items: flex-start; gap: 4px; }
   .sticky-note-text input[type="checkbox"] { vertical-align: middle; margin-right: 2px; cursor: pointer; }
   .note-editor-area input[type="checkbox"] { vertical-align: middle; margin-right: 2px; }
   .sticky-note-meta { font-size: 0.72rem; opacity: 0.65; margin-top: 8px; }
@@ -502,7 +503,8 @@
   .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
   .note-editor-area ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
   .note-editor-area ul.list-dash { list-style-type: "- "; }
-  .note-editor-area ul.list-check { list-style-type: "☐ "; }
+  .note-editor-area ul.list-check { list-style: none; margin-left: 4px; }
+  .note-editor-area ul.list-check li { display: flex; align-items: flex-start; gap: 4px; }
 </style>
 </head>
 <body>
@@ -725,6 +727,22 @@ function appMain() {
     while (node && node !== editor) {
       if (node.nodeType === 1 && node.tagName === "UL") {
         node.className = cls || "";
+        /* A checklist needs an actual checkbox per line to be clickable —
+           the old version only ever drew a "☐" via a CSS list marker,
+           which looks like a checkbox but was never a real, toggleable
+           element. Give every line in this list a real one if it doesn't
+           already have one. */
+        if (cls === "list-check") {
+          var items = node.querySelectorAll(":scope > li");
+          for (var i = 0; i < items.length; i++) {
+            if (!items[i].querySelector(":scope > input[type=checkbox]")) {
+              var cb = document.createElement("input");
+              cb.type = "checkbox";
+              items[i].insertBefore(document.createTextNode(" "), items[i].firstChild);
+              items[i].insertBefore(cb, items[i].firstChild);
+            }
+          }
+        }
         break;
       }
       node = node.parentNode;
@@ -3822,6 +3840,13 @@ function appMain() {
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
           var note = arr.find(function (x) { return x.id === id; });
           if (!note) return;
+          /* General note checklists are open to everyone. A private note's
+             is limited to whoever can actually see it — the author, or
+             someone it was specifically shared with. */
+          if (scope === "private") {
+            var me2 = getStoredIdentity();
+            if (note.author !== me2 && (note.sharedWith || []).indexOf(me2) === -1) return;
+          }
           var doc = new DOMParser().parseFromString(note.text || "", "text/html");
           var boxes = doc.querySelectorAll("input[type=checkbox]");
           var box = boxes[idx];
