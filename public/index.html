@@ -604,7 +604,7 @@ function appMain() {
     checklistTemplate: [], checklistProgress: {},
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
-    contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese"
+    contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: []
   };
 
   /* ============ helpers ============ */
@@ -1693,6 +1693,7 @@ function appMain() {
       editingSimpleIssueId: null,
       editingChartingId: null,
       sharingNoteId: null,
+      requestingAccessFor: null,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "", va: "" },
       eodFilterAuthor: "",
@@ -1876,6 +1877,14 @@ function appMain() {
       return n.author !== me && (n.sharedWith || []).indexOf(me) !== -1 && (!n.ackBy || n.ackBy.indexOf(me) === -1);
     });
   }
+  /* Blinks Approvals whenever there's a pending edit/remove request this
+     viewer can act on — an assigned VA's own school, or an Admin/Owner
+     across every school. */
+  function hasPendingApprovalsForMe() {
+    return (state.accessRequests || []).some(function (r) {
+      return r.status === "pending" && canDeleteSchoolRecords(r.schoolId);
+    });
+  }
 
   function sidebarHtml() {
     var q = ui.search.trim().toLowerCase();
@@ -1915,6 +1924,7 @@ function appMain() {
       "<div class=\"sidebar-label\">My Space</div>" +
       "<div class=\"nav-list\">" +
       navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }, hasUnreadSharedPrivateNotes() ? "blink-alert" : "") +
+      navItem("approvals", "Approvals", 0, function (v) { return v.type === "approvals"; }, hasPendingApprovalsForMe() ? "blink-alert" : "") +
       (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
       "</div></div>" +
       "<div class=\"sidebar-divider\"></div>" +
@@ -2030,6 +2040,7 @@ function appMain() {
       case "suggestions": return suggestionsPageHtml();
       case "eod": return eodPageHtml();
       case "private-notes": return privateNotesPageHtml();
+      case "approvals": return approvalsPageHtml();
       default: return homePageHtml();
     }
   }
@@ -2164,10 +2175,11 @@ function appMain() {
     var chips = names.map(function (name) {
       var pendingKey = t.id + "|" + name;
       var pending = isPending("va-from-task", pendingKey);
-      var canRemoveThis = canRemoveOthers || name === me;
+      var canRemoveThis = canRemoveOthers || name === me || hasApprovedAccessRequest("remove-va-from-task", schoolId, pendingKey);
       return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
         (canRemoveThis ? "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"" + (pending ? "Click again to confirm" : "Remove " + esc(name)) + "\">" + (pending ? "Confirm?" : "×") + "</button>" : "") +
-        "</span>";
+        "</span>" +
+        (canRemoveThis ? "" : accessRequestControlHtml("remove-va-from-task", schoolId, pendingKey, "Remove " + name + "'s signature from this task"));
     }).join("");
     var signBtn = (me && names.indexOf(me) === -1)
       ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
@@ -2289,6 +2301,49 @@ function appMain() {
     var sd = ensureSchoolData(schoolId);
     return isSuperAdmin() || (!!sd.vaAssigned && sd.vaAssigned === getStoredIdentity());
   }
+  /* Request-to-edit/remove: anyone who can't act on a specific record can
+     ask the assigned VA (or an Admin/Owner) for a one-time exception
+     instead. Requests are scoped to one exact record and one requester —
+     approving doesn't hand out standing access, and using it once marks
+     it "fulfilled" so it can't be reused. */
+  function accessRequestKey(type, targetId) { return type + "|" + targetId; }
+  function findAccessRequestFor(type, schoolId, targetId, requestedBy, statuses) {
+    return (state.accessRequests || []).find(function (r) {
+      return r.type === type && r.schoolId === schoolId && r.targetId === targetId &&
+        r.requestedBy === requestedBy && statuses.indexOf(r.status) !== -1;
+    });
+  }
+  function hasApprovedAccessRequest(type, schoolId, targetId) {
+    var me = getStoredIdentity();
+    return !!findAccessRequestFor(type, schoolId, targetId, me, ["approved"]);
+  }
+  function fulfillAccessRequest(type, schoolId, targetId) {
+    var me = getStoredIdentity();
+    var reqObj = findAccessRequestFor(type, schoolId, targetId, me, ["approved"]);
+    if (reqObj) reqObj.status = "fulfilled";
+  }
+  /* Renders whichever state this specific request is in: a "Request…" link
+     to start one, an inline reason form while composing it, or a "pending"
+     label once sent — never more than one at a time. */
+  function accessRequestControlHtml(type, schoolId, targetId, label) {
+    var me = getStoredIdentity();
+    if (!me) return "";
+    var reqKey = accessRequestKey(type, targetId);
+    var pendingReq = findAccessRequestFor(type, schoolId, targetId, me, ["pending"]);
+    if (pendingReq) return "<span class=\"field-mini-label\" title=\"Waiting on the assigned VA or an Admin/Owner\">Request pending</span>";
+    if (ui.requestingAccessFor === reqKey) {
+      return "<form class=\"add-row-form\" data-action=\"submit-access-request\" style=\"gap:6px; flex-wrap:nowrap; padding:0; margin:0;\">" +
+        "<input type=\"hidden\" name=\"type\" value=\"" + esc(type) + "\">" +
+        "<input type=\"hidden\" name=\"schoolId\" value=\"" + esc(schoolId) + "\">" +
+        "<input type=\"hidden\" name=\"targetId\" value=\"" + esc(targetId) + "\">" +
+        "<input type=\"hidden\" name=\"label\" value=\"" + esc(label) + "\">" +
+        "<input class=\"text-input\" name=\"reason\" placeholder=\"Reason\" required style=\"min-width:140px;\">" +
+        "<button class=\"btn small\" type=\"submit\">Send</button>" +
+        "<button class=\"link-btn\" type=\"button\" data-action=\"cancel-request-access\">Cancel</button>" +
+        "</form>";
+    }
+    return "<button class=\"link-btn\" data-action=\"toggle-request-access\" data-key=\"" + esc(reqKey) + "\">Request to edit/remove</button>";
+  }
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
     var needsCount = COUNT_CATEGORIES.indexOf(t.category) !== -1;
@@ -2298,7 +2353,9 @@ function appMain() {
       taskVaGroupHtml(t, schoolId) +
       statusControl("task", t.id, t.status, "toggle-task-status", schoolId) +
       (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId, !canEditCommunication()) : "") +
-      (canDeleteSchoolRecords(schoolId) ? deleteBtn("task", t.id, "remove-task", schoolId) : "") + "</div>";
+      (canDeleteSchoolRecords(schoolId) || hasApprovedAccessRequest("remove-task", schoolId, t.id)
+        ? deleteBtn("task", t.id, "remove-task", schoolId)
+        : accessRequestControlHtml("remove-task", schoolId, t.id, "Remove task \"" + t.fileName + "\"")) + "</div>";
   }
 
   function tasksCardHtml(schoolId, sd) {
@@ -2481,9 +2538,12 @@ function appMain() {
     var canChangeStatus = isSuperAdmin() || (!!sd.vaAssigned && sd.vaAssigned === getStoredIdentity());
     var sorted = sortRecords(sd.emailTracker.slice().reverse(), ui.emailSort, function (e) { return e.description; });
     var rows = sorted.map(function (e) {
+      var canStatus = canChangeStatus || hasApprovedAccessRequest("change-email-status", schoolId, e.id);
+      var canDelete = canChangeStatus || hasApprovedAccessRequest("remove-email-item", schoolId, e.id);
       return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
-        statusControl("email_followup", e.id, e.status, "change-email-status", schoolId, !canChangeStatus) +
-        (canChangeStatus ? deleteBtn("email-item", e.id, "remove-email-item", schoolId) : "") + "</div>";
+        statusControl("email_followup", e.id, e.status, "change-email-status", schoolId, !canStatus) +
+        (!canStatus ? accessRequestControlHtml("change-email-status", schoolId, e.id, "Change status of \"" + e.description + "\"") : "") +
+        (canDelete ? deleteBtn("email-item", e.id, "remove-email-item", schoolId) : accessRequestControlHtml("remove-email-item", schoolId, e.id, "Remove email item \"" + e.description + "\"")) + "</div>";
     }).join("");
     return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
@@ -3187,6 +3247,51 @@ function appMain() {
       stickyNotesSectionHtml("private", mine, "add-private-note");
   }
 
+  /* ---------- Approvals ---------- */
+  var ACCESS_REQUEST_TYPE_LABELS = {
+    "remove-task": "Remove task",
+    "remove-email-item": "Remove email item",
+    "change-email-status": "Change email status",
+    "remove-va-from-task": "Remove signature"
+  };
+  var ACCESS_REQUEST_STATUS_PILL = { pending: "orange", approved: "green", declined: "red", fulfilled: "neutral" };
+  var ACCESS_REQUEST_STATUS_LABEL = { pending: "Pending", approved: "Approved", declined: "Declined", fulfilled: "Done" };
+  function accessRequestRowHtml(r, showApproveDecline) {
+    var school = schoolById(r.schoolId);
+    var statusLabel = ACCESS_REQUEST_STATUS_LABEL[r.status] || r.status;
+    return "<div class=\"row-item\" style=\"align-items:flex-start;\"><div class=\"row-main\">" +
+      "<div class=\"row-title\">" + esc(ACCESS_REQUEST_TYPE_LABELS[r.type] || r.type) + ": " + esc(r.label) + "</div>" +
+      "<div class=\"row-meta\">" + esc(school ? school.name : "Unknown school") + " · Requested by " + esc(r.requestedBy) + " · " + fmtDateTime(r.createdAt) + "</div>" +
+      "<div class=\"row-meta\">Reason: " + esc(r.reason) + "</div>" +
+      (r.resolvedBy ? "<div class=\"row-meta\">" + esc(statusLabel) + " by " + esc(r.resolvedBy) + "</div>" : "") +
+      "</div>" +
+      (showApproveDecline
+        ? "<div class=\"stack-btns\" style=\"flex-direction:row;\">" +
+          "<button class=\"btn small\" data-action=\"approve-access-request\" data-id=\"" + r.id + "\">Approve</button>" +
+          "<button class=\"btn small ghost\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\">Decline</button>" +
+          "</div>"
+        : "<span class=\"pill " + (ACCESS_REQUEST_STATUS_PILL[r.status] || "neutral") + "\">" + esc(statusLabel) + "</span>" +
+          (r.status === "pending" ? "<button class=\"link-btn danger\" data-action=\"cancel-access-request\" data-id=\"" + r.id + "\" style=\"margin-left:8px;\">Cancel</button>" : "")) +
+      "</div>";
+  }
+  function approvalsPageHtml() {
+    var me = getStoredIdentity();
+    var all = state.accessRequests || [];
+    var forMe = all.filter(function (r) { return r.status === "pending" && canDeleteSchoolRecords(r.schoolId); })
+      .sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
+    var mine = all.filter(function (r) { return r.requestedBy === me; })
+      .sort(function (a, b) { return (b.createdAt || "").localeCompare(a.createdAt || ""); });
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Approvals</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Requests waiting on you" + (forMe.length ? " <span class=\"count-chip\">" + forMe.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"row-list\">" +
+      (forMe.length ? forMe.map(function (r) { return accessRequestRowHtml(r, true); }).join("") : emptyState("Nothing waiting on your approval.")) +
+      "</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Your requests</div></div>" +
+      "<div class=\"card-body\"><div class=\"row-list\">" +
+      (mine.length ? mine.map(function (r) { return accessRequestRowHtml(r, false); }).join("") : emptyState("You haven't requested access to anything.")) +
+      "</div></div></div>";
+  }
+
   /* ---------- EOD Reports ---------- */
   /* Every line here uses the exact same font/size on purpose (no bold
      title, no smaller meta text) — this view is meant to be copied
@@ -3365,6 +3470,34 @@ function appMain() {
       case "toggle-add-va-for-task": ui.addingVaForTask = t.getAttribute("data-id"); render(); break;
       case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
       case "toggle-add-note-share": ui.sharingNoteId = t.getAttribute("data-id"); render(); break;
+      case "toggle-request-access": ui.requestingAccessFor = t.getAttribute("data-key"); render(); break;
+      case "cancel-request-access": ui.requestingAccessFor = null; render(); break;
+      case "approve-access-request":
+        (function () {
+          var reqObj = (state.accessRequests || []).find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (!reqObj || !canDeleteSchoolRecords(reqObj.schoolId)) return;
+          reqObj.status = "approved";
+          reqObj.resolvedBy = getStoredIdentity();
+          reqObj.resolvedAt = new Date().toISOString();
+          persist();
+        })(); break;
+      case "decline-access-request":
+        (function () {
+          var reqObj = (state.accessRequests || []).find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (!reqObj || !canDeleteSchoolRecords(reqObj.schoolId)) return;
+          reqObj.status = "declined";
+          reqObj.resolvedBy = getStoredIdentity();
+          reqObj.resolvedAt = new Date().toISOString();
+          persist();
+        })(); break;
+      case "cancel-access-request":
+        (function () {
+          var reqId = t.getAttribute("data-id");
+          var reqObj = (state.accessRequests || []).find(function (x) { return x.id === reqId; });
+          if (!reqObj || reqObj.requestedBy !== getStoredIdentity()) return;
+          state.accessRequests = state.accessRequests.filter(function (x) { return x.id !== reqId; });
+          persist();
+        })(); break;
       case "cancel-add-note-share": ui.sharingNoteId = null; render(); break;
       case "remove-note-share":
         (function () {
@@ -3379,14 +3512,17 @@ function appMain() {
         (function () {
           var taskId = t.getAttribute("data-id");
           var va = t.getAttribute("data-va");
-          if (!canDeleteSchoolRecords(t.getAttribute("data-school")) && va !== getStoredIdentity()) return;
-          requestDelete("va-from-task", taskId + "|" + va, function () {
-            var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var schoolId = t.getAttribute("data-school");
+          var pendingKey = taskId + "|" + va;
+          if (!canDeleteSchoolRecords(schoolId) && va !== getStoredIdentity() && !hasApprovedAccessRequest("remove-va-from-task", schoolId, pendingKey)) return;
+          requestDelete("va-from-task", pendingKey, function () {
+            var sd = ensureSchoolData(schoolId);
             var task = sd.tasks.find(function (x) { return x.id === taskId; });
             if (task) {
               var names = Array.isArray(task.vaAssigned) ? task.vaAssigned : [];
               task.vaAssigned = names.filter(function (n) { return n !== va; });
             }
+            fulfillAccessRequest("remove-va-from-task", schoolId, pendingKey);
           });
         })(); break;
       case "sign-issue-fixed":
@@ -3596,17 +3732,25 @@ function appMain() {
       case "toggle-task-status":
         break; /* handled on change */
       case "remove-task":
-        if (!canDeleteSchoolRecords(t.getAttribute("data-school"))) return;
-        requestDelete("task", t.getAttribute("data-id"), function () {
-          var sd = ensureSchoolData(t.getAttribute("data-school"));
-          sd.tasks = sd.tasks.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
-        }); break;
+        (function () {
+          var schoolId = t.getAttribute("data-school"), taskId = t.getAttribute("data-id");
+          if (!canDeleteSchoolRecords(schoolId) && !hasApprovedAccessRequest("remove-task", schoolId, taskId)) return;
+          requestDelete("task", taskId, function () {
+            var sd = ensureSchoolData(schoolId);
+            sd.tasks = sd.tasks.filter(function (x) { return x.id !== taskId; });
+            fulfillAccessRequest("remove-task", schoolId, taskId);
+          });
+        })(); break;
       case "remove-email-item":
-        if (!canDeleteSchoolRecords(t.getAttribute("data-school"))) return;
-        requestDelete("email-item", t.getAttribute("data-id"), function () {
-          var sd = ensureSchoolData(t.getAttribute("data-school"));
-          sd.emailTracker = sd.emailTracker.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
-        }); break;
+        (function () {
+          var schoolId = t.getAttribute("data-school"), itemId = t.getAttribute("data-id");
+          if (!canDeleteSchoolRecords(schoolId) && !hasApprovedAccessRequest("remove-email-item", schoolId, itemId)) return;
+          requestDelete("email-item", itemId, function () {
+            var sd = ensureSchoolData(schoolId);
+            sd.emailTracker = sd.emailTracker.filter(function (x) { return x.id !== itemId; });
+            fulfillAccessRequest("remove-email-item", schoolId, itemId);
+          });
+        })(); break;
       case "remove-issue":
         requestDelete("issue", t.getAttribute("data-id"), function () {
           state.issues = state.issues.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
@@ -3766,13 +3910,17 @@ function appMain() {
         })(); break;
       case "change-email-status":
         (function () {
-          var sd = ensureSchoolData(t.getAttribute("data-school"));
+          var schoolId = t.getAttribute("data-school");
+          var itemId = t.getAttribute("data-id");
+          var sd = ensureSchoolData(schoolId);
           /* Only the VA assigned to this school (or an Owner/Admin/
              Superadmin) can change an email tracker item's status —
-             matches the disabled state already rendered for anyone else. */
-          if (!isSuperAdmin() && sd.vaAssigned !== getStoredIdentity()) return;
-          var item = sd.emailTracker.find(function (x) { return x.id === t.getAttribute("data-id"); });
+             matches the disabled state already rendered for anyone else,
+             unless a request to do so was specifically approved. */
+          if (!isSuperAdmin() && sd.vaAssigned !== getStoredIdentity() && !hasApprovedAccessRequest("change-email-status", schoolId, itemId)) return;
+          var item = sd.emailTracker.find(function (x) { return x.id === itemId; });
           if (item) item.status = t.value;
+          fulfillAccessRequest("change-email-status", schoolId, itemId);
           persist();
         })(); break;
       case "change-issue-status":
@@ -4027,6 +4175,25 @@ function appMain() {
           };
           state.eodReports.push(entry);
           ["eod-new-date", "eod-new-timeIn", "eod-new-breakStart", "eod-new-breakEnd", "eod-new-timeOut", "eod-new-tasks"].forEach(function (k) { saveDraft(k, ""); });
+          persist();
+        })(); break;
+      case "submit-access-request":
+        (function () {
+          var reason = (fd.get("reason") || "").toString().trim();
+          if (!reason) return;
+          state.accessRequests = state.accessRequests || [];
+          state.accessRequests.push({
+            id: uid("req"),
+            type: (fd.get("type") || "").toString(),
+            schoolId: (fd.get("schoolId") || "").toString(),
+            targetId: (fd.get("targetId") || "").toString(),
+            label: (fd.get("label") || "").toString(),
+            reason: reason,
+            requestedBy: getStoredIdentity(),
+            status: "pending",
+            createdAt: new Date().toISOString()
+          });
+          ui.requestingAccessFor = null;
           persist();
         })(); break;
       case "add-issue":
