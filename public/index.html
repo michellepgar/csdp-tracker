@@ -2123,14 +2123,20 @@ function appMain() {
      opens a small picker instead of guessing who you mean. */
   function taskVaGroupHtml(t, schoolId) {
     var names = Array.isArray(t.vaAssigned) ? t.vaAssigned : (t.vaAssigned ? [t.vaAssigned] : []);
+    var me = getStoredIdentity();
+    /* Removing someone else's signature is a school-records deletion, same
+       restriction as everywhere else — but removing your own is always
+       allowed, so undoing your own mistake never needs someone else's
+       permission. */
+    var canRemoveOthers = canDeleteSchoolRecords(schoolId);
     var chips = names.map(function (name) {
       var pendingKey = t.id + "|" + name;
       var pending = isPending("va-from-task", pendingKey);
+      var canRemoveThis = canRemoveOthers || name === me;
       return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
-        "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"" + (pending ? "Click again to confirm" : "Remove " + esc(name)) + "\">" + (pending ? "Confirm?" : "×") + "</button>" +
+        (canRemoveThis ? "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"" + (pending ? "Click again to confirm" : "Remove " + esc(name)) + "\">" + (pending ? "Confirm?" : "×") + "</button>" : "") +
         "</span>";
     }).join("");
-    var me = getStoredIdentity();
     var signBtn = (me && names.indexOf(me) === -1)
       ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
       : "";
@@ -2243,6 +2249,14 @@ function appMain() {
   function canEditCommunication() {
     return getStoredIdentity() === (state.communicationEditor || DEFAULT_COMMUNICATION_EDITOR);
   }
+  /* Deleting anything under a school's own records (tasks, email tracker
+     items, a VA's signature on a task) is limited to whoever's actually
+     assigned to that school, plus the usual Owner/Admin/Superadmin
+     override — everyone else just doesn't get the delete button at all. */
+  function canDeleteSchoolRecords(schoolId) {
+    var sd = ensureSchoolData(schoolId);
+    return isSuperAdmin() || (!!sd.vaAssigned && sd.vaAssigned === getStoredIdentity());
+  }
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
     var needsCount = COUNT_CATEGORIES.indexOf(t.category) !== -1;
@@ -2252,7 +2266,7 @@ function appMain() {
       taskVaGroupHtml(t, schoolId) +
       statusControl("task", t.id, t.status, "toggle-task-status", schoolId) +
       (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId, !canEditCommunication()) : "") +
-      deleteBtn("task", t.id, "remove-task", schoolId) + "</div>";
+      (canDeleteSchoolRecords(schoolId) ? deleteBtn("task", t.id, "remove-task", schoolId) : "") + "</div>";
   }
 
   function tasksCardHtml(schoolId, sd) {
@@ -2437,7 +2451,7 @@ function appMain() {
     var rows = sorted.map(function (e) {
       return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
         statusControl("email_followup", e.id, e.status, "change-email-status", schoolId, !canChangeStatus) +
-        deleteBtn("email-item", e.id, "remove-email-item", schoolId) + "</div>";
+        (canChangeStatus ? deleteBtn("email-item", e.id, "remove-email-item", schoolId) : "") + "</div>";
     }).join("");
     return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
@@ -3328,6 +3342,7 @@ function appMain() {
         (function () {
           var taskId = t.getAttribute("data-id");
           var va = t.getAttribute("data-va");
+          if (!canDeleteSchoolRecords(t.getAttribute("data-school")) && va !== getStoredIdentity()) return;
           requestDelete("va-from-task", taskId + "|" + va, function () {
             var sd = ensureSchoolData(t.getAttribute("data-school"));
             var task = sd.tasks.find(function (x) { return x.id === taskId; });
@@ -3542,11 +3557,13 @@ function appMain() {
       case "toggle-task-status":
         break; /* handled on change */
       case "remove-task":
+        if (!canDeleteSchoolRecords(t.getAttribute("data-school"))) return;
         requestDelete("task", t.getAttribute("data-id"), function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
           sd.tasks = sd.tasks.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
       case "remove-email-item":
+        if (!canDeleteSchoolRecords(t.getAttribute("data-school"))) return;
         requestDelete("email-item", t.getAttribute("data-id"), function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
           sd.emailTracker = sd.emailTracker.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
