@@ -2797,7 +2797,7 @@ function appMain() {
           : newType && newType.simpleIssueTable
             ? ""
             : isChartingQuestionsType(newType)
-              ? "<span style=\"width:100%; margin-top:8px;\"><input class=\"text-input\" name=\"studentRecordLink\" placeholder=\"Link to student record (optional)\"></span>"
+              ? "<span style=\"width:100%; margin-top:8px;\"><input class=\"text-input\" name=\"studentRecordLink\" placeholder=\"Link to student record\" required></span>"
               /* No fields pre-added — click a +Field button for whatever this
                  particular issue actually needs. Remarks stays edit-only,
                  added after saving once there's something to report back. */
@@ -3850,12 +3850,13 @@ function appMain() {
           }
           if (isChartingQuestionsType(typeObj)) {
             var chartingDescription = (fd.get("description") || "").toString().trim();
-            if (!chartingDescription) return;
+            var chartingLink = (fd.get("studentRecordLink") || "").toString().trim();
+            if (!chartingDescription || !chartingLink) return;
             state.issues.push({
               id: uid("issue"),
               type: typeId,
               description: chartingDescription,
-              studentRecordLink: (fd.get("studentRecordLink") || "").toString().trim(),
+              studentRecordLink: chartingLink,
               remarks: "",
               reportedBy: getStoredIdentity(),
               status: statusOpts[0] || "Pending",
