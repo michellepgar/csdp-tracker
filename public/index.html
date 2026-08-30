@@ -4077,6 +4077,38 @@ function appMain() {
     if (backdrop) backdrop.style.display = "none";
     if (popup) popup.style.display = "none";
   }
+  /* Numpad and top-row digits/operators both report the same e.key value
+     (e.g. Numpad7 and "7" both give "7"), so this covers a physical
+     numpad for free — no separate numpad handling needed. Only acts while
+     the calculator is actually open, so it never interferes with typing
+     anywhere else in the app. */
+  function handleCalcKeydown(e) {
+    var popup = document.getElementById("calcPopup");
+    if (!popup || popup.style.display !== "flex") return;
+    var key = e.key;
+    if (/^[0-9]$/.test(key) || key === "." || key === "+" || key === "-" || key === "*" || key === "/") {
+      e.preventDefault();
+      calcExpr += key;
+      document.getElementById("calcDisplay").textContent = calcExpr || "0";
+    } else if (key === "Enter" || key === "=") {
+      e.preventDefault();
+      var result = safeCalcEval(calcExpr);
+      if (result === null) { calcExpr = ""; document.getElementById("calcDisplay").textContent = "Error"; return; }
+      applyCalcResultToTarget(result);
+      closeCalculator();
+    } else if (key === "Backspace") {
+      e.preventDefault();
+      calcExpr = calcExpr.slice(0, -1);
+      document.getElementById("calcDisplay").textContent = calcExpr || "0";
+    } else if (key === "Escape") {
+      e.preventDefault();
+      closeCalculator();
+    } else if (key === "Delete" || key === "c" || key === "C") {
+      e.preventDefault();
+      calcExpr = "";
+      document.getElementById("calcDisplay").textContent = "0";
+    }
+  }
 
   /* ============ event handling ============ */
   function onClick(e) {
@@ -5221,6 +5253,7 @@ function appMain() {
 
   document.addEventListener("click", onClick);
   document.addEventListener("change", onChange);
+  document.addEventListener("keydown", handleCalcKeydown);
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("keydown", onNoteEditorKeydown);
