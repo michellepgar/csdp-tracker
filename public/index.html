@@ -3282,9 +3282,9 @@ function appMain() {
       (r.resolvedBy ? "<div class=\"row-meta\">" + esc(statusLabel) + " by " + esc(r.resolvedBy) + "</div>" : "") +
       "</div>" +
       (showApproveDecline
-        ? "<div class=\"stack-btns\" style=\"flex-direction:row;\">" +
-          "<button class=\"btn small\" data-action=\"approve-access-request\" data-id=\"" + r.id + "\">Approve</button>" +
-          "<button class=\"btn small ghost\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\">Decline</button>" +
+        ? "<div style=\"display:flex; gap:8px;\">" +
+          "<button class=\"btn small\" style=\"background:var(--done); color:#fff;\" data-action=\"approve-access-request\" data-id=\"" + r.id + "\" title=\"Approve\">✅ Approve</button>" +
+          "<button class=\"btn small\" style=\"background:var(--danger); color:#fff;\" data-action=\"decline-access-request\" data-id=\"" + r.id + "\" title=\"Decline\">❌ Decline</button>" +
           "</div>"
         : "<span class=\"pill " + (ACCESS_REQUEST_STATUS_PILL[r.status] || "neutral") + "\">" + esc(statusLabel) + "</span>" +
           (canRemoveRow ? "<button class=\"link-btn danger\" data-action=\"delete-access-request\" data-id=\"" + r.id + "\" style=\"margin-left:8px;\">" + removeLabel + "</button>" : "")) +
