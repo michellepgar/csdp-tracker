@@ -1957,6 +1957,7 @@ function appMain() {
       navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
+      navItem("distribution-list", "Distribution List", 0, function (v) { return v.type === "distribution-list"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>"
     );
@@ -2059,6 +2060,7 @@ function appMain() {
       case "team": return isSuperAdmin() ? teamPageHtml() : homePageHtml();
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
+      case "distribution-list": return distributionListPageHtml();
       case "eod": return eodPageHtml();
       case "private-notes": return privateNotesPageHtml();
       case "approvals": return approvalsPageHtml();
@@ -3353,6 +3355,16 @@ function appMain() {
   function suggestionsPageHtml() {
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
       notesCardHtml("suggestion", null, state.suggestions);
+  }
+
+  /* ---------- Distribution List ---------- */
+  /* Placeholder page — Michelle hasn't decided how this should be
+     organized yet. Just getting it on the sidebar for now. */
+  function distributionListPageHtml() {
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-body\">" +
+      emptyState("Nothing here yet — this page is a placeholder while we figure out how to organize it.") +
+      "</div></div>";
   }
 
   /* ---------- Private Notes ---------- */
