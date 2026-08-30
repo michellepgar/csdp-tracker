@@ -2179,7 +2179,7 @@ function appMain() {
       return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
         (canRemoveThis ? "<button class=\"va-tag-remove" + (pending ? " confirming" : "") + "\" data-action=\"remove-va-from-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" data-va=\"" + esc(name) + "\" title=\"" + (pending ? "Click again to confirm" : "Remove " + esc(name)) + "\">" + (pending ? "Confirm?" : "×") + "</button>" : "") +
         "</span>" +
-        (canRemoveThis ? "" : accessRequestControlHtml("remove-va-from-task", schoolId, pendingKey, "Remove " + name + "'s signature from this task"));
+        (canRemoveThis ? "" : accessRequestControlHtml("va-signature", schoolId, pendingKey, "\"" + name + "\"'s signature on this task"));
     }).join("");
     var signBtn = (me && names.indexOf(me) === -1)
       ? "<button class=\"add-va-btn\" data-action=\"sign-task\" data-id=\"" + t.id + "\" data-school=\"" + schoolId + "\" title=\"Add yourself (" + esc(me) + ")\">+</button>"
@@ -2305,38 +2305,54 @@ function appMain() {
      ask the assigned VA (or an Admin/Owner) for a one-time exception
      instead. Requests are scoped to one exact record and one requester —
      approving doesn't hand out standing access, and using it once marks
-     it "fulfilled" so it can't be reused. */
-  function accessRequestKey(type, targetId) { return type + "|" + targetId; }
-  function findAccessRequestFor(type, schoolId, targetId, requestedBy, statuses) {
+     it "fulfilled" so it can't be reused.
+
+     One record only ever shows one request control, regardless of how
+     many individual permission checks it's actually gating (an email
+     tracker row locks both its status and its delete button, but that's
+     still one "thing" to ask about) — clicking it asks which of Edit or
+     Remove is wanted, then maps that choice to whichever specific
+     permission it actually corresponds to for this kind of record. */
+  var ACCESS_REQUEST_ACTION_TYPE = {
+    "task": { remove: "remove-task", edit: "edit-task" },
+    "email-item": { remove: "remove-email-item", edit: "change-email-status" },
+    "va-signature": { remove: "remove-va-from-task" }
+  };
+  function findAccessRequestForRecord(schoolId, targetId, requestedBy, statuses) {
     return (state.accessRequests || []).find(function (r) {
-      return r.type === type && r.schoolId === schoolId && r.targetId === targetId &&
+      return r.schoolId === schoolId && r.targetId === targetId &&
         r.requestedBy === requestedBy && statuses.indexOf(r.status) !== -1;
     });
   }
   function hasApprovedAccessRequest(type, schoolId, targetId) {
     var me = getStoredIdentity();
-    return !!findAccessRequestFor(type, schoolId, targetId, me, ["approved"]);
+    var r = findAccessRequestForRecord(schoolId, targetId, me, ["approved"]);
+    return !!r && r.type === type;
   }
   function fulfillAccessRequest(type, schoolId, targetId) {
     var me = getStoredIdentity();
-    var reqObj = findAccessRequestFor(type, schoolId, targetId, me, ["approved"]);
-    if (reqObj) reqObj.status = "fulfilled";
+    var r = findAccessRequestForRecord(schoolId, targetId, me, ["approved"]);
+    if (r && r.type === type) r.status = "fulfilled";
   }
-  /* Renders whichever state this specific request is in: a "Request…" link
-     to start one, an inline reason form while composing it, or a "pending"
-     label once sent — never more than one at a time. */
-  function accessRequestControlHtml(type, schoolId, targetId, label) {
+  /* Renders whichever state this specific record's request is in: a
+     "Request…" link to start one, an inline Edit/Remove + reason form
+     while composing it, or a "pending" label once sent. */
+  function accessRequestControlHtml(recordKind, schoolId, targetId, label) {
     var me = getStoredIdentity();
     if (!me) return "";
-    var reqKey = accessRequestKey(type, targetId);
-    var pendingReq = findAccessRequestFor(type, schoolId, targetId, me, ["pending"]);
+    var reqKey = recordKind + "|" + targetId;
+    var pendingReq = findAccessRequestForRecord(schoolId, targetId, me, ["pending"]);
     if (pendingReq) return "<span class=\"field-mini-label\" title=\"Waiting on the assigned VA or an Admin/Owner\">Request pending</span>";
     if (ui.requestingAccessFor === reqKey) {
-      return "<form class=\"add-row-form\" data-action=\"submit-access-request\" style=\"gap:6px; flex-wrap:nowrap; padding:0; margin:0;\">" +
-        "<input type=\"hidden\" name=\"type\" value=\"" + esc(type) + "\">" +
+      var actionOpts = Object.keys(ACCESS_REQUEST_ACTION_TYPE[recordKind] || { remove: 1 }).map(function (a) {
+        return "<option value=\"" + a + "\">" + (a === "edit" ? "Edit" : "Remove") + "</option>";
+      }).join("");
+      return "<form class=\"add-row-form\" data-action=\"submit-access-request\" style=\"gap:6px; flex-wrap:wrap; padding:0; margin:0;\">" +
+        "<input type=\"hidden\" name=\"recordKind\" value=\"" + esc(recordKind) + "\">" +
         "<input type=\"hidden\" name=\"schoolId\" value=\"" + esc(schoolId) + "\">" +
         "<input type=\"hidden\" name=\"targetId\" value=\"" + esc(targetId) + "\">" +
         "<input type=\"hidden\" name=\"label\" value=\"" + esc(label) + "\">" +
+        "<select class=\"text-input\" name=\"action\" style=\"max-width:110px;\">" + actionOpts + "</select>" +
         "<input class=\"text-input\" name=\"reason\" placeholder=\"Reason\" required style=\"min-width:140px;\">" +
         "<button class=\"btn small\" type=\"submit\">Send</button>" +
         "<button class=\"link-btn\" type=\"button\" data-action=\"cancel-request-access\">Cancel</button>" +
@@ -2355,7 +2371,7 @@ function appMain() {
       (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId, !canEditCommunication()) : "") +
       (canDeleteSchoolRecords(schoolId) || hasApprovedAccessRequest("remove-task", schoolId, t.id)
         ? deleteBtn("task", t.id, "remove-task", schoolId)
-        : accessRequestControlHtml("remove-task", schoolId, t.id, "Remove task \"" + t.fileName + "\"")) + "</div>";
+        : accessRequestControlHtml("task", schoolId, t.id, "task \"" + t.fileName + "\"")) + "</div>";
   }
 
   function tasksCardHtml(schoolId, sd) {
@@ -2540,10 +2556,14 @@ function appMain() {
     var rows = sorted.map(function (e) {
       var canStatus = canChangeStatus || hasApprovedAccessRequest("change-email-status", schoolId, e.id);
       var canDelete = canChangeStatus || hasApprovedAccessRequest("remove-email-item", schoolId, e.id);
+      /* One request control per row covers both the status dropdown and
+         the delete button — asking which of Edit/Remove is wanted, rather
+         than showing two separate "Request" links for the same item. */
+      var requestHtml = (!canStatus || !canDelete) ? accessRequestControlHtml("email-item", schoolId, e.id, "email \"" + e.description + "\"") : "";
       return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
         statusControl("email_followup", e.id, e.status, "change-email-status", schoolId, !canStatus) +
-        (!canStatus ? accessRequestControlHtml("change-email-status", schoolId, e.id, "Change status of \"" + e.description + "\"") : "") +
-        (canDelete ? deleteBtn("email-item", e.id, "remove-email-item", schoolId) : accessRequestControlHtml("remove-email-item", schoolId, e.id, "Remove email item \"" + e.description + "\"")) + "</div>";
+        (canDelete ? deleteBtn("email-item", e.id, "remove-email-item", schoolId) : "") +
+        requestHtml + "</div>";
     }).join("");
     return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
@@ -3248,20 +3268,17 @@ function appMain() {
   }
 
   /* ---------- Approvals ---------- */
-  var ACCESS_REQUEST_TYPE_LABELS = {
-    "remove-task": "Remove task",
-    "remove-email-item": "Remove email item",
-    "change-email-status": "Change email status",
-    "remove-va-from-task": "Remove signature"
-  };
   var ACCESS_REQUEST_STATUS_PILL = { pending: "orange", approved: "green", declined: "red", fulfilled: "neutral" };
   var ACCESS_REQUEST_STATUS_LABEL = { pending: "Pending", approved: "Approved", declined: "Declined", fulfilled: "Done" };
   function accessRequestRowHtml(r, showApproveDecline) {
     var school = schoolById(r.schoolId);
     var statusLabel = ACCESS_REQUEST_STATUS_LABEL[r.status] || r.status;
+    var actionVerb = r.action === "edit" ? "edit" : "remove";
     return "<div class=\"row-item\" style=\"align-items:flex-start;\"><div class=\"row-main\">" +
-      "<div class=\"row-title\">" + esc(ACCESS_REQUEST_TYPE_LABELS[r.type] || r.type) + ": " + esc(r.label) + "</div>" +
-      "<div class=\"row-meta\">" + esc(school ? school.name : "Unknown school") + " · Requested by " + esc(r.requestedBy) + " · " + fmtDateTime(r.createdAt) + "</div>" +
+      /* The record being requested, and who's asking, both up front — not
+         buried in a second line. */
+      "<div class=\"row-title\">" + esc(r.requestedBy) + " wants to <strong>" + esc(actionVerb) + "</strong>: " + esc(r.label) + "</div>" +
+      "<div class=\"row-meta\">" + esc(school ? school.name : "Unknown school") + " · " + fmtDateTime(r.createdAt) + "</div>" +
       "<div class=\"row-meta\">Reason: " + esc(r.reason) + "</div>" +
       (r.resolvedBy ? "<div class=\"row-meta\">" + esc(statusLabel) + " by " + esc(r.resolvedBy) + "</div>" : "") +
       "</div>" +
@@ -4181,10 +4198,16 @@ function appMain() {
         (function () {
           var reason = (fd.get("reason") || "").toString().trim();
           if (!reason) return;
+          var recordKind = (fd.get("recordKind") || "").toString();
+          var action = (fd.get("action") || "remove").toString();
+          var typeMap = ACCESS_REQUEST_ACTION_TYPE[recordKind] || {};
+          var type = typeMap[action] || typeMap.remove || action;
           state.accessRequests = state.accessRequests || [];
           state.accessRequests.push({
             id: uid("req"),
-            type: (fd.get("type") || "").toString(),
+            type: type,
+            action: action,
+            recordKind: recordKind,
             schoolId: (fd.get("schoolId") || "").toString(),
             targetId: (fd.get("targetId") || "").toString(),
             label: (fd.get("label") || "").toString(),
