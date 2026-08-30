@@ -2498,7 +2498,13 @@ function appMain() {
     var allVerified = CORRECTION_FIELDS.every(function (f) { return !issue[f.needsKey] || issue[f.verifiedKey]; });
     return allVerified ? "Resolved" : "Pending";
   }
-  function correctionCellHtml(editing, it, field, placeholder) {
+  /* `needed` gates the three Correct ___ cells: only the ones whose Needs
+     Correction box is checked for this row show anything at all — check
+     just Name and the DOB/Insurance # correction cells stay blank, so the
+     row only asks for the value(s) actually being fixed. Pass true (or
+     omit) for a cell that isn't gated by any checkbox. */
+  function correctionCellHtml(editing, it, field, placeholder, needed) {
+    if (needed === false) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
     if (!editing) return "<div class=\"contact-cell-view\">" + contactCellViewHtml(it[field] || "") + "</div>";
     return "<input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"" + field + "\" value=\"" + esc(it[field] || "") + "\"" + (placeholder ? " placeholder=\"" + esc(placeholder) + "\"" : "") + ">";
   }
@@ -2533,14 +2539,14 @@ function appMain() {
       }).join("");
       return "<tr>" +
         "<td>" + correctionCellHtml(editing, it, "studentName") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctName", "Correct name") + "</td>" +
+        "<td>" + correctionCellHtml(editing, it, "correctName", "Correct name", !!it.needsNameCorrection) + "</td>" +
         "<td>" + schoolCell + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "grade") + "</td>" +
         "<td>" + needsCorrectionHtml + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "dob", "MM/DD/YYYY") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctDob", "Correct DOB") + "</td>" +
+        "<td>" + correctionCellHtml(editing, it, "correctDob", "Correct DOB", !!it.needsDobCorrection) + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "insuranceNumber") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctInsurance", "Correct Insurance #") + "</td>" +
+        "<td>" + correctionCellHtml(editing, it, "correctInsurance", "Correct Insurance #", !!it.needsInsuranceCorrection) + "</td>" +
         "<td>" + (editing ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea>" : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.remarks || "") + "</div>") + "</td>" +
         "<td>" + esc(it.reportedBy || "") + "</td>" +
         "<td>" + verifiedHtml + "</td>" +
