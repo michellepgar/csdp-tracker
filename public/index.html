@@ -2456,19 +2456,26 @@ function appMain() {
      every column always shows (no per-row +Field toggles), and most cells
      are click-to-edit in place, the same pattern as the Schools Contact
      Information page, instead of needing to open "Edit" first. */
-  var CORRECTION_TABLE_COLS = 12;
+  var CORRECTION_TABLE_COLS = 13;
   function correctionTypeSectionHtml(ty, typeList) {
-    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Date of Birth</th><th>Correct DOB</th>" +
+    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Needs Correction</th><th>Date of Birth</th><th>Correct DOB</th>" +
       "<th>Insurance #</th><th>Correct Insurance #</th><th>Note</th><th>Reported by</th><th>Verified</th><th>Status</th><th></th>";
     var sortedSchools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     var rowsHtml = typeList.map(function (it) {
       var schoolOpts = "<option value=\"\">School…</option>" + sortedSchools.map(function (s) {
         return "<option value=\"" + s.id + "\"" + (s.id === it.schoolId ? " selected" : "") + ">" + esc(s.name) + "</option>";
       }).join("");
+      /* Which of the two fields below actually need fixing — a row can be
+         either one or both, set when it's added and adjustable later. */
+      var needsCorrectionHtml = "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
+        "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"needsDobCorrection\"" + (it.needsDobCorrection ? " checked" : "") + "> DOB</label>" +
+        "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
+        "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"needsInsuranceCorrection\"" + (it.needsInsuranceCorrection ? " checked" : "") + "> Insurance #</label>";
       return "<tr>" +
         "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"studentName\" value=\"" + esc(it.studentName || "") + "\"></td>" +
         "<td><select class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"schoolId\">" + schoolOpts + "</select></td>" +
         "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"grade\" value=\"" + esc(it.grade || "") + "\"></td>" +
+        "<td>" + needsCorrectionHtml + "</td>" +
         "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"dob\" value=\"" + esc(it.dob || "") + "\" placeholder=\"MM/DD/YYYY\"></td>" +
         "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"correctDob\" value=\"" + esc(it.correctDob || "") + "\" placeholder=\"Correct DOB\"></td>" +
         "<td><input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"insuranceNumber\" value=\"" + esc(it.insuranceNumber || "") + "\"></td>" +
@@ -2488,6 +2495,9 @@ function appMain() {
       "</tbody></table></div>" +
       "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
       "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
+      "<span class=\"field-mini-label\">Needs correction:</span>" +
+      "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"needsDobCorrection\"> Date of Birth</label>" +
+      "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"needsInsuranceCorrection\"> Insurance #</label>" +
       "<button class=\"btn small\" type=\"submit\">+ Add</button></form>" +
       "</div></div>";
   }
@@ -3280,15 +3290,20 @@ function appMain() {
           if (issue) issue[t.getAttribute("data-field")] = t.value;
           persist();
         })(); break;
+      case "set-correction-checkbox":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue[t.getAttribute("data-field")] = !!t.checked;
+          persist();
+        })(); break;
       case "set-correction-verified":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (issue) {
             issue.verified = !!t.checked;
-            /* Same idea as Fixed By: checking it off is the resolution —
-               unchecking it later doesn't reopen it on its own, someone
-               changes the status directly for that. */
-            if (issue.verified) issue.status = "Resolved";
+            /* Checking it off is the resolution; unchecking it reopens it —
+               status always tracks Verified directly on this table. */
+            issue.status = issue.verified ? "Resolved" : "Pending";
           }
           persist();
         })(); break;
@@ -3550,6 +3565,8 @@ function appMain() {
             studentName: studentName,
             schoolId: "",
             grade: "",
+            needsDobCorrection: !!fd.get("needsDobCorrection"),
+            needsInsuranceCorrection: !!fd.get("needsInsuranceCorrection"),
             dob: "",
             correctDob: "",
             insuranceNumber: "",
