@@ -481,10 +481,16 @@
   .dist-checkbox-label { flex-direction: row !important; align-items: center; gap: 6px !important; }
   .dist-classroom-block { margin-top: 12px; }
   .dist-classroom-title { font-weight: 700; font-size: 0.85rem; margin-bottom: 6px; }
-  .dist-breakdown-table input.text-input { max-width: 80px; }
+  .dist-breakdown-table td:not(:first-child) { text-align: center; }
+  .dist-breakdown-table input.text-input { max-width: 80px; text-align: center; }
   .dist-remarks-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); margin-top: 10px; }
   .dist-remarks-label textarea { width: 100%; }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  /* Numbers line up on the right so digits stack cleanly down the column;
+     the Distributed checkbox and row actions center under their headers
+     instead of hugging the left edge like text does. */
+  .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: right; }
+  .dist-table th.dist-col-center, .dist-table td.dist-col-center { text-align: center; }
 
   /* Sticky notes always use a fixed dark ink on pastel backgrounds,
      regardless of app theme — like real sticky notes look the same in
@@ -3558,15 +3564,15 @@ function appMain() {
         var classroomsSummary = distributionRowClassroomsSummary(r);
         return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
           "<td>" + esc(r.school) + "</td>" +
-          "<td class=\"mono\">" + esc(r.enrolled || "—") + "</td>" +
-          "<td><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
+          "<td class=\"mono dist-col-num\">" + esc(r.enrolled || "—") + "</td>" +
+          "<td class=\"dist-col-center\"><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
           "<td>" + (classroomsSummary ? esc(classroomsSummary) : "—") + "</td>" +
-          "<td class=\"mono\">" + totalPackets + "</td>" +
+          "<td class=\"mono dist-col-num\">" + totalPackets + "</td>" +
           "<td>" + (languagesUsed ? esc(languagesUsed) : "—") + "</td>" +
-          "<td class=\"mono\">" + totalForms + "</td>" +
+          "<td class=\"mono dist-col-num\">" + totalForms + "</td>" +
           "<td>" + esc(r.contactPerson || "—") + "</td>" +
           "<td class=\"wrap\">" + esc(r.remarks || "") + "</td>" +
-          "<td>" +
+          "<td class=\"dist-col-center\">" +
           "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\">Edit</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
           "</td></tr>";
@@ -3585,7 +3591,7 @@ function appMain() {
         "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
         "</div></div><div class=\"card-body\">" +
         "<div class=\"table-scroll\"><table class=\"data-table dist-table\"><thead><tr>" +
-        "<th>School</th><th>Enrolled</th><th>Distributed</th><th>Classrooms</th><th>Packets</th><th>Languages</th><th>Total Forms</th><th>Contact Person</th><th>Remarks</th><th></th>" +
+        "<th>School</th><th class=\"dist-col-num\">Enrolled</th><th class=\"dist-col-center\">Distributed</th><th>Classrooms</th><th class=\"dist-col-num\">Packets</th><th>Languages</th><th class=\"dist-col-num\">Total Forms</th><th>Contact Person</th><th>Remarks</th><th class=\"dist-col-center\"></th>" +
         "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"10\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
