@@ -2581,8 +2581,8 @@ function appMain() {
     }).join("");
   }
   function correctionTypeSectionHtml(ty, typeList) {
-    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Needs Correction</th>" +
-      "<th>Date of Birth</th><th>Insurance #</th><th>Correct Information</th>" +
+    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th>" +
+      "<th>Date of Birth</th><th>Insurance #</th><th>Needs Correction</th><th>Correct Information</th>" +
       "<th>Note</th><th>Reported by</th><th>Verified</th><th>Status</th><th></th>";
     var sortedSchools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     var rowsHtml = typeList.map(function (it) {
@@ -2604,9 +2604,9 @@ function appMain() {
         "<td>" + correctionCellHtml(editing, it, "studentName") + "</td>" +
         "<td>" + schoolCell + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "grade") + "</td>" +
-        "<td>" + needsCorrectionHtml(editing, it) + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "dob", "MM/DD/YYYY") + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "insuranceNumber") + "</td>" +
+        "<td>" + needsCorrectionHtml(editing, it) + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "correctInfo", "Correct information") + "</td>" +
         "<td>" + (editing ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea>" : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.remarks || "") + "</div>") + "</td>" +
         "<td>" + esc(it.reportedBy || "") + "</td>" +
