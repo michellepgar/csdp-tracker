@@ -3097,8 +3097,8 @@ function appMain() {
   function eodTableHtml(list) {
     var rows = list.map(function (e) {
       return "<tr>" +
-        "<td>" + esc(fmtEodDate(e.date)) + "</td>" +
         "<td>" + esc(e.author || "Unnamed") + "</td>" +
+        "<td>" + esc(fmtEodDate(e.date)) + "</td>" +
         "<td>" + esc(fmtTime12(e.timeIn)) + "</td>" +
         "<td>" + esc(fmtTime12(e.breakStart)) + "</td>" +
         "<td>" + esc(fmtTime12(e.breakEnd)) + "</td>" +
@@ -3109,7 +3109,7 @@ function appMain() {
     }).join("");
     return "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" +
-      "<th>Date</th><th>By</th><th>In</th><th>Break</th><th>Resume</th><th>Out</th><th>Total hours</th><th>Tasks</th>" +
+      "<th>VA</th><th>Date</th><th>In</th><th>Break</th><th>Resume</th><th>Out</th><th>Total Hours</th><th>Tasks</th>" +
       "</tr></thead><tbody>" +
       (rows || "<tr><td colspan=\"8\">" + emptyState("No EOD reports yet.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
