@@ -2563,15 +2563,17 @@ function appMain() {
         "<td>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
     }).join("");
-    var addFormHtml = editing
-      ? "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
-        "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
-        "<span class=\"field-mini-label\">Needs correction:</span>" +
-        CORRECTION_NEEDS_FIELDS.map(function (f) {
-          return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
-        }).join("") +
-        "<button class=\"btn small\" type=\"submit\">+ Add</button></form>"
-      : "";
+    /* Adding a new entry is always available, whether or not the table is
+       unlocked for editing — it's a fresh row, not a change to anything
+       already there, so it isn't the kind of accidental edit Edit mode
+       guards against. */
+    var addFormHtml = "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
+      "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
+      "<span class=\"field-mini-label\">Needs correction:</span>" +
+      CORRECTION_NEEDS_FIELDS.map(function (f) {
+        return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
+      }).join("") +
+      "<button class=\"btn small\" type=\"submit\">+ Add</button></form>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(ty.name) +
       (typeList.length ? " <span class=\"count-chip\">" + typeList.length + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\"><button class=\"btn small" + (editing ? "" : " ghost") + "\" data-action=\"toggle-corrections-edit\">" + (editing ? "Done editing" : "Edit") + "</button></div>" +
