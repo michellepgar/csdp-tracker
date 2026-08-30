@@ -2253,8 +2253,16 @@ function appMain() {
 
     var groupsHtml = cats.map(function (c) {
       var items = sortRecords(sd.tasks.filter(function (t) { return t.category === c.name; }).slice().reverse(), ui.taskSort, function (t) { return t.fileName; });
+      /* Encoding & Uploading, Initial, and Recheck each have a per-file
+         Count field — total those up next to the file count so the sum
+         is visible without adding them up by hand. */
+      var totalCountHtml = "";
+      if (COUNT_CATEGORIES.indexOf(c.name) !== -1 && items.length) {
+        var totalCount = items.reduce(function (sum, t) { return sum + (parseInt(t.count, 10) || 0); }, 0);
+        totalCountHtml = "<span class=\"count-chip\" title=\"Sum of each file's Count\">Total: " + totalCount + "</span>";
+      }
       return "<div class=\"task-group\"><div class=\"task-group-title\"><span>" + esc(c.name) + "</span>" +
-        (items.length ? "<span class=\"count-chip\">" + items.length + "</span>" : "") + "</div>" +
+        (items.length ? "<span class=\"count-chip\">" + items.length + "</span>" : "") + totalCountHtml + "</div>" +
         "<div class=\"row-list\">" + (items.map(function (t) { return taskRowHtml(t, schoolId); }).join("") || emptyState("No files yet in this category.")) + "</div></div>";
     }).join("");
 
