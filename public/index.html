@@ -971,6 +971,10 @@ function appMain() {
         ty.fieldSet = "recheck";
         delete ty.extraFields;
       }
+      /* Software issue existed before it got its own simple fixed-column
+         table — an already-saved copy predates that flag, so it has to be
+         brought up to the current shape here too, same as the two above. */
+      if (ty.id === "software_issue") ty.simpleIssueTable = true;
     });
   }
   /* Appends any of the standard checklist items that aren't already present
