@@ -1879,13 +1879,13 @@ function appMain() {
       "<div class=\"nav-list\">" +
       navItem("private-notes", "Private Notes", 0, function (v) { return v.type === "private-notes"; }) +
       (isSuperAdmin() ? navItem("team", "Team", 0, function (v) { return v.type === "team"; }) : "") +
-      navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       "</div></div>" +
       "<div class=\"sidebar-divider\"></div>" +
       "<div class=\"sidebar-section\">" +
       "<div class=\"sidebar-label\">Team</div>" +
       "<div class=\"nav-list\">" +
       navItem("notes", "General Notes/Announcements", state.generalNotes.length, function (v) { return v.type === "notes"; }, hasUnreadUrgentNotes() ? "blink-alert" : "") +
+      navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       navItem("issues", "Issues & Concerns", issuesAttnCount(), function (v) { return v.type === "issues"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
