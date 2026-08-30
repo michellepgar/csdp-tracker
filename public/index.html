@@ -892,6 +892,34 @@ function appMain() {
     });
     return true;
   }
+  /* Reverted back to simpler shape: one shared Correct Information note
+     instead of a separate correct value per field, and one Verified
+     checkbox instead of three. Folds anything already saved under the
+     per-field shape into the new one, once, without losing data. */
+  function migrateCorrectionSimplify(parsed) {
+    if (parsed._migratedCorrectionSimplify) return false;
+    parsed._migratedCorrectionSimplify = true;
+    (parsed.issues || []).forEach(function (it) {
+      if (it.type !== "insurance_dob_correction") return;
+      if (typeof it.correctInfo === "undefined") {
+        var parts = [];
+        if (it.correctName) parts.push("Name: " + it.correctName);
+        if (it.correctDob) parts.push("DOB: " + it.correctDob);
+        if (it.correctInsurance) parts.push("Insurance #: " + it.correctInsurance);
+        it.correctInfo = parts.join("\n");
+      }
+      if (typeof it.verified === "undefined") {
+        it.verified = !!(it.nameVerified || it.dobVerified || it.insuranceVerified);
+      }
+      delete it.correctName;
+      delete it.correctDob;
+      delete it.correctInsurance;
+      delete it.nameVerified;
+      delete it.dobVerified;
+      delete it.insuranceVerified;
+    });
+    return true;
+  }
   /* The team already removed "Record Needs Rechecking" once, before the
      tombstone mechanism above existed to make that removal stick — replay
      it now, one time, so it doesn't keep reappearing every reload. */
@@ -1477,6 +1505,7 @@ function appMain() {
       migrateTaskFields(fresh);
       migrateHonorRecheckRemoval(fresh);
       migrateCorrectionFieldsExpansion(fresh);
+      migrateCorrectionSimplify(fresh);
       migrateIssueTypes(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
@@ -1540,6 +1569,7 @@ function appMain() {
       migrateTaskFields(state);
       var justMigratedRecheckRemoval = migrateHonorRecheckRemoval(state);
       var justMigratedCorrectionFields = migrateCorrectionFieldsExpansion(state);
+      var justMigratedCorrectionSimplify = migrateCorrectionSimplify(state);
       migrateIssueTypes(state);
       migrateChecklistTemplate(state);
       /* Save right away if this just ran for the first time, so the
@@ -1563,7 +1593,7 @@ function appMain() {
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval || justMigratedCorrectionFields) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -2479,39 +2509,24 @@ function appMain() {
      every column always shows (no per-row +Field toggles), and most cells
      are click-to-edit in place, the same pattern as the Schools Contact
      Information page, instead of needing to open "Edit" first. */
-  var CORRECTION_TABLE_COLS = 14;
-  /* The three fields this table tracks corrections for, and their
-     matching "needs correction" / "verified" / "correct value" keys —
-     one list drives the Needs Correction column, the Verified column,
-     and the add-row form, so all three always stay in sync. */
-  var CORRECTION_FIELDS = [
-    { key: "Name", needsKey: "needsNameCorrection", verifiedKey: "nameVerified", valueKey: "studentName", correctKey: "correctName" },
-    { key: "DOB", needsKey: "needsDobCorrection", verifiedKey: "dobVerified", valueKey: "dob", correctKey: "correctDob" },
-    { key: "Insurance #", needsKey: "needsInsuranceCorrection", verifiedKey: "insuranceVerified", valueKey: "insuranceNumber", correctKey: "correctInsurance" }
+  var CORRECTION_TABLE_COLS = 12;
+  /* Which fields a row can flag as needing correction — drives the Needs
+     Correction column and the add-row form. Any combination can be
+     checked; what to actually change lives in one shared Correct
+     Information note instead of a field-by-field value. */
+  var CORRECTION_NEEDS_FIELDS = [
+    { key: "Name", needsKey: "needsNameCorrection" },
+    { key: "DOB", needsKey: "needsDobCorrection" },
+    { key: "Insurance #", needsKey: "needsInsuranceCorrection" }
   ];
-  /* Resolved once every field flagged as needing correction has also been
-     verified; Pending otherwise. Nothing flagged at all leaves whatever
-     status is already there alone (there's nothing to auto-resolve). */
-  function computeCorrectionStatus(issue) {
-    var anyNeeded = CORRECTION_FIELDS.some(function (f) { return issue[f.needsKey]; });
-    if (!anyNeeded) return issue.status || "Pending";
-    var allVerified = CORRECTION_FIELDS.every(function (f) { return !issue[f.needsKey] || issue[f.verifiedKey]; });
-    return allVerified ? "Resolved" : "Pending";
-  }
-  /* `needed` gates the three Correct ___ cells: only the ones whose Needs
-     Correction box is checked for this row show anything at all — check
-     just Name and the DOB/Insurance # correction cells stay blank, so the
-     row only asks for the value(s) actually being fixed. Pass true (or
-     omit) for a cell that isn't gated by any checkbox. */
-  function correctionCellHtml(editing, it, field, placeholder, needed) {
-    if (needed === false) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
+  function correctionCellHtml(editing, it, field, placeholder) {
     if (!editing) return "<div class=\"contact-cell-view\">" + contactCellViewHtml(it[field] || "") + "</div>";
     return "<input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"" + field + "\" value=\"" + esc(it[field] || "") + "\"" + (placeholder ? " placeholder=\"" + esc(placeholder) + "\"" : "") + ">";
   }
   function correctionTypeSectionHtml(ty, typeList) {
     var editing = !!ui.correctionsEditMode;
-    var headerCells = "<th>Student Name</th><th>Correct Name</th><th>School</th><th>Grade</th><th>Needs Correction</th>" +
-      "<th>Date of Birth</th><th>Correct DOB</th><th>Insurance #</th><th>Correct Insurance #</th>" +
+    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Needs Correction</th>" +
+      "<th>Date of Birth</th><th>Insurance #</th><th>Correct Information</th>" +
       "<th>Note</th><th>Reported by</th><th>Verified</th><th>Status</th><th></th>";
     var sortedSchools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     var rowsHtml = typeList.map(function (it) {
@@ -2525,31 +2540,25 @@ function appMain() {
         var sch = schoolById(it.schoolId);
         schoolCell = "<div class=\"contact-cell-view\">" + esc(sch ? sch.name : "") + "</div>";
       }
-      /* Which fields actually need fixing, and which of those have already
-         been verified — both checkbox sets stay live even in read-only
-         mode, since checking one off is a routine, deliberate single
-         click, not the kind of stray edit that mode is guarding against. */
-      var needsCorrectionHtml = CORRECTION_FIELDS.map(function (f) {
+      /* Which fields actually need fixing — this checkbox set stays live
+         even in read-only mode, since checking one off is a routine,
+         deliberate single click, not the kind of stray edit that mode is
+         guarding against. */
+      var needsCorrectionHtml = CORRECTION_NEEDS_FIELDS.map(function (f) {
         return "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
           "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.needsKey + "\"" + (it[f.needsKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
       }).join("");
-      var verifiedHtml = CORRECTION_FIELDS.map(function (f) {
-        return "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
-          "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.verifiedKey + "\"" + (it[f.verifiedKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
-      }).join("");
       return "<tr>" +
         "<td>" + correctionCellHtml(editing, it, "studentName") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctName", "Correct name", !!it.needsNameCorrection) + "</td>" +
         "<td>" + schoolCell + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "grade") + "</td>" +
         "<td>" + needsCorrectionHtml + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "dob", "MM/DD/YYYY") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctDob", "Correct DOB", !!it.needsDobCorrection) + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "insuranceNumber") + "</td>" +
-        "<td>" + correctionCellHtml(editing, it, "correctInsurance", "Correct Insurance #", !!it.needsInsuranceCorrection) + "</td>" +
+        "<td>" + correctionCellHtml(editing, it, "correctInfo", "Correct information") + "</td>" +
         "<td>" + (editing ? "<textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(it.remarks) + "\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"remarks\">" + esc(it.remarks || "") + "</textarea>" : "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.remarks || "") + "</div>") + "</td>" +
         "<td>" + esc(it.reportedBy || "") + "</td>" +
-        "<td>" + verifiedHtml + "</td>" +
+        "<td style=\"text-align:center;\"><input type=\"checkbox\" data-action-change=\"set-correction-verified\" data-id=\"" + it.id + "\"" + (it.verified ? " checked" : "") + "></td>" +
         "<td>" + statusControlOptions(ty.statusOptions, it.id, it.status, "change-issue-status") + "</td>" +
         "<td>" + deleteBtn("issue", it.id, "remove-issue") + "</td>" +
         "</tr>";
@@ -2558,7 +2567,7 @@ function appMain() {
       ? "<form class=\"add-row-form\" data-action=\"add-correction-row\" data-type=\"" + ty.id + "\">" +
         "<input class=\"text-input\" name=\"studentName\" placeholder=\"Student name\" required>" +
         "<span class=\"field-mini-label\">Needs correction:</span>" +
-        CORRECTION_FIELDS.map(function (f) {
+        CORRECTION_NEEDS_FIELDS.map(function (f) {
           return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
         }).join("") +
         "<button class=\"btn small\" type=\"submit\">+ Add</button></form>"
@@ -3367,13 +3376,16 @@ function appMain() {
       case "set-correction-checkbox":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue[t.getAttribute("data-field")] = !!t.checked;
+          persist();
+        })(); break;
+      case "set-correction-verified":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (issue) {
-            issue[t.getAttribute("data-field")] = !!t.checked;
-            /* Any Needs Correction or Verified box changing can change
-               whether every flagged field is now fully verified — recompute
-               Status every time, same idea as the old single Verified box
-               but across all three fields (Name, DOB, Insurance #). */
-            issue.status = computeCorrectionStatus(issue);
+            issue.verified = !!t.checked;
+            /* Checking it off is the resolution; unchecking it reopens it. */
+            issue.status = issue.verified ? "Resolved" : "Pending";
           }
           persist();
         })(); break;
@@ -3633,21 +3645,17 @@ function appMain() {
             id: uid("issue"),
             type: typeId,
             studentName: studentName,
-            correctName: "",
             schoolId: "",
             grade: "",
             needsNameCorrection: !!fd.get("needsNameCorrection"),
             needsDobCorrection: !!fd.get("needsDobCorrection"),
             needsInsuranceCorrection: !!fd.get("needsInsuranceCorrection"),
             dob: "",
-            correctDob: "",
             insuranceNumber: "",
-            correctInsurance: "",
+            correctInfo: "",
             remarks: "",
             reportedBy: getStoredIdentity(),
-            nameVerified: false,
-            dobVerified: false,
-            insuranceVerified: false,
+            verified: false,
             status: statusOpts[0] || "Pending",
             createdAt: new Date().toISOString()
           });
