@@ -1351,13 +1351,19 @@ function appMain() {
     if (numOr0(c.crr) > 0) parts.push(c.crr + " CRR");
     return parts.join(" / ");
   }
+  /* Pre-fills every real school as its own row, using the exact same
+     schools and grouping as Schools Contact Information, so entering
+     numbers is just picking the school that's already there instead of
+     retyping its name every year. */
+  var DISTRIBUTION_GROUP_LABELS = { "PRE K": "Pre-K", "PRE K - 5": "Elementary", "MIDDLE SCHOOL": "Middle School", "HIGH SCHOOL": "High School" };
   function buildDefaultDistributionGroups() {
-    return [
-      { id: uid("dgrp"), name: "Pre-K", rows: [] },
-      { id: uid("dgrp"), name: "Elementary", rows: [] },
-      { id: uid("dgrp"), name: "Middle School", rows: [] },
-      { id: uid("dgrp"), name: "High School", rows: [] }
-    ];
+    return buildDefaultContactGroups().map(function (g) {
+      return {
+        id: uid("dgrp"),
+        name: DISTRIBUTION_GROUP_LABELS[g.name] || g.name,
+        rows: (g.rows || []).map(function (r) { return distributionRow(r.school); })
+      };
+    });
   }
   function migrateDistributionGroups(parsed) {
     if (parsed._migratedDistributionGroups) return false;
@@ -1365,6 +1371,21 @@ function appMain() {
     if (!Array.isArray(parsed.distributionGroups) || parsed.distributionGroups.length === 0) {
       parsed.distributionGroups = buildDefaultDistributionGroups();
     }
+    return true;
+  }
+  /* The page shipped first with empty groups (before "pre-fill the
+     schools" was requested) — this one-time pass fills in the real school
+     rows for anyone who already loaded the empty version, without
+     touching a group that already has rows someone started filling in. */
+  function migrateDistributionSeedSchools(parsed) {
+    if (parsed._migratedDistributionSeedSchools) return false;
+    parsed._migratedDistributionSeedSchools = true;
+    var defaults = buildDefaultDistributionGroups();
+    (parsed.distributionGroups || []).forEach(function (g) {
+      if ((g.rows || []).length > 0) return;
+      var match = defaults.filter(function (d) { return d.name === g.name; })[0];
+      if (match) g.rows = match.rows;
+    });
     return true;
   }
   /* Contact rows that originally packed multiple people into one cell
@@ -1728,6 +1749,7 @@ function appMain() {
       migrateSchoolContacts(fresh);
       migrateContactMultiLineFields(fresh);
       migrateDistributionGroups(fresh);
+      migrateDistributionSeedSchools(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1798,13 +1820,14 @@ function appMain() {
       var justMigratedContacts = migrateSchoolContacts(state);
       var justMigratedContactMultiLine = migrateContactMultiLineFields(state);
       var justMigratedDistributionGroups = migrateDistributionGroups(state);
+      var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedDistributionGroups || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactMultiLine || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
