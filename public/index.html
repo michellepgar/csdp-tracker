@@ -472,10 +472,6 @@
   .sticky-note-text { flex: 1; font-size: 0.9rem; word-break: break-word; }
   .sticky-note-text ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
   .sticky-note-text ul.list-dash { list-style-type: "- "; }
-  .sticky-note-text ul.list-check { list-style: none; margin-left: 4px; }
-  .sticky-note-text ul.list-check li { display: flex; align-items: flex-start; gap: 4px; }
-  .sticky-note-text input[type="checkbox"] { vertical-align: middle; margin-right: 2px; cursor: pointer; }
-  .note-editor-area input[type="checkbox"] { vertical-align: middle; margin-right: 2px; }
   .sticky-note-meta { font-size: 0.72rem; opacity: 0.65; margin-top: 8px; }
   .sticky-note-actions { display: flex; gap: 10px; margin-top: 6px; }
   .sticky-note-actions button { font-size: 0.76rem; background: none; border: none; text-decoration: underline; cursor: pointer; color: inherit; opacity: 0.75; padding: 0; }
@@ -503,8 +499,6 @@
   .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
   .note-editor-area ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
   .note-editor-area ul.list-dash { list-style-type: "- "; }
-  .note-editor-area ul.list-check { list-style: none; margin-left: 4px; }
-  .note-editor-area ul.list-check li { display: flex; align-items: flex-start; gap: 4px; }
 </style>
 </head>
 <body>
@@ -712,20 +706,7 @@ function appMain() {
     })(doc.body);
     return doc.body.innerHTML;
   }
-  /* Inserts a real checkbox (plus a trailing space so typed text doesn't
-     hug it) at the very start of a checklist <li>, if it doesn't already
-     have one. Shared by the toolbar button (seeding an existing line) and
-     the Enter-key handler below (seeding a freshly split-off line). */
-  function insertChecklistCheckbox(li) {
-    if (li.querySelector(":scope > input[type=checkbox]")) return null;
-    var cb = document.createElement("input");
-    cb.type = "checkbox";
-    li.insertBefore(document.createTextNode(" "), li.firstChild);
-    li.insertBefore(cb, li.firstChild);
-    return cb;
-  }
-  /* Puts the caret immediately after a given node — used after inserting a
-     checkbox so the next thing typed lands right beside it, not before it. */
+  /* Puts the caret immediately after a given node. */
   function placeCaretAfter(node) {
     var range = document.createRange();
     range.setStartAfter(node);
@@ -734,11 +715,11 @@ function appMain() {
     sel.removeAllRanges();
     sel.addRange(range);
   }
-  /* Dash and checklist buttons reuse the browser's native bullet-list
-     toggle (so Enter continues the list, clicking again removes it — same
-     behavior as the bullet button) and just tag the resulting <ul> with a
-     class that swaps the marker via CSS. Exposed on window since it's
-     called from an inline onmousedown attribute in generated HTML. */
+  /* The dash button reuses the browser's native bullet-list toggle (so
+     Enter continues the list, clicking again removes it — same behavior
+     as the bullet button) and just tags the resulting <ul> with a class
+     that swaps the marker via CSS. Exposed on window since it's called
+     from an inline onmousedown attribute in generated HTML. */
   window.csdpToggleNoteList = function (editorId, cls) {
     document.execCommand("insertUnorderedList");
     var editor = document.getElementById(editorId);
@@ -749,15 +730,6 @@ function appMain() {
     while (node && node !== editor) {
       if (node.nodeType === 1 && node.tagName === "UL") {
         node.className = cls || "";
-        /* A checklist needs an actual checkbox per line to be clickable —
-           the old version only ever drew a "☐" via a CSS list marker,
-           which looks like a checkbox but was never a real, toggleable
-           element. Give every line in this list a real one if it doesn't
-           already have one. */
-        if (cls === "list-check") {
-          var items = node.querySelectorAll(":scope > li");
-          for (var i = 0; i < items.length; i++) { insertChecklistCheckbox(items[i]); }
-        }
         break;
       }
       node = node.parentNode;
@@ -770,15 +742,12 @@ function appMain() {
     }
     return null;
   }
-  /* Enter is supposed to continue any list (bullet, dash, or checklist)
-     with a fresh <li> — the browser usually does this natively, but it
-     isn't reliable enough to depend on alone, and even when it does, a
-     checklist line's new <li> never got its own checkbox. So: let the
-     native behavior run first, then check right after whether it actually
-     produced a new list item. If it did, just seed a checklist's checkbox.
-     If it didn't (still on the same <li>, or fell out of the list
-     entirely), build the new <li> by hand instead — same split either way,
-     just skipping the wait when we already know it's needed. */
+  /* Enter is supposed to continue a bullet/dash list with a fresh <li> —
+     the browser usually does this natively, but it isn't reliable enough
+     to depend on alone. Let native behavior run first, then check right
+     after whether it actually produced a new list item; if it didn't
+     (still on the same <li>, or fell out of the list entirely), build the
+     new <li> by hand instead. */
   function onNoteEditorKeydown(e) {
     if (e.key !== "Enter" || e.shiftKey) return;
     var editor = e.target.closest && e.target.closest(".note-editor-area");
@@ -790,37 +759,13 @@ function appMain() {
     setTimeout(function () {
       var sel2 = window.getSelection();
       var liAfter = sel2 && sel2.rangeCount ? closestLi(sel2.anchorNode, editor) : null;
+      if (liAfter && liAfter !== liBefore) return;
       var ul = liBefore.parentNode;
-      if (liAfter && liAfter !== liBefore) {
-        if (ul && ul.tagName === "UL" && ul.className === "list-check") {
-          var cb = insertChecklistCheckbox(liAfter);
-          if (cb && cb.nextSibling) placeCaretAfter(cb.nextSibling);
-        }
-        return;
-      }
       if (!ul || ul.tagName !== "UL" || !document.contains(liBefore)) return;
       var newLi = document.createElement("li");
       ul.insertBefore(newLi, liBefore.nextSibling);
-      if (ul.className === "list-check") {
-        var cb2 = insertChecklistCheckbox(newLi);
-        placeCaretAfter(cb2.nextSibling);
-      } else {
-        newLi.appendChild(document.createElement("br"));
-        placeCaretAfter(newLi.firstChild);
-      }
-    }, 0);
-  }
-  /* Clicking a checkbox inside contenteditable is a known browser quirk —
-     the caret often lands right *before* the checkbox instead of after it,
-     so typing next to it types on the wrong side. Nudge it back after. */
-  function onNoteEditorClick(e) {
-    var cb = e.target.closest && e.target.closest(".note-editor-area input[type=checkbox]");
-    if (!cb) return;
-    setTimeout(function () {
-      var after = cb.nextSibling;
-      placeCaretAfter(after || cb);
-      var editor = cb.closest(".note-editor-area");
-      if (editor) editor.focus();
+      newLi.appendChild(document.createElement("br"));
+      placeCaretAfter(newLi.firstChild);
     }, 0);
   }
   /* Issue "+Field" buttons work the same way as the note toolbar — plain
@@ -867,20 +812,6 @@ function appMain() {
     for (var i = 0; i < boxes.length; i++) {
       if (boxes[i].checked) boxes[i].setAttribute("checked", ""); else boxes[i].removeAttribute("checked");
     }
-  }
-  /* For display (read-only) rendering only: tags each checkbox in a note's
-     already-sanitized HTML with the data-* attributes the delegated change
-     handler needs to toggle it in place. Never applied to what gets saved. */
-  function renderNoteCheckboxes(html, id, scope) {
-    var doc = new DOMParser().parseFromString(String(html || ""), "text/html");
-    var boxes = doc.querySelectorAll("input[type=checkbox]");
-    for (var i = 0; i < boxes.length; i++) {
-      boxes[i].setAttribute("data-action-change", "toggle-note-checkbox");
-      boxes[i].setAttribute("data-id", id);
-      boxes[i].setAttribute("data-scope", scope);
-      boxes[i].setAttribute("data-cb-index", String(i));
-    }
-    return doc.body.innerHTML;
   }
   /* Every saved timestamp is a UTC instant (new Date().toISOString()) —
      that part is already timezone-proof. What wasn't was display: these
@@ -3143,7 +3074,6 @@ function appMain() {
       "<button type=\"button\" style=\"text-decoration:underline;\" title=\"Underline\" onmousedown=\"event.preventDefault(); document.execCommand('underline');\">U</button>" +
       "<button type=\"button\" title=\"Bullet list\" onmousedown=\"event.preventDefault(); document.execCommand('insertUnorderedList');\">•</button>" +
       "<button type=\"button\" title=\"Dash list\" onmousedown=\"event.preventDefault(); csdpToggleNoteList('" + editorId + "', 'list-dash');\">-</button>" +
-      "<button type=\"button\" title=\"Checklist\" onmousedown=\"event.preventDefault(); csdpToggleNoteList('" + editorId + "', 'list-check');\">☐</button>" +
       "<span class=\"note-toolbar-sep\"></span>" + sizeBtns +
       "<span class=\"note-toolbar-sep\"></span>" + textColorBtns +
       "<span class=\"note-toolbar-sep\"></span>" + swatches +
@@ -3220,7 +3150,7 @@ function appMain() {
       }
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
         (isUrgentGeneral ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
-        "<div class=\"sticky-note-text\">" + renderNoteCheckboxes(n.text, n.id, scope) + "</div>" +
+        "<div class=\"sticky-note-text\">" + (n.text || "") + "</div>" +
         "<div class=\"sticky-note-meta\">" +
         (scope === "general" ? esc(n.author || "Unnamed") + " · " : (scope === "private" && !isAuthor ? "Shared by " + esc(n.author || "Unnamed") + " · " : "")) +
         fmtDateTime(n.createdAt) + "</div>" +
@@ -3912,29 +3842,6 @@ function appMain() {
       case "select-edit-issue-type":
         ui.editingIssueType = t.value;
         render(); break;
-      case "toggle-note-checkbox":
-        (function () {
-          var id = t.getAttribute("data-id");
-          var scope = t.getAttribute("data-scope");
-          var idx = parseInt(t.getAttribute("data-cb-index"), 10);
-          var arr = scope === "private" ? state.privateNotes : state.generalNotes;
-          var note = arr.find(function (x) { return x.id === id; });
-          if (!note) return;
-          /* General note checklists are open to everyone. A private note's
-             is limited to whoever can actually see it — the author, or
-             someone it was specifically shared with. */
-          if (scope === "private") {
-            var me2 = getStoredIdentity();
-            if (note.author !== me2 && (note.sharedWith || []).indexOf(me2) === -1) return;
-          }
-          var doc = new DOMParser().parseFromString(note.text || "", "text/html");
-          var boxes = doc.querySelectorAll("input[type=checkbox]");
-          var box = boxes[idx];
-          if (!box) return;
-          if (t.checked) box.setAttribute("checked", ""); else box.removeAttribute("checked");
-          note.text = sanitizeNoteHtml(doc.body.innerHTML);
-          persist();
-        })(); break;
       default: break;
     }
   }
@@ -4341,7 +4248,6 @@ function appMain() {
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("keydown", onNoteEditorKeydown);
-  document.addEventListener("click", onNoteEditorClick);
 
   boot();
 }
