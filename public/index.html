@@ -2560,9 +2560,11 @@ function appMain() {
     return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
       "<div class=\"card-actions\">" + sortControlHtml(ui.emailSort, "set-email-sort") + "</div></div>" +
       "<div class=\"card-body\">" +
-      "<form class=\"add-row-form\" data-action=\"add-email-item\" data-school=\"" + schoolId + "\">" +
-        "<input class=\"text-input\" name=\"description\" placeholder=\"What's the email about?\" required>" +
-        "<button class=\"btn\" type=\"submit\">Add</button></form>" +
+      (canChangeStatus
+        ? "<form class=\"add-row-form\" data-action=\"add-email-item\" data-school=\"" + schoolId + "\">" +
+          "<input class=\"text-input\" name=\"description\" placeholder=\"What's the email about?\" required>" +
+          "<button class=\"btn\" type=\"submit\">Add</button></form>"
+        : "<div class=\"checklist-note\">Only the assigned VA (or an Owner/Admin) can add to this school's Email Tracker.</div>") +
       "<div class=\"row-list\">" + (rows || emptyState("Nothing being tracked — add an email that needs a response or a reply.")) + "</div>" +
       "</div></div>";
   }
@@ -4122,6 +4124,7 @@ function appMain() {
       case "add-email-item":
         (function () {
           var sid = form.getAttribute("data-school");
+          if (!canDeleteSchoolRecords(sid)) return;
           var sd = ensureSchoolData(sid);
           sd.emailTracker.push({ id: uid("mail"), description: (fd.get("description") || "").toString().trim(), status: "Needs My Response", createdAt: new Date().toISOString() });
           persist();
