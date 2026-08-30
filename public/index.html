@@ -608,7 +608,7 @@ function appMain() {
     checklistTemplate: [], checklistProgress: {},
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
-    contactGroups: [], nurseLeader: { name: "", email: "" }
+    contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese"
   };
 
   /* ============ helpers ============ */
@@ -2234,12 +2234,14 @@ function appMain() {
       "<div class=\"card-body\">" + body + "</div></div>";
   }
 
-  /* Communication is only ever worked by one specific VA — everyone else
-     (except Owner/Admin/Superadmin, same override as everywhere else) sees
-     it disabled rather than editable. */
-  var COMMUNICATION_EDITOR_NAME = "Therese";
+  /* Communication is only ever worked by one specific VA, set on the Team
+     page — deliberately no Owner/Admin/Superadmin override here, unlike
+     every other restriction in the app: the superadmin can change *who*
+     that person is, but doesn't get to edit it themselves unless they're
+     the one currently set. */
+  var DEFAULT_COMMUNICATION_EDITOR = "Therese";
   function canEditCommunication() {
-    return isSuperAdmin() || getStoredIdentity() === COMMUNICATION_EDITOR_NAME;
+    return getStoredIdentity() === (state.communicationEditor || DEFAULT_COMMUNICATION_EDITOR);
   }
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
@@ -2324,7 +2326,7 @@ function appMain() {
       return "<option value=\"" + esc(o) + "\"" + (o === status ? " selected" : "") + ">" + esc(o || "—") + "</option>";
     }).join("");
     return "<select class=\"status-select " + (STATUS_TIER[status] || "neutral") + "\" data-action-change=\"" + action + "\" data-id=\"" + id + "\"" +
-      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + (disabled ? " disabled title=\"Only the assigned VA (or an Owner/Admin) can change this\"" : "") + ">" + opts + "</select>";
+      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + (disabled ? " disabled title=\"You don't have permission to change this\"" : "") + ">" + opts + "</select>";
   }
 
   function deleteBtn(type, id, action, schoolId) {
@@ -2959,11 +2961,21 @@ function appMain() {
         "<input type=\"checkbox\" data-action-change=\"toggle-va-admin\" data-id=\"" + v.id + "\"" + (v.admin ? " checked" : "") + "> Admin" +
         "</label></div>";
     }).join("");
+    var commOpts = sortedVas.map(function (v) {
+      return "<option value=\"" + esc(v.name) + "\"" + ((state.communicationEditor || DEFAULT_COMMUNICATION_EDITOR) === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>";
+    }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Team</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<form class=\"add-row-form\" data-action=\"add-va\">" +
         "<input class=\"text-input\" name=\"name\" placeholder=\"VA name\" required><button class=\"btn\" type=\"submit\">Add</button></form>" +
       "<div class=\"va-chip-list\">" + (chips || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Communication Access</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"checklist-note\">Only this person can change the Communication status on Initial/Recheck tasks — even Admins and the Owner can't override it, only change who it is here.</div>" +
+      (sortedVas.length
+        ? "<select class=\"text-input\" style=\"max-width:200px; margin-top:10px;\" data-action-change=\"set-communication-editor\">" + commOpts + "</select>"
+        : emptyState("No VAs added yet.")) +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">VA Colors</div></div>" +
       "<div class=\"card-body\">" +
@@ -3642,6 +3654,9 @@ function appMain() {
           if (va) va.color = t.value;
           persist();
         })(); break;
+      case "set-communication-editor":
+        state.communicationEditor = t.value;
+        persist(); break;
       case "toggle-va-admin":
         (function () {
           if (!isSuperAdmin()) return;
