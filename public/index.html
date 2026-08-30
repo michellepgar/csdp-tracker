@@ -501,7 +501,8 @@
   .dist-form-grid { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
   .dist-form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--ink-soft); flex: 1; min-width: 160px; }
   .dist-checkbox-label { flex-direction: row !important; align-items: center; gap: 6px !important; }
-  .dist-breakdown-table td:not(:first-child) { text-align: center; }
+  .dist-breakdown-table td.dist-lang-cell { text-align: center; }
+  .dist-breakdown-table td:has(input) { text-align: center; }
   .dist-breakdown-table input.text-input { max-width: 80px; text-align: center; }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
@@ -3624,7 +3625,7 @@ function appMain() {
         };
         bodyRows += "<tr>" +
           (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
-          "<td>" + esc(l.label) + "</td>" +
+          "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
           "<td>" + numInput("packets") + "</td>" +
           "<td>" + numInput("loose") + "</td>" +
           "<td>" + numInput("extraPackets") + "</td>" +
