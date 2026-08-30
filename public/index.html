@@ -473,6 +473,23 @@
   /* A school that hasn't distributed its forms yet for the year gets a
      light red wash across the whole row, so it stands out while scanning
      down the list — same idea as the alerts-card treatment elsewhere. */
+  /* Yearly Checklist sits beside Tasks instead of stacked below it, and
+     can be collapsed to hand its space back to Tasks — handy on a school
+     with a long task list. */
+  .tasks-checklist-row { display: flex; gap: 16px; align-items: flex-start; }
+  .tasks-col { flex: 1 1 0; min-width: 0; }
+  .checklist-col { flex: 0 0 400px; min-width: 0; }
+  .checklist-col.collapsed { flex: 0 0 auto; }
+  .checklist-collapse-toggle {
+    width: 100%; margin-bottom: 10px; padding: 8px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink-soft);
+    font-size: 0.82rem; font-weight: 600; text-align: center; white-space: nowrap;
+  }
+  .checklist-collapse-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  @media (max-width: 900px) {
+    .tasks-checklist-row { flex-direction: column; }
+    .checklist-col, .checklist-col.collapsed { flex: 1 1 auto; width: 100%; }
+  }
   /* Fixed layout + a colgroup (built from the longest school name) keeps
      every group's table the exact same width, and wide enough that
      nothing feels cramped. */
@@ -492,7 +509,7 @@
   /* Numbers line up on the right so digits stack cleanly down the column;
      the Distributed checkbox and row actions center under their headers
      instead of hugging the left edge like text does. */
-  .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: right; }
+  .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: center; }
   .dist-table th.dist-col-center, .dist-table td.dist-col-center { text-align: center; }
   .dist-remarks-edit-btn, .contact-note-edit-btn { display: block; margin-top: 4px; font-size: 0.72rem; }
   .contact-move-select { display: block; width: 100%; font-size: 0.72rem; padding: 3px 4px; margin-bottom: 6px; }
@@ -1558,6 +1575,13 @@ function appMain() {
   function saveSidebarCollapsed(v) {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? "1" : "0"); } catch (e) {}
   }
+  var CHECKLIST_COLLAPSED_KEY = "csdp_checklist_collapsed";
+  function loadChecklistCollapsed() {
+    try { return localStorage.getItem(CHECKLIST_COLLAPSED_KEY) === "1"; } catch (e) { return false; }
+  }
+  function saveChecklistCollapsed(v) {
+    try { localStorage.setItem(CHECKLIST_COLLAPSED_KEY, v ? "1" : "0"); } catch (e) {}
+  }
 
   var IDENTITY_KEY = "csdp_identity";
   function getStoredIdentity() {
@@ -1889,6 +1913,7 @@ function appMain() {
       search: "",
       sidebarOpen: false,
       sidebarCollapsed: loadSidebarCollapsed(),
+      checklistCollapsed: loadChecklistCollapsed(),
       templateEditorOpen: false,
       editingContactRowId: null,
       editingContactGroupId: null,
@@ -2237,7 +2262,7 @@ function appMain() {
           groups.map(function (og) { return "<option value=\"" + og.id + "\"" + (og.id === g.id ? " selected" : "") + ">" + esc(og.name) + "</option>"; }).join("") +
           "</select>";
         var actionsCell = highlightMode ? "<td></td>" :
-          "<td>" + moveGroupSelect +
+          "<td>" + (rowEditing ? moveGroupSelect : "") +
           "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td>";
         return "<tr>" + cells + actionsCell + "</tr>";
@@ -2527,9 +2552,17 @@ function appMain() {
         (isPending("school", schoolId) ? "Really remove " + esc(school.name) + " and all its data? Click again to confirm" : "Remove school") + "</button>" +
       "</div>";
 
+    var checklistCollapsed = !!ui.checklistCollapsed;
+    var tasksChecklistRow = "<div class=\"tasks-checklist-row\">" +
+      "<div class=\"tasks-col\">" + tasksCardHtml(schoolId, sd) + "</div>" +
+      "<div class=\"checklist-col" + (checklistCollapsed ? " collapsed" : "") + "\">" +
+      "<button class=\"checklist-collapse-toggle\" data-action=\"toggle-checklist-collapse\">" +
+      (checklistCollapsed ? "◀ Show Yearly Checklist" : "Hide Yearly Checklist ▶") + "</button>" +
+      (checklistCollapsed ? "" : checklistCardHtml(schoolId)) +
+      "</div></div>";
+
     return header +
-      tasksCardHtml(schoolId, sd) +
-      checklistCardHtml(schoolId) +
+      tasksChecklistRow +
       emailTrackerCardHtml(schoolId, sd) +
       schoolContactCardHtml(school);
   }
@@ -3604,12 +3637,13 @@ function appMain() {
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>";
   }
   function distributionFormHtml(row, isEdit, groupId, groupOptions) {
-    var groupField = isEdit
-      ? "<input type=\"hidden\" name=\"group\" value=\"" + esc(groupId) + "\">"
-      : "<label>Group<select class=\"text-input\" name=\"group\" required>" +
-        "<option value=\"\" disabled selected>Choose group…</option>" +
-        (groupOptions || []).map(function (g) { return "<option value=\"" + g.id + "\">" + esc(g.name) + "</option>"; }).join("") +
-        "</select></label>";
+    /* Visible even while editing (not just adding) — moving a school to a
+       different group is just changing this dropdown, no separate move
+       control needed elsewhere. */
+    var groupField = "<label>Group<select class=\"text-input\" name=\"group\" required>" +
+      (isEdit ? "" : "<option value=\"\" disabled selected>Choose group…</option>") +
+      (groupOptions || []).map(function (g) { return "<option value=\"" + g.id + "\"" + (isEdit && g.id === groupId ? " selected" : "") + ">" + esc(g.name) + "</option>"; }).join("") +
+      "</select></label>";
     return "<form class=\"dist-form\" data-action=\"save-distribution-row\" data-row=\"" + (isEdit ? row.id : "") + "\">" +
       "<div class=\"dist-form-grid\">" +
       groupField +
@@ -3949,6 +3983,10 @@ function appMain() {
       case "toggle-sidebar-collapse":
         ui.sidebarCollapsed = !ui.sidebarCollapsed;
         saveSidebarCollapsed(ui.sidebarCollapsed);
+        render(); break;
+      case "toggle-checklist-collapse":
+        ui.checklistCollapsed = !ui.checklistCollapsed;
+        saveChecklistCollapsed(ui.checklistCollapsed);
         render(); break;
       case "toggle-theme":
         setStoredTheme(currentEffectiveTheme() === "dark" ? "light" : "dark");
