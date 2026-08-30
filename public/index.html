@@ -1631,6 +1631,7 @@ function appMain() {
       editingCorrectionId: null,
       editingSimpleIssueId: null,
       editingChartingId: null,
+      sharingNoteId: null,
       pendingDelete: null,
       issueFilters: { school: "", type: "", status: "", va: "" },
       eodFilterAuthor: "",
@@ -2991,11 +2992,41 @@ function appMain() {
       }
       var seenByHtml = (isUrgentGeneral && ackBy.length)
         ? "<div class=\"sticky-note-meta\">Seen by: " + ackBy.map(esc).join(", ") + "</div>" : "";
+      /* Private notes can be shared with specific teammates — only the
+         author can change who it's shared with (matches the pattern used
+         for assigning a file to a task: chips + a self-serve dropdown to
+         add someone, two-click confirm to remove). Someone it was shared
+         with just sees who shared it, not a control to reshare it further. */
+      var sharedWithHtml = "";
+      if (scope === "private" && isAuthor) {
+        var sharedNames = n.sharedWith || [];
+        var shareChips = sharedNames.map(function (name) {
+          var pendingKey = n.id + "|" + name;
+          var sharePending = isPending("note-share", pendingKey);
+          return "<span class=\"va-tag\" style=\"background:" + vaTagColor(name) + ";\">" + esc(name) +
+            "<button class=\"va-tag-remove" + (sharePending ? " confirming" : "") + "\" data-action=\"remove-note-share\" data-id=\"" + n.id + "\" data-va=\"" + esc(name) + "\" title=\"" + (sharePending ? "Click again to confirm" : "Stop sharing with " + esc(name)) + "\">" + (sharePending ? "Confirm?" : "×") + "</button></span>";
+        }).join("");
+        var shareControl;
+        if (ui.sharingNoteId === n.id) {
+          var availableToShare = state.vas.filter(function (v) { return v.name !== me && sharedNames.indexOf(v.name) === -1; });
+          var shareOpts = "<option value=\"\" disabled selected>Share with…</option>" + availableToShare.map(function (v) {
+            return "<option value=\"" + esc(v.name) + "\">" + esc(v.name) + "</option>";
+          }).join("");
+          shareControl = "<select class=\"text-input va-add-select\" data-action-change=\"add-note-share\" data-id=\"" + n.id + "\">" + shareOpts + "</select>" +
+            "<button class=\"link-btn\" data-action=\"cancel-add-note-share\">Cancel</button>";
+        } else {
+          shareControl = "<button class=\"add-va-btn\" data-action=\"toggle-add-note-share\" data-id=\"" + n.id + "\" title=\"Share with a specific teammate\">+</button>";
+        }
+        sharedWithHtml = "<div class=\"sticky-note-meta\" style=\"margin-top:6px;\"><span class=\"field-mini-label\">Shared with</span> <span class=\"va-group\">" +
+          (shareChips || "<span style=\"color:var(--ink-faint); font-size:0.78rem;\">Only you</span>") + shareControl + "</span></div>";
+      }
       return "<div class=\"sticky-note\" style=\"background:" + noteColorHex(n.color) + ";\">" +
         (isUrgentGeneral ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
         "<div class=\"sticky-note-text\">" + renderNoteCheckboxes(n.text, n.id, scope) + "</div>" +
-        "<div class=\"sticky-note-meta\">" + (scope === "general" ? esc(n.author || "Unnamed") + " · " : "") + fmtDateTime(n.createdAt) + "</div>" +
-        seenByHtml +
+        "<div class=\"sticky-note-meta\">" +
+        (scope === "general" ? esc(n.author || "Unnamed") + " · " : (scope === "private" && !isAuthor ? "Shared by " + esc(n.author || "Unnamed") + " · " : "")) +
+        fmtDateTime(n.createdAt) + "</div>" +
+        seenByHtml + sharedWithHtml +
         "<div class=\"sticky-note-actions\">" +
         (isAuthor ? "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
           "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" : "") +
@@ -3022,7 +3053,8 @@ function appMain() {
 
   /* ---------- Private Notes ---------- */
   function privateNotesPageHtml() {
-    var mine = state.privateNotes.filter(function (n) { return n.author === getStoredIdentity(); });
+    var me = getStoredIdentity();
+    var mine = state.privateNotes.filter(function (n) { return n.author === me || (n.sharedWith || []).indexOf(me) !== -1; });
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Private Notes</div></div></div>" +
       stickyNotesSectionHtml("private", mine, "add-private-note");
   }
@@ -3170,6 +3202,17 @@ function appMain() {
         })(); break;
       case "toggle-add-va-for-task": ui.addingVaForTask = t.getAttribute("data-id"); render(); break;
       case "cancel-add-va-for-task": ui.addingVaForTask = null; render(); break;
+      case "toggle-add-note-share": ui.sharingNoteId = t.getAttribute("data-id"); render(); break;
+      case "cancel-add-note-share": ui.sharingNoteId = null; render(); break;
+      case "remove-note-share":
+        (function () {
+          var noteId = t.getAttribute("data-id");
+          var va = t.getAttribute("data-va");
+          requestDelete("note-share", noteId + "|" + va, function () {
+            var note = state.privateNotes.find(function (x) { return x.id === noteId; });
+            if (note) note.sharedWith = (note.sharedWith || []).filter(function (n) { return n !== va; });
+          });
+        })(); break;
       case "remove-va-from-task":
         (function () {
           var taskId = t.getAttribute("data-id");
@@ -3536,6 +3579,16 @@ function appMain() {
           ui.addingVaForTask = null;
           persist();
         })(); break;
+      case "add-note-share":
+        (function () {
+          var note = state.privateNotes.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (note && t.value) {
+            note.sharedWith = note.sharedWith || [];
+            if (note.sharedWith.indexOf(t.value) === -1) note.sharedWith.push(t.value);
+          }
+          ui.sharingNoteId = null;
+          persist();
+        })(); break;
       case "change-email-status":
         (function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
@@ -3760,7 +3813,7 @@ function appMain() {
           var html = sanitizeNoteHtml(editorEl ? editorEl.innerHTML : "");
           if (!html || html === "<br>") return;
           var color = (fd.get("color") || DEFAULT_NOTE_COLOR).toString();
-          state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, createdAt: new Date().toISOString() });
+          state.privateNotes.push({ id: uid("note"), text: html, author: getStoredIdentity(), color: color, sharedWith: [], createdAt: new Date().toISOString() });
           persist();
         })(); break;
       case "save-note-edit":
