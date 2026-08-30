@@ -491,6 +491,23 @@
      instead of hugging the left edge like text does. */
   .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: right; }
   .dist-table th.dist-col-center, .dist-table td.dist-col-center { text-align: center; }
+  .dist-remarks-edit-btn, .contact-note-edit-btn { display: block; margin-top: 4px; font-size: 0.72rem; }
+  /* Cell highlights are literal marker colors, fixed regardless of theme
+     (same reasoning as sticky notes) — a light highlight with the app's
+     own light ink stays readable no matter what --ink currently is. */
+  .contact-highlight-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .highlight-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; padding: 0; }
+  .highlight-swatch.selected { border-color: var(--ink); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+  .highlight-swatch.hl-red { background: #FADBD8; }
+  .highlight-swatch.hl-green { background: #D8F0D2; }
+  .highlight-swatch.hl-blue { background: #CFE3FC; }
+  .highlight-swatch.hl-yellow { background: #FFF3B0; }
+  .cell-highlightable { cursor: pointer; }
+  .cell-highlightable:hover { outline: 2px dashed var(--accent); outline-offset: -2px; }
+  .data-table td.cell-hl-red { background: #FADBD8 !important; color: #2b2b1f !important; }
+  .data-table td.cell-hl-green { background: #D8F0D2 !important; color: #2b2b1f !important; }
+  .data-table td.cell-hl-blue { background: #CFE3FC !important; color: #2b2b1f !important; }
+  .data-table td.cell-hl-yellow { background: #FFF3B0 !important; color: #2b2b1f !important; }
 
   /* Sticky notes always use a fixed dark ink on pastel backgrounds,
      regardless of app theme — like real sticky notes look the same in
@@ -1213,7 +1230,7 @@ function appMain() {
       asstPrincipal: asstPrincipal || "", asstPrincipalEmail: asstPrincipalEmail || "",
       frontDesk: frontDesk || "", frontDeskEmail: frontDeskEmail || "",
       nurseName: nurseName || "", nurseEmail: nurseEmail || "",
-      notes: notes || ""
+      notes: notes || "", highlights: {}
     };
   }
   function buildDefaultContactGroups() {
@@ -2120,6 +2137,7 @@ function appMain() {
     { key: "nurseEmail", label: "Nurse Email", width: 10 },
     { key: "notes", label: "Notes", width: 12 }
   ];
+  var CONTACT_HIGHLIGHT_COLORS = ["red", "green", "blue", "yellow"];
   /* Shared across every group's table so a column lines up at the same
      width everywhere, regardless of how much content that group has. */
   function contactColgroupHtml() {
@@ -2147,6 +2165,25 @@ function appMain() {
       "<button class=\"link-btn\" data-action=\"" + (leaderEditing ? "done-edit-nurse-leader" : "edit-nurse-leader") + "\">" + (leaderEditing ? "Done" : "Edit") + "</button>" +
       "</div></div></div>";
 
+    var highlightMode = !!ui.contactHighlightMode;
+    var highlightColor = ui.contactHighlightColor || "yellow";
+    var highlightToolbarHtml = "<div class=\"card\"><div class=\"card-body\">" +
+      "<div class=\"contact-highlight-toolbar\">" +
+      "<button class=\"btn small\" data-action=\"toggle-contact-highlight-mode\">" + (highlightMode ? "Save All" : "Edit All (Highlight cells)") + "</button>" +
+      (highlightMode ? CONTACT_HIGHLIGHT_COLORS.map(function (c) {
+        return "<button type=\"button\" class=\"highlight-swatch hl-" + c + (highlightColor === c ? " selected" : "") + "\" data-action=\"set-contact-highlight-color\" data-color=\"" + c + "\" title=\"" + c + "\"></button>";
+      }).join("") + "<span class=\"field-mini-label\">Click a cell to highlight it — click again to clear</span>" : "") +
+      "</div></div></div>";
+
+    var addSchoolHtml = "<div class=\"card\"><div class=\"card-body\">" +
+      "<form class=\"add-row-form\" data-action=\"add-contact-row\">" +
+      "<select class=\"text-input\" name=\"group\" required style=\"max-width:220px;\">" +
+      "<option value=\"\" disabled selected>Choose group…</option>" +
+      groups.map(function (g) { return "<option value=\"" + g.id + "\">" + esc(g.name) + "</option>"; }).join("") +
+      "</select>" +
+      "<input class=\"text-input\" name=\"school\" placeholder=\"School name\" required>" +
+      "<button class=\"btn small\" type=\"submit\">+ Add school</button></form></div></div>";
+
     var groupsHtml = groups.map(function (g) {
       var headerCells = CONTACT_FIELDS.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") + "<th></th>";
       var rowsHtml = (g.rows || []).map(function (r) {
@@ -2154,15 +2191,30 @@ function appMain() {
            typing into a different one by mistake. */
         var rowEditing = ui.editingContactRowId === r.id;
         var cells = CONTACT_FIELDS.map(function (f) {
-          if (rowEditing) {
-            return "<td><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r[f.key]) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\">" + esc(r[f.key]) + "</textarea></td>";
+          var hl = (r.highlights || {})[f.key];
+          var tdClass = hl ? "cell-hl-" + hl : "";
+          if (highlightMode) {
+            return "<td class=\"" + tdClass + " cell-highlightable\" data-action=\"toggle-cell-highlight\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
           }
-          return "<td><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
+          if (f.key === "notes" && !rowEditing) {
+            var noteEditing = ui.editingContactNoteId === r.id;
+            if (noteEditing) {
+              return "<td class=\"" + tdClass + "\"><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r.notes) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"notes\">" + esc(r.notes) + "</textarea>" +
+                "<button class=\"link-btn contact-note-edit-btn\" data-action=\"done-edit-contact-note\" data-id=\"" + r.id + "\">Done</button></td>";
+            }
+            return "<td class=\"" + tdClass + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r.notes) + "</div>" +
+              "<button class=\"link-btn contact-note-edit-btn\" data-action=\"edit-contact-note\" data-id=\"" + r.id + "\">Edit</button></td>";
+          }
+          if (rowEditing) {
+            return "<td class=\"" + tdClass + "\"><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r[f.key]) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\">" + esc(r[f.key]) + "</textarea></td>";
+          }
+          return "<td class=\"" + tdClass + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
         }).join("");
         var pendingRow = isPending("contact-row", r.id);
-        var editBtn = "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>";
-        var removeBtn = "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>";
-        return "<tr>" + cells + "<td>" + editBtn + removeBtn + "</td></tr>";
+        var actionsCell = highlightMode ? "<td></td>" :
+          "<td>" + "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>" +
+          "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td>";
+        return "<tr>" + cells + actionsCell + "</tr>";
       }).join("");
       var pendingGroup = isPending("contact-group", g.id);
       var groupEditing = ui.editingContactGroupId === g.id;
@@ -2179,9 +2231,6 @@ function appMain() {
         "<div class=\"table-scroll\"><table class=\"data-table contact-table\">" + contactColgroupHtml() + "<thead><tr>" + headerCells + "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
-        "<form class=\"add-row-form\" data-action=\"add-contact-row\" data-group=\"" + g.id + "\">" +
-        "<input class=\"text-input\" name=\"school\" placeholder=\"School name\" required>" +
-        "<button class=\"btn small\" type=\"submit\">+ Add school</button></form>" +
         "</div></div>";
     }).join("");
 
@@ -2191,7 +2240,7 @@ function appMain() {
       "<button class=\"btn\" type=\"submit\">+ Add group</button></form></div></div>";
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Schools Contact Information</div></div></div>" +
-      leaderHtml + groupsHtml + addGroupForm;
+      leaderHtml + highlightToolbarHtml + addSchoolHtml + groupsHtml + addGroupForm;
   }
 
   function pageHtml() {
@@ -3523,9 +3572,16 @@ function appMain() {
         "</tr></thead><tbody>" + langRows + "</tbody></table></div></div>";
     }).join("");
   }
-  function distributionFormHtml(groupId, row, isEdit) {
-    return "<form class=\"dist-form\" data-action=\"save-distribution-row\" data-group=\"" + groupId + "\" data-row=\"" + (isEdit ? row.id : "") + "\">" +
+  function distributionFormHtml(row, isEdit, groupId, groupOptions) {
+    var groupField = isEdit
+      ? "<input type=\"hidden\" name=\"group\" value=\"" + esc(groupId) + "\">"
+      : "<label>Group<select class=\"text-input\" name=\"group\" required>" +
+        "<option value=\"\" disabled selected>Choose group…</option>" +
+        (groupOptions || []).map(function (g) { return "<option value=\"" + g.id + "\">" + esc(g.name) + "</option>"; }).join("") +
+        "</select></label>";
+    return "<form class=\"dist-form\" data-action=\"save-distribution-row\" data-row=\"" + (isEdit ? row.id : "") + "\">" +
       "<div class=\"dist-form-grid\">" +
+      groupField +
       "<label>School<input class=\"text-input\" name=\"school\" required value=\"" + esc(row.school) + "\" placeholder=\"School name\"></label>" +
       "<label>Enrolled<input class=\"text-input\" type=\"number\" min=\"0\" name=\"enrolled\" value=\"" + esc(row.enrolled) + "\" placeholder=\"0\"></label>" +
       "<label class=\"dist-checkbox-label\"><input type=\"checkbox\" name=\"distributed\"" + (row.distributed ? " checked" : "") + "> Distributed</label>" +
@@ -3549,19 +3605,29 @@ function appMain() {
   function distributionListPageHtml() {
     var groups = state.distributionGroups || [];
     var formTarget = ui.distributionFormFor;
-    var groupsHtml = groups.map(function (g) {
-      var addingHere = formTarget && formTarget.groupId === g.id && !formTarget.rowId;
-      var editingRowId = formTarget && formTarget.groupId === g.id ? formTarget.rowId : null;
+    var addingNew = formTarget && !formTarget.rowId;
+    var editingRowId = formTarget ? formTarget.rowId : null;
 
+    var addSchoolHtml = addingNew
+      ? "<div class=\"card\"><div class=\"card-body\">" + distributionFormHtml(distributionRow(""), false, "", groups) + "</div></div>"
+      : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\">+ Add school</button>";
+
+    var groupsHtml = groups.map(function (g) {
       var rowsHtml = (g.rows || []).map(function (r) {
         if (editingRowId === r.id) {
-          return "<tr><td colspan=\"10\">" + distributionFormHtml(g.id, r, true) + "</td></tr>";
+          return "<tr><td colspan=\"10\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
         }
         var pendingRow = isPending("distribution-row", r.id);
         var totalPackets = distributionRowTotalPackets(r);
         var totalForms = distributionRowTotalForms(r);
         var languagesUsed = distributionRowLanguagesUsed(r);
         var classroomsSummary = distributionRowClassroomsSummary(r);
+        var remarksEditing = ui.editingDistributionRemarksId === r.id;
+        var remarksCell = remarksEditing
+          ? "<td class=\"wrap\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
+            "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"done-edit-distribution-remarks\" data-id=\"" + r.id + "\">Done</button></td>"
+          : "<td class=\"wrap\">" + esc(r.remarks || "") +
+            "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"edit-distribution-remarks\" data-id=\"" + r.id + "\">Edit</button></td>";
         return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
           "<td>" + esc(r.school) + "</td>" +
           "<td class=\"mono dist-col-num\">" + esc(r.enrolled || "—") + "</td>" +
@@ -3571,9 +3637,9 @@ function appMain() {
           "<td>" + (languagesUsed ? esc(languagesUsed) : "—") + "</td>" +
           "<td class=\"mono dist-col-num\">" + totalForms + "</td>" +
           "<td>" + esc(r.contactPerson || "—") + "</td>" +
-          "<td class=\"wrap\">" + esc(r.remarks || "") + "</td>" +
+          remarksCell +
           "<td class=\"dist-col-center\">" +
-          "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\">Edit</button>" +
+          "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-id=\"" + r.id + "\">Edit</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
           "</td></tr>";
       }).join("");
@@ -3594,14 +3660,11 @@ function appMain() {
         "<th>School</th><th class=\"dist-col-num\">Enrolled</th><th class=\"dist-col-center\">Distributed</th><th>Classrooms</th><th class=\"dist-col-num\">Packets</th><th>Languages</th><th class=\"dist-col-num\">Total Forms</th><th>Contact Person</th><th>Remarks</th><th class=\"dist-col-center\"></th>" +
         "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"10\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
-        "</tbody></table></div>" +
-        (addingHere ? distributionFormHtml(g.id, distributionRow(""), false) :
-          "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\" data-group=\"" + g.id + "\">+ Add school</button>") +
-        "</div></div>";
+        "</tbody></table></div></div></div>";
     }).join("");
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div><div class=\"page-sub\">School Year " + esc(DISTRIBUTION_SCHOOL_YEAR) + "</div></div></div>" +
-      groupsHtml +
+      addSchoolHtml + groupsHtml +
       "<form class=\"mini-form\" data-action=\"add-distribution-group\">" +
       "<input class=\"text-input\" name=\"name\" placeholder=\"New group name\" required>" +
       "<button class=\"btn small\" type=\"submit\">+ Add group</button></form>";
@@ -3966,16 +4029,18 @@ function appMain() {
           state.distributionGroups = state.distributionGroups.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
       case "open-add-distribution-row":
-        ui.distributionFormFor = { groupId: t.getAttribute("data-group"), rowId: null };
+        ui.distributionFormFor = { rowId: null };
         render(); break;
       case "edit-distribution-row":
-        ui.distributionFormFor = { groupId: t.getAttribute("data-group"), rowId: t.getAttribute("data-id") };
+        ui.distributionFormFor = { rowId: t.getAttribute("data-id") };
         render(); break;
       case "cancel-distribution-form":
         ui.distributionFormFor = null;
         render(); break;
       case "edit-distribution-group": ui.editingDistributionGroupId = t.getAttribute("data-id"); render(); break;
       case "done-edit-distribution-group": ui.editingDistributionGroupId = null; render(); break;
+      case "edit-distribution-remarks": ui.editingDistributionRemarksId = t.getAttribute("data-id"); render(); break;
+      case "done-edit-distribution-remarks": ui.editingDistributionRemarksId = null; render(); break;
       case "move-task-category":
         (function () {
           var id = t.getAttribute("data-id"), dir = t.getAttribute("data-dir");
@@ -3995,6 +4060,27 @@ function appMain() {
       case "toggle-issue-field-editor": ui.issueFieldEditorOpen = !ui.issueFieldEditorOpen; render(); break;
       case "edit-contact-row": ui.editingContactRowId = t.getAttribute("data-id"); render(); break;
       case "done-edit-contact-row": ui.editingContactRowId = null; render(); break;
+      case "edit-contact-note": ui.editingContactNoteId = t.getAttribute("data-id"); render(); break;
+      case "done-edit-contact-note": ui.editingContactNoteId = null; render(); break;
+      case "toggle-contact-highlight-mode":
+        ui.contactHighlightMode = !ui.contactHighlightMode;
+        if (ui.contactHighlightMode) ui.contactHighlightColor = ui.contactHighlightColor || "yellow";
+        render(); break;
+      case "set-contact-highlight-color":
+        ui.contactHighlightColor = t.getAttribute("data-color");
+        render(); break;
+      case "toggle-cell-highlight":
+        (function () {
+          var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
+          if (!r) return;
+          var field = t.getAttribute("data-field");
+          var color = ui.contactHighlightColor || "yellow";
+          r.highlights = r.highlights || {};
+          if (r.highlights[field] === color) { delete r.highlights[field]; }
+          else { r.highlights[field] = color; }
+          persist();
+        })(); break;
       case "edit-contact-group": ui.editingContactGroupId = t.getAttribute("data-id"); render(); break;
       case "done-edit-contact-group": ui.editingContactGroupId = null; render(); break;
       case "edit-nurse-leader": ui.editingNurseLeader = true; render(); break;
@@ -4266,6 +4352,13 @@ function appMain() {
           if (g) g.name = t.value;
           persist();
         })(); break;
+      case "set-distribution-remarks":
+        (function () {
+          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
+          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
+          if (r) r.remarks = t.value;
+          persist();
+        })(); break;
       case "set-contact-group-name":
         (function () {
           var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
@@ -4499,7 +4592,7 @@ function appMain() {
         })(); break;
       case "add-contact-row":
         (function () {
-          var groupId = form.getAttribute("data-group");
+          var groupId = (fd.get("group") || form.getAttribute("data-group") || "").toString();
           var school = (fd.get("school") || "").toString().trim();
           if (!school) return;
           var g = state.contactGroups.find(function (x) { return x.id === groupId; });
@@ -4518,7 +4611,7 @@ function appMain() {
         })(); break;
       case "save-distribution-row":
         (function () {
-          var groupId = form.getAttribute("data-group");
+          var groupId = (fd.get("group") || "").toString();
           var rowId = form.getAttribute("data-row");
           var school = (fd.get("school") || "").toString().trim();
           if (!school) return;
