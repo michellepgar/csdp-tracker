@@ -252,6 +252,7 @@
   .pill.green { background: var(--done-soft); color: var(--done); }
   .pill.neutral { background: var(--surface-2); color: var(--ink-soft); }
   select.status-select { border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 22px 3px 9px; font-size: 0.76rem; font-weight: 600; }
+  select.status-select:disabled { opacity: 0.6; cursor: not-allowed; }
   select.status-select.red { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
   select.status-select.orange { background: var(--attn-soft); color: var(--attn); border-color: transparent; }
   select.status-select.green { background: var(--done-soft); color: var(--done); border-color: transparent; }
@@ -445,6 +446,10 @@
      of them. */
   .contact-table { table-layout: fixed; }
   .contact-table th, .contact-table td { white-space: normal; overflow-wrap: break-word; }
+  /* A translucent tint rather than a fixed hex — reads as a light yellow
+     highlight against either theme's row background without needing a
+     separate dark-mode color. */
+  .contact-table tbody tr:hover > td { background: rgba(255, 214, 51, 0.22); }
   .contact-group-title-input {
     font-size: 1.05rem; font-weight: 600; border: 1px solid transparent; background: none; color: var(--ink);
     font-family: inherit; padding: 4px 6px; border-radius: var(--radius); flex: 1; min-width: 120px;
@@ -2295,16 +2300,16 @@ function appMain() {
       "</div></div>";
   }
 
-  function statusControl(type, id, status, action, schoolId) {
-    return statusControlOptions(STATUS_OPTIONS[type], id, status, action, schoolId);
+  function statusControl(type, id, status, action, schoolId, disabled) {
+    return statusControlOptions(STATUS_OPTIONS[type], id, status, action, schoolId, disabled);
   }
 
-  function statusControlOptions(options, id, status, action, schoolId) {
+  function statusControlOptions(options, id, status, action, schoolId, disabled) {
     var opts = options.map(function (o) {
       return "<option value=\"" + esc(o) + "\"" + (o === status ? " selected" : "") + ">" + esc(o || "—") + "</option>";
     }).join("");
     return "<select class=\"status-select " + (STATUS_TIER[status] || "neutral") + "\" data-action-change=\"" + action + "\" data-id=\"" + id + "\"" +
-      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + ">" + opts + "</select>";
+      (schoolId ? " data-school=\"" + schoolId + "\"" : "") + (disabled ? " disabled title=\"Only the assigned VA (or an Owner/Admin) can change this\"" : "") + ">" + opts + "</select>";
   }
 
   function deleteBtn(type, id, action, schoolId) {
@@ -2408,10 +2413,13 @@ function appMain() {
 
   function emailTrackerCardHtml(schoolId, sd) {
     var open = countNotDone(sd.emailTracker);
+    /* Only the VA assigned to this school (plus Owner/Admin/Superadmin)
+       can change a status here — everyone else sees it, just disabled. */
+    var canChangeStatus = isSuperAdmin() || (!!sd.vaAssigned && sd.vaAssigned === getStoredIdentity());
     var sorted = sortRecords(sd.emailTracker.slice().reverse(), ui.emailSort, function (e) { return e.description; });
     var rows = sorted.map(function (e) {
       return "<div class=\"row-item\"><div class=\"row-main\"><div class=\"row-title\">" + esc(e.description) + "</div></div>" +
-        statusControl("email_followup", e.id, e.status, "change-email-status", schoolId) +
+        statusControl("email_followup", e.id, e.status, "change-email-status", schoolId, !canChangeStatus) +
         deleteBtn("email-item", e.id, "remove-email-item", schoolId) + "</div>";
     }).join("");
     return "<div class=\"card\" id=\"email-tracker-card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Email Tracker" + (open > 0 ? " <span class=\"count-chip\">" + open + "</span>" : "") + "</div>" +
@@ -3672,6 +3680,10 @@ function appMain() {
       case "change-email-status":
         (function () {
           var sd = ensureSchoolData(t.getAttribute("data-school"));
+          /* Only the VA assigned to this school (or an Owner/Admin/
+             Superadmin) can change an email tracker item's status —
+             matches the disabled state already rendered for anyone else. */
+          if (!isSuperAdmin() && sd.vaAssigned !== getStoredIdentity()) return;
           var item = sd.emailTracker.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (item) item.status = t.value;
           persist();
