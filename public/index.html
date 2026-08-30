@@ -431,6 +431,13 @@
      own page — label/value pairs instead of a table since it's just one
      school at a time. */
   .contact-card-grid { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; align-items: start; }
+  /* Name and email side by side on one line per person, instead of each
+     stacked in its own row — easier to scan, and the email sits right next
+     to a one-click copy button. */
+  .contact-person-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .contact-person-row:not(:last-child) { margin-bottom: 4px; }
+  .contact-email { color: var(--ink-soft); font-size: 0.86rem; }
+  .copy-email-btn { font-size: 0.8rem; line-height: 1; padding: 2px 5px; }
   /* Each grade-band group renders as its own <table>, and a plain table
      auto-sizes its columns to fit only its own content — so the same
      column (e.g. Nurse Email) ends up a different width in every group.
@@ -2131,6 +2138,25 @@ function appMain() {
     });
     return found;
   }
+  /* Name + email side by side instead of stacked — a role can have more
+     than one person (multi-line, one per line); zip name lines with email
+     lines so each person's own pair stays together on one row. */
+  var CONTACT_CARD_PAIRS = [
+    { label: "Principal", nameKey: "principal", emailKey: "principalEmail" },
+    { label: "Asst Principal", nameKey: "asstPrincipal", emailKey: "asstPrincipalEmail" },
+    { label: "Front Desk", nameKey: "frontDesk", emailKey: "frontDeskEmail" },
+    { label: "Nurse", nameKey: "nurseName", emailKey: "nurseEmail" }
+  ];
+  function emailCopyBtnHtml(email) {
+    if (!email) return "";
+    return "<button class=\"icon-btn copy-email-btn\" data-action=\"copy-email\" data-email=\"" + esc(email) + "\" title=\"Copy email\">📋</button>";
+  }
+  function contactPersonRowHtml(name, email) {
+    return "<div class=\"contact-person-row\">" +
+      (name ? "<span>" + esc(name) + "</span>" : "") +
+      (email ? "<span class=\"mono contact-email\">" + esc(email) + "</span>" + emailCopyBtnHtml(email) : "") +
+      "</div>";
+  }
   function schoolContactCardHtml(school) {
     var row = findContactRowBySchoolName(school.name);
     var manageLink = "<button class=\"link-btn\" data-action=\"nav-view\" data-view=\"contacts\">" + (row ? "Edit in Schools Contact Info" : "Add in Schools Contact Info") + "</button>";
@@ -2138,17 +2164,20 @@ function appMain() {
     if (!row) {
       body = emptyState("No contact info on file for this school yet.");
     } else {
-      var fields = CONTACT_FIELDS.filter(function (f) { return f.key !== "school"; });
-      var rowsHtml = fields.map(function (f) {
-        var v = row[f.key];
-        /* Every other field just skips when blank, but Notes always shows
-           a row — it's easy to miss a note that's there, and just as easy
-           to forget one was never filled in. */
-        if (!v && f.key !== "notes") return "";
-        var valueHtml = v ? contactCellViewHtml(v) : "<span style=\"color:var(--ink-faint);\">No notes yet.</span>";
-        return "<div class=\"field-label\">" + esc(f.label) + "</div><div class=\"contact-cell-view\" style=\"padding:0;\">" + valueHtml + "</div>";
+      var rowsHtml = CONTACT_CARD_PAIRS.map(function (pair) {
+        var names = String(row[pair.nameKey] || "").split("\n").filter(function (s) { return s !== ""; });
+        var emails = String(row[pair.emailKey] || "").split("\n").filter(function (s) { return s !== ""; });
+        if (!names.length && !emails.length) return "";
+        var lineCount = Math.max(names.length, emails.length);
+        var personRows = "";
+        for (var i = 0; i < lineCount; i++) {
+          personRows += contactPersonRowHtml(names[i] || "", emails[i] || "");
+        }
+        return "<div class=\"field-label\">" + esc(pair.label) + "</div><div>" + personRows + "</div>";
       }).join("");
-      body = rowsHtml ? "<div class=\"contact-card-grid\">" + rowsHtml + "</div>" : emptyState("No contact details filled in yet for this school.");
+      var notesHtml = "<div class=\"field-label\">Notes</div><div class=\"contact-cell-view\" style=\"padding:0;\">" +
+        (row.notes ? contactCellViewHtml(row.notes) : "<span style=\"color:var(--ink-faint);\">No notes yet.</span>") + "</div>";
+      body = "<div class=\"contact-card-grid\">" + (rowsHtml || emptyState("No contact details filled in yet for this school.")) + notesHtml + "</div>";
     }
     return "<div class=\"card\"><div class=\"card-head accent-card-head\"><div class=\"card-title\">Contact Info</div>" +
       "<div class=\"card-actions\">" + manageLink + "</div></div>" +
@@ -3095,6 +3124,32 @@ function appMain() {
       case "done-edit-contact-group": ui.editingContactGroupId = null; render(); break;
       case "edit-nurse-leader": ui.editingNurseLeader = true; render(); break;
       case "done-edit-nurse-leader": ui.editingNurseLeader = false; render(); break;
+      case "copy-email":
+        (function () {
+          var email = t.getAttribute("data-email");
+          if (!email) return;
+          var done = function () { showToast("Copied " + email); };
+          var fallback = function () {
+            try {
+              var ta = document.createElement("textarea");
+              ta.value = email;
+              ta.style.position = "fixed";
+              ta.style.left = "-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+              done();
+            } catch (e) {
+              showToast("Couldn't copy — please copy it manually.");
+            }
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(email).then(done).catch(fallback);
+          } else {
+            fallback();
+          }
+        })(); break;
       case "edit-correction-row": ui.editingCorrectionId = t.getAttribute("data-id"); render(); break;
       case "done-edit-correction-row": ui.editingCorrectionId = null; render(); break;
       case "remove-issue-field-pool":
