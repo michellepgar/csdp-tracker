@@ -415,7 +415,7 @@
      hovered/focused, so the table reads like a spreadsheet rather than a
      form, but is fully editable in place. */
   .contact-cell-input {
-    display: block; width: 100%; min-width: 140px; border: 1px solid transparent; background: none; color: var(--ink);
+    display: block; width: 100%; border: 1px solid transparent; background: none; color: var(--ink);
     font: inherit; font-size: 0.83rem; padding: 4px 6px; border-radius: var(--radius);
     resize: vertical; line-height: 1.35;
   }
@@ -424,9 +424,16 @@
   /* Read-only view: plain multi-line text, so a school with two or three
      nurses/front-desk staff shows one name/email per line and a single
      click-drag selects and copies just that one line. */
-  .contact-cell-view { padding: 4px 6px; font-size: 0.83rem; line-height: 1.35; white-space: normal; min-width: 140px; }
+  .contact-cell-view { padding: 4px 6px; font-size: 0.83rem; line-height: 1.35; white-space: normal; overflow-wrap: break-word; }
   .contact-leader-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .contact-leader-row .text-input { max-width: 260px; }
+  /* Each grade-band group renders as its own <table>, and a plain table
+     auto-sizes its columns to fit only its own content — so the same
+     column (e.g. Nurse Email) ends up a different width in every group.
+     Fixed layout + a shared <colgroup> keeps columns lined up across all
+     of them. */
+  .contact-table { table-layout: fixed; }
+  .contact-table th, .contact-table td { white-space: normal; overflow-wrap: break-word; }
   .contact-group-title-input {
     font-size: 1.05rem; font-weight: 600; border: 1px solid transparent; background: none; color: var(--ink);
     font-family: inherit; padding: 4px 6px; border-radius: var(--radius); flex: 1; min-width: 120px;
@@ -1756,17 +1763,23 @@ function appMain() {
   /* Column order/labels for the school directory table — shared by the
      header row and every data row so they can never drift out of sync. */
   var CONTACT_FIELDS = [
-    { key: "school", label: "School" },
-    { key: "principal", label: "Principal" },
-    { key: "principalEmail", label: "Email" },
-    { key: "asstPrincipal", label: "Asst Principal" },
-    { key: "asstPrincipalEmail", label: "Asst Principal Email" },
-    { key: "frontDesk", label: "Front Desk" },
-    { key: "frontDeskEmail", label: "Front Desk Email" },
-    { key: "nurseName", label: "Nurse Name" },
-    { key: "nurseEmail", label: "Nurse Email" },
-    { key: "notes", label: "Notes" }
+    { key: "school", label: "School", width: 12 },
+    { key: "principal", label: "Principal", width: 9 },
+    { key: "principalEmail", label: "Email", width: 11 },
+    { key: "asstPrincipal", label: "Asst Principal", width: 9 },
+    { key: "asstPrincipalEmail", label: "Asst Principal Email", width: 11 },
+    { key: "frontDesk", label: "Front Desk", width: 8 },
+    { key: "frontDeskEmail", label: "Front Desk Email", width: 10 },
+    { key: "nurseName", label: "Nurse Name", width: 8 },
+    { key: "nurseEmail", label: "Nurse Email", width: 10 },
+    { key: "notes", label: "Notes", width: 12 }
   ];
+  /* Shared across every group's table so a column lines up at the same
+     width everywhere, regardless of how much content that group has. */
+  function contactColgroupHtml(editing) {
+    return "<colgroup>" + CONTACT_FIELDS.map(function (f) { return "<col style=\"width:" + f.width + "%;\">"; }).join("") +
+      (editing ? "<col style=\"width:36px;\">" : "") + "</colgroup>";
+  }
   /* Multi-line-safe text-to-HTML for the read-only view — keeps line
      breaks (so a school with two nurses shows one per line) while still
      escaping everything else. */
@@ -1808,7 +1821,7 @@ function appMain() {
         titleHtml +
         (editing ? "<div class=\"card-actions\"><button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-contact-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button></div>" : "") +
         "</div><div class=\"card-body\">" +
-        "<div class=\"table-scroll\"><table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+        "<div class=\"table-scroll\"><table class=\"data-table contact-table\">" + contactColgroupHtml(editing) + "<thead><tr>" + headerCells + "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
         (editing
