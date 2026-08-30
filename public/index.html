@@ -507,6 +507,35 @@
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  .num-input-wrap { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
+  .num-input-wrap input.text-input { flex: 1; min-width: 0; }
+  .calc-trigger {
+    flex: none; width: 26px; height: 26px; padding: 0; font-size: 0.85rem;
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  }
+  .calc-trigger:hover { border-color: var(--accent); }
+  /* Pop-up calculator: fixed/centered, deliberately outside the app's
+     normal render() flow (see the JS module for why). */
+  .calc-backdrop { position: fixed; inset: 0; background: rgba(10,16,26,0.45); z-index: 200; display: none; }
+  .calc-popup {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 201;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow); padding: 14px; width: 240px; display: none; flex-direction: column; gap: 10px;
+  }
+  .calc-header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 0.85rem; }
+  .calc-close { background: none; border: none; font-size: 1rem; cursor: pointer; color: var(--ink-soft); padding: 0; }
+  .calc-display {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px;
+    text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 1.3rem; min-height: 1.3em; overflow-wrap: break-word;
+  }
+  .calc-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .calc-buttons button {
+    padding: 10px 0; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--ink); font-size: 1rem; cursor: pointer;
+  }
+  .calc-buttons button:hover { border-color: var(--accent); }
+  .calc-wide { grid-column: span 2; }
+  .calc-equals { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   /* Numbers line up on the right so digits stack cleanly down the column;
      the Distributed checkbox and row actions center under their headers
      instead of hugging the left edge like text does. */
@@ -3610,6 +3639,19 @@ function appMain() {
   }
 
   /* ---------- Distribution List ---------- */
+  /* Every number field in this form gets a small calculator button next
+     to it — useful since these numbers often come from adding up a few
+     things (e.g. loose forms left over across several rooms) rather than
+     being a single number someone already knows. Opening/using the
+     calculator must never call render(): this form is a live, uncontrolled
+     HTML form, and a re-render would wipe out anything already typed into
+     its OTHER fields. See openCalculator/closeCalculator below. */
+  function numInputWithCalc(name, value) {
+    return "<span class=\"num-input-wrap\">" +
+      "<input class=\"text-input\" type=\"number\" min=\"0\" name=\"" + name + "\" value=\"" + esc(value) + "\" placeholder=\"0\">" +
+      "<button type=\"button\" class=\"calc-trigger\" data-action=\"open-calculator\" data-target=\"" + name + "\" title=\"Open calculator\">🧮</button>" +
+      "</span>";
+  }
   /* One compact 9-row table (3 classroom types x 3 languages) instead of
      three separate titled blocks — same data, much less sprawl. Classroom
      type only prints once per group of 3 rows (rowspan) since repeating
@@ -3620,16 +3662,13 @@ function appMain() {
       DISTRIBUTION_LANGUAGES.forEach(function (l, li) {
         var cell = row.breakdown[c.key][l.key];
         var fieldName = function (f) { return "breakdown__" + c.key + "__" + l.key + "__" + f; };
-        var numInput = function (f) {
-          return "<input class=\"text-input\" type=\"number\" min=\"0\" name=\"" + fieldName(f) + "\" value=\"" + esc(cell[f]) + "\" placeholder=\"0\">";
-        };
         bodyRows += "<tr>" +
           (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
           "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
-          "<td>" + numInput("packets") + "</td>" +
-          "<td>" + numInput("loose") + "</td>" +
-          "<td>" + numInput("extraPackets") + "</td>" +
-          "<td>" + numInput("extraLoose") + "</td>" +
+          "<td>" + numInputWithCalc(fieldName("packets"), cell.packets) + "</td>" +
+          "<td>" + numInputWithCalc(fieldName("loose"), cell.loose) + "</td>" +
+          "<td>" + numInputWithCalc(fieldName("extraPackets"), cell.extraPackets) + "</td>" +
+          "<td>" + numInputWithCalc(fieldName("extraLoose"), cell.extraLoose) + "</td>" +
           "</tr>";
       });
     });
@@ -3649,11 +3688,11 @@ function appMain() {
       "<div class=\"dist-form-grid\">" +
       groupField +
       "<label>School<input class=\"text-input\" name=\"school\" required value=\"" + esc(row.school) + "\" placeholder=\"School name\"></label>" +
-      "<label>Enrolled<input class=\"text-input\" type=\"number\" min=\"0\" name=\"enrolled\" value=\"" + esc(row.enrolled) + "\" placeholder=\"0\"></label>" +
+      "<label>Enrolled" + numInputWithCalc("enrolled", row.enrolled) + "</label>" +
       "<label class=\"dist-checkbox-label\"><input type=\"checkbox\" name=\"distributed\"" + (row.distributed ? " checked" : "") + "> Distributed</label>" +
-      "<label>Regular Classroom<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__regular\" value=\"" + esc(row.classrooms.regular) + "\" placeholder=\"0\"></label>" +
-      "<label>Launch Classes<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__launch\" value=\"" + esc(row.classrooms.launch) + "\" placeholder=\"0\"></label>" +
-      "<label>CRR Classes<input class=\"text-input\" type=\"number\" min=\"0\" name=\"classrooms__crr\" value=\"" + esc(row.classrooms.crr) + "\" placeholder=\"0\"></label>" +
+      "<label>Regular Classroom" + numInputWithCalc("classrooms__regular", row.classrooms.regular) + "</label>" +
+      "<label>Launch Classes" + numInputWithCalc("classrooms__launch", row.classrooms.launch) + "</label>" +
+      "<label>CRR Classes" + numInputWithCalc("classrooms__crr", row.classrooms.crr) + "</label>" +
       "</div>" +
       "<div class=\"field-mini-label\" style=\"margin-top:10px;\">Consent Packets (each packet = 25 forms)</div>" +
       distributionBreakdownFieldsHtml(row) +
@@ -3956,6 +3995,89 @@ function appMain() {
     saveStoredView();
   }
 
+  /* ============ pop-up calculator ============ */
+  /* Standalone from the render() cycle on purpose: it's opened from inside
+     a live, uncontrolled form (Distribution List's Add/Edit), and calling
+     render() there would rebuild #app from scratch and wipe out anything
+     already typed into that form's OTHER fields. So this manages its own
+     little bit of DOM directly instead of going through app state. */
+  var calcExpr = "";
+  var calcTargetName = null;
+  function calcButtonsHtml() {
+    var keys = ["7", "8", "9", "/", "4", "5", "6", "*", "1", "2", "3", "-", "0", ".", "back", "+"];
+    var labels = { "/": "÷", "*": "×", "-": "−", "back": "⌫" };
+    return keys.map(function (k) {
+      return "<button type=\"button\" data-k=\"" + k + "\">" + (labels[k] || k) + "</button>";
+    }).join("") +
+      "<button type=\"button\" data-k=\"clear\" class=\"calc-wide\">C</button>" +
+      "<button type=\"button\" data-k=\"=\" class=\"calc-wide calc-equals\">=</button>";
+  }
+  function ensureCalcPopup() {
+    if (document.getElementById("calcPopup")) return;
+    var backdrop = document.createElement("div");
+    backdrop.id = "calcBackdrop";
+    backdrop.className = "calc-backdrop";
+    backdrop.addEventListener("click", closeCalculator);
+    var popup = document.createElement("div");
+    popup.id = "calcPopup";
+    popup.className = "calc-popup";
+    popup.innerHTML =
+      "<div class=\"calc-header\"><span>Calculator</span><button type=\"button\" class=\"calc-close\">✕</button></div>" +
+      "<div class=\"calc-display\" id=\"calcDisplay\">0</div>" +
+      "<div class=\"calc-buttons\">" + calcButtonsHtml() + "</div>";
+    popup.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (e.target.closest(".calc-close")) { closeCalculator(); return; }
+      var btn = e.target.closest("[data-k]");
+      if (!btn) return;
+      var k = btn.getAttribute("data-k");
+      if (k === "clear") { calcExpr = ""; }
+      else if (k === "back") { calcExpr = calcExpr.slice(0, -1); }
+      else if (k === "=") {
+        var result = safeCalcEval(calcExpr);
+        if (result === null) { calcExpr = ""; document.getElementById("calcDisplay").textContent = "Error"; return; }
+        applyCalcResultToTarget(result);
+        closeCalculator();
+        return;
+      } else {
+        calcExpr += k;
+      }
+      document.getElementById("calcDisplay").textContent = calcExpr || "0";
+    });
+    document.body.appendChild(backdrop);
+    document.body.appendChild(popup);
+  }
+  /* Every character in the expression was typed by our own buttons above
+     (digits, ./+-*), never by free text — so this is arithmetic-only by
+     construction, not a sanitization step against arbitrary input. */
+  function safeCalcEval(expr) {
+    if (!expr || !/^[0-9+\-*/.]+$/.test(expr)) return null;
+    try {
+      var val = Function("\"use strict\"; return (" + expr + ")")();
+      if (typeof val !== "number" || !isFinite(val)) return null;
+      return Math.round(val * 100) / 100;
+    } catch (e) { return null; }
+  }
+  function applyCalcResultToTarget(result) {
+    if (!calcTargetName) return;
+    var input = document.querySelector("[name=\"" + calcTargetName + "\"]");
+    if (input) input.value = result;
+  }
+  function openCalculator(targetName) {
+    ensureCalcPopup();
+    calcTargetName = targetName;
+    calcExpr = "";
+    document.getElementById("calcDisplay").textContent = "0";
+    document.getElementById("calcBackdrop").style.display = "block";
+    document.getElementById("calcPopup").style.display = "flex";
+  }
+  function closeCalculator() {
+    var backdrop = document.getElementById("calcBackdrop");
+    var popup = document.getElementById("calcPopup");
+    if (backdrop) backdrop.style.display = "none";
+    if (popup) popup.style.display = "none";
+  }
+
   /* ============ event handling ============ */
   function onClick(e) {
     var t = e.target.closest("[data-action]");
@@ -4134,6 +4256,11 @@ function appMain() {
       case "cancel-distribution-form":
         ui.distributionFormFor = null;
         render(); break;
+      case "open-calculator":
+        /* Deliberately no render()/persist() here — see the calculator
+           module's comment above onClick for why. */
+        openCalculator(t.getAttribute("data-target"));
+        break;
       case "edit-distribution-group": ui.editingDistributionGroupId = t.getAttribute("data-id"); render(); break;
       case "done-edit-distribution-group": ui.editingDistributionGroupId = null; render(); break;
       case "edit-distribution-remarks": ui.editingDistributionRemarksId = t.getAttribute("data-id"); render(); break;
