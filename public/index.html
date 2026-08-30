@@ -2557,6 +2557,20 @@ function appMain() {
     if (!editing) return "<div class=\"contact-cell-view\">" + contactCellViewHtml(it[field] || "") + "</div>";
     return "<input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"" + field + "\" value=\"" + esc(it[field] || "") + "\"" + (placeholder ? " placeholder=\"" + esc(placeholder) + "\"" : "") + ">";
   }
+  /* Locked (not editing): just the field name(s) actually flagged, plain
+     text — nothing to click, nothing to accidentally toggle. Unlocked:
+     the checkboxes themselves, so any combination can be changed. */
+  function needsCorrectionHtml(editing, it) {
+    if (!editing) {
+      var checked = CORRECTION_NEEDS_FIELDS.filter(function (f) { return it[f.needsKey]; }).map(function (f) { return f.key; });
+      if (!checked.length) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
+      return "<div class=\"contact-cell-view\">" + esc(checked.join(", ")) + "</div>";
+    }
+    return CORRECTION_NEEDS_FIELDS.map(function (f) {
+      return "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
+        "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.needsKey + "\"" + (it[f.needsKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
+    }).join("");
+  }
   function correctionTypeSectionHtml(ty, typeList) {
     var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th><th>Needs Correction</th>" +
       "<th>Date of Birth</th><th>Insurance #</th><th>Correct Information</th>" +
@@ -2576,20 +2590,12 @@ function appMain() {
         var sch = schoolById(it.schoolId);
         schoolCell = "<div class=\"contact-cell-view\">" + esc(sch ? sch.name : "") + "</div>";
       }
-      /* Which fields actually need fixing — this checkbox set stays live
-         even on a locked row, since checking one off is a routine,
-         deliberate single click, not the kind of stray edit that lock is
-         guarding against. */
-      var needsCorrectionHtml = CORRECTION_NEEDS_FIELDS.map(function (f) {
-        return "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
-          "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.needsKey + "\"" + (it[f.needsKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
-      }).join("");
       var editBtn = "<button class=\"link-btn\" data-action=\"" + (editing ? "done-edit-correction-row" : "edit-correction-row") + "\" data-id=\"" + it.id + "\">" + (editing ? "Done" : "Edit") + "</button>";
       return "<tr>" +
         "<td>" + correctionCellHtml(editing, it, "studentName") + "</td>" +
         "<td>" + schoolCell + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "grade") + "</td>" +
-        "<td>" + needsCorrectionHtml + "</td>" +
+        "<td>" + needsCorrectionHtml(editing, it) + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "dob", "MM/DD/YYYY") + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "insuranceNumber") + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "correctInfo", "Correct information") + "</td>" +
