@@ -2053,7 +2053,7 @@ function appMain() {
       "<button class=\"theme-toggle\" data-action=\"toggle-theme\" title=\"Switch to " + (currentEffectiveTheme() === "dark" ? "light" : "dark") + " mode\">" + (currentEffectiveTheme() === "dark" ? "☀" : "🌙") + "</button>" +
       "<div class=\"main\">" +
       "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
-      "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
+      "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts" || ui.view.type === "distribution-list") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
       "</div></div>"
     );
   }
