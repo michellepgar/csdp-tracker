@@ -2234,6 +2234,13 @@ function appMain() {
       "<div class=\"card-body\">" + body + "</div></div>";
   }
 
+  /* Communication is only ever worked by one specific VA — everyone else
+     (except Owner/Admin/Superadmin, same override as everywhere else) sees
+     it disabled rather than editable. */
+  var COMMUNICATION_EDITOR_NAME = "Therese";
+  function canEditCommunication() {
+    return isSuperAdmin() || getStoredIdentity() === COMMUNICATION_EDITOR_NAME;
+  }
   function taskRowHtml(t, schoolId) {
     var needsComm = COMMUNICATION_CATEGORIES.indexOf(t.category) !== -1;
     var needsCount = COUNT_CATEGORIES.indexOf(t.category) !== -1;
@@ -2242,7 +2249,7 @@ function appMain() {
       "</span></div>" +
       taskVaGroupHtml(t, schoolId) +
       statusControl("task", t.id, t.status, "toggle-task-status", schoolId) +
-      (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId) : "") +
+      (needsComm ? "<span class=\"field-mini-label\">Communication</span>" + statusControl("communication", t.id, t.communication || "", "change-task-communication", schoolId, !canEditCommunication()) : "") +
       deleteBtn("task", t.id, "remove-task", schoolId) + "</div>";
   }
 
@@ -3651,6 +3658,7 @@ function appMain() {
         })(); break;
       case "change-task-communication":
         (function () {
+          if (!canEditCommunication()) return;
           var sd = ensureSchoolData(t.getAttribute("data-school"));
           var task = sd.tasks.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (task) task.communication = t.value;
