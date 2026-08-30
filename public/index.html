@@ -784,22 +784,36 @@ function appMain() {
     }
     return doc.body.innerHTML;
   }
+  /* Every saved timestamp is a UTC instant (new Date().toISOString()) —
+     that part is already timezone-proof. What wasn't was display: these
+     used the viewer's own device timezone, so the same moment showed a
+     different date/time to a VA in the Philippines than to Faith in
+     Massachusetts. The team works Eastern time, so every display of a
+     saved date/time is pinned to America/New_York regardless of who's
+     looking — that name (not a fixed "EST" offset) is what correctly
+     handles the EST/EDT switch across the year. */
+  var TEAM_TIME_ZONE = "America/New_York";
   function fmtDate(iso) {
     if (!iso) return "";
     var d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: TEAM_TIME_ZONE });
   }
   function fmtDateTime(iso) {
     if (!iso) return "";
     var d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " · " +
-      d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: TEAM_TIME_ZONE }) + " · " +
+      d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TIME_ZONE });
   }
+  /* "Today" for the EOD report date default — also pinned to Eastern time,
+     not the viewer's device, so a VA filing late at night Manila time
+     still gets the correct Eastern business day pre-filled. */
   function todayIsoDate() {
-    var d = new Date();
-    return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2);
+    var parts = new Intl.DateTimeFormat("en-CA", { timeZone: TEAM_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+    var map = {};
+    parts.forEach(function (p) { map[p.type] = p.value; });
+    return map.year + "-" + map.month + "-" + map.day;
   }
   function fmtEodDate(iso) {
     /* Plain "YYYY-MM-DD" parsed manually, not via `new Date(iso)` — that
