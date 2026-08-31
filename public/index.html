@@ -621,6 +621,7 @@
      from Contact Info's highlight feature above. */
   .xfile-sort-btn { background: none; border: none; font: inherit; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; color: var(--ink-faint); cursor: pointer; padding: 0; white-space: nowrap; }
   .xfile-sort-btn:hover { color: var(--accent); }
+  .xfile-filter-input { width: 100%; padding: 3px 5px; font-size: 0.76rem; font-weight: 400; text-transform: none; letter-spacing: 0; }
   .xfile-cell { white-space: normal; min-width: 110px; vertical-align: top; }
   .xfile-cell-inner { display: flex; align-items: flex-start; gap: 4px; justify-content: space-between; }
   .xfile-cell-value { cursor: pointer; flex: 1; min-width: 0; word-break: break-word; padding: 2px 0; }
@@ -4145,8 +4146,13 @@ function appMain() {
 
     var rowsHtml = files.map(function (f) {
       var pending = isPending("exported-file", f.id);
+      var renaming = ui.renamingExportedFileId === f.id;
+      var nameCell = renaming
+        ? "<input class=\"text-input\" data-action-change=\"rename-exported-file\" data-id=\"" + f.id + "\" value=\"" + esc(f.name) + "\" autofocus>"
+        : "<button class=\"link-btn\" data-action=\"open-exported-file\" data-id=\"" + f.id + "\">" + esc(f.name) + "</button>";
       return "<tr>" +
-        "<td><button class=\"link-btn\" data-action=\"open-exported-file\" data-id=\"" + f.id + "\">" + esc(f.name) + "</button></td>" +
+        "<td>" + nameCell +
+        " <button class=\"link-btn\" data-action=\"" + (renaming ? "done-rename-exported-file" : "start-rename-exported-file") + "\" data-id=\"" + f.id + "\" title=\"" + (renaming ? "Done" : "Rename") + "\">" + (renaming ? "Done" : "✏️") + "</button></td>" +
         "<td>" + esc(f.uploadedBy || "—") + "</td>" +
         "<td class=\"mono\">" + fmtDateTime(f.uploadedAt) + "</td>" +
         "<td class=\"mono\">" + (f.rows || []).length + " rows × " + (f.headers || []).length + " cols</td>" +
@@ -4185,9 +4191,19 @@ function appMain() {
     var highlightMode = !!ui.exportedHighlightMode;
     var highlightColor = ui.exportedHighlightColor || "yellow";
     var sort = (ui.exportedSort || {})[file.id];
+    var filters = (ui.exportedFilters || {})[file.id] || {};
     var rowCount = (file.rows || []).length;
     var order = [];
-    for (var i = 0; i < rowCount; i++) order.push(i);
+    for (var i = 0; i < rowCount; i++) {
+      var candidateRow = file.rows[i] || [];
+      var passesFilters = Object.keys(filters).every(function (colStr) {
+        var f = (filters[colStr] || "").toLowerCase();
+        if (!f) return true;
+        var v = candidateRow[parseInt(colStr, 10)];
+        return String(v === undefined ? "" : v).toLowerCase().indexOf(f) !== -1;
+      });
+      if (passesFilters) order.push(i);
+    }
     if (sort) {
       order.sort(function (a, b) {
         var va = (file.rows[a] || [])[sort.col] || "";
@@ -4204,6 +4220,9 @@ function appMain() {
       var isSorted = sort && sort.col === c;
       var arrow = isSorted ? (sort.dir === "desc" ? " ▼" : " ▲") : "";
       return "<th><button class=\"xfile-sort-btn\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\">" + esc(h || "(untitled)") + arrow + "</button></th>";
+    }).join("") + "<th></th>";
+    var filterCells = (file.headers || []).map(function (h, c) {
+      return "<th><input class=\"text-input xfile-filter-input\" data-action-change=\"set-exported-filter\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" value=\"" + esc(filters[c] || "") + "\" placeholder=\"Filter…\"></th>";
     }).join("") + "<th></th>";
 
     var bodyRows = order.map(function (r) {
@@ -4241,7 +4260,7 @@ function appMain() {
       }).join("") : "") +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
-      "<div class=\"table-scroll\"><table class=\"data-table xfile-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
+      "<div class=\"table-scroll\"><table class=\"data-table xfile-table\"><thead><tr>" + headerCells + "</tr><tr>" + filterCells + "</tr></thead><tbody>" +
       (bodyRows || "<tr><td colspan=\"" + ((file.headers || []).length + 1) + "\">" + emptyState("No rows in this file.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
@@ -4864,6 +4883,8 @@ function appMain() {
       case "close-exported-comment":
         ui.commentingExportedCell = null;
         render(); break;
+      case "start-rename-exported-file": ui.renamingExportedFileId = t.getAttribute("data-id"); render(); break;
+      case "done-rename-exported-file": ui.renamingExportedFileId = null; render(); break;
       case "cancel-distribution-form":
         ui.distributionFormFor = null;
         render(); break;
@@ -5221,6 +5242,21 @@ function appMain() {
           ui.editingExportedCell = null;
           persist();
         })(); break;
+      case "rename-exported-file":
+        (function () {
+          var file = (state.exportedFiles || []).find(function (f) { return f.id === t.getAttribute("data-id"); });
+          var name = t.value.trim();
+          if (file && name) file.name = name;
+          persist();
+        })(); break;
+      case "set-exported-filter":
+        (function () {
+          var fileId = t.getAttribute("data-file"), col = t.getAttribute("data-col");
+          ui.exportedFilters = ui.exportedFilters || {};
+          ui.exportedFilters[fileId] = ui.exportedFilters[fileId] || {};
+          ui.exportedFilters[fileId][col] = t.value;
+        })();
+        render(); break;
       case "set-contact-group-name":
         (function () {
           var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
