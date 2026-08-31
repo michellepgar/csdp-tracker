@@ -1263,6 +1263,24 @@ function appMain() {
     });
     return true;
   }
+  /* Correction/Verification and Charting Questions' "Fix" panel briefly
+     stored one shared correctInfo/fixedBy/fixedAt on the issue itself,
+     which anyone could overwrite — replaced with fixes: [{id, by, at,
+     text}], one signed entry per person. Folds any already-saved single
+     fix into the first (and, until now, only) entry of that list, so
+     nothing already recorded disappears. */
+  function migrateIssueFixEntries(parsed) {
+    if (parsed._migratedIssueFixEntries) return false;
+    parsed._migratedIssueFixEntries = true;
+    (parsed.issues || []).forEach(function (it) {
+      if (it.fixes || !it.fixedBy) return;
+      it.fixes = [{ id: uid("fix"), by: it.fixedBy, at: it.fixedAt || it.createdAt || new Date().toISOString(), text: it.correctInfo || "" }];
+      delete it.fixedBy;
+      delete it.fixedAt;
+      delete it.correctInfo;
+    });
+    return true;
+  }
   /* The team already removed "Record Needs Rechecking" once, before the
      tombstone mechanism above existed to make that removal stick — replay
      it now, one time, so it doesn't keep reappearing every reload. */
@@ -2139,6 +2157,7 @@ function appMain() {
       migrateCorrectionStudentLink(fresh);
       migrateIssueTypes(fresh);
       migrateIssueTypeFieldPools(fresh);
+      migrateIssueFixEntries(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
@@ -2213,6 +2232,7 @@ function appMain() {
     var justMigratedCorrectionStudentLink = migrateCorrectionStudentLink(s);
     migrateIssueTypes(s);
     var justMigratedIssueTypeFieldPools = migrateIssueTypeFieldPools(s);
+    var justMigratedIssueFixEntries = migrateIssueFixEntries(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
     var justMigratedTimestamps = migrateRecordTimestamps(s);
@@ -2234,7 +2254,7 @@ function appMain() {
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -3656,17 +3676,35 @@ function appMain() {
      itself instead of being a separate action). Editing again later can
      change the text but never re-stamps over the original signer/date —
      that's who's on record for actually having fixed it. */
+  /* Every person who fixes/verifies something gets their own separate
+     signed entry — not one shared text everyone overwrites. Only the
+     person who signed a given entry can ever edit that entry again
+     (enforced in the save-issue-fix handler too, not just hidden here —
+     nobody, including Admins/Owner, gets an override on someone else's
+     signature). Anyone without their own entry yet can add one alongside
+     whatever's already there, so a second person fixing/verifying the
+     same item shows up as its own additional signature instead of
+     replacing the first. */
   function issueFixPanelHtml(it, placeholderText) {
-    var editingFix = ui.editingIssueFixId === it.id;
-    if (editingFix) {
-      return "<textarea class=\"contact-cell-input\" rows=\"2\" data-action-change=\"save-issue-fix\" data-id=\"" + it.id + "\" placeholder=\"" + esc(placeholderText) + "\" autofocus>" + esc(it.correctInfo || "") + "</textarea>";
-    }
-    if (it.fixedBy) {
-      return "<div class=\"contact-cell-view\">" + contactCellViewHtml(it.correctInfo || "") + "</div>" +
-        "<div class=\"sticky-note-meta\">Fixed by " + esc(it.fixedBy) + " · " + fmtDate(it.fixedAt) + "</div>" +
-        "<button class=\"link-btn\" data-action=\"start-issue-fix\" data-id=\"" + it.id + "\">Edit</button>";
-    }
-    return "<button class=\"btn small ghost\" data-action=\"start-issue-fix\" data-id=\"" + it.id + "\">Fix</button>";
+    var me = getStoredIdentity();
+    var fixes = it.fixes || [];
+    var myEntry = fixes.find(function (f) { return f.by === me; });
+    var entriesHtml = fixes.map(function (f) {
+      var editingThis = ui.editingIssueFixId === (it.id + "::" + f.id);
+      var canEdit = me && f.by === me;
+      if (editingThis) {
+        return "<textarea class=\"contact-cell-input\" rows=\"2\" data-action-change=\"save-issue-fix\" data-id=\"" + it.id + "\" data-entry=\"" + f.id + "\" placeholder=\"" + esc(placeholderText) + "\" autofocus>" + esc(f.text || "") + "</textarea>";
+      }
+      return "<div class=\"contact-cell-view\">" + contactCellViewHtml(f.text || "") + "</div>" +
+        "<div class=\"sticky-note-meta\">" + esc(f.by) + " · " + fmtDate(f.at) +
+        (canEdit ? " · <button class=\"link-btn\" data-action=\"start-issue-fix\" data-id=\"" + it.id + "\" data-entry=\"" + f.id + "\">Edit</button>" : "") +
+        "</div>";
+    }).join("<div style=\"border-top:1px solid var(--border); margin:6px 0;\"></div>");
+    var addingNew = ui.editingIssueFixId === (it.id + "::new");
+    var addRowHtml = addingNew
+      ? "<textarea class=\"contact-cell-input\" rows=\"2\" data-action-change=\"save-issue-fix\" data-id=\"" + it.id + "\" data-entry=\"new\" placeholder=\"" + esc(placeholderText) + "\" autofocus></textarea>"
+      : (myEntry ? "" : "<button class=\"btn small ghost\" data-action=\"start-issue-fix\" data-id=\"" + it.id + "\" data-entry=\"new\">" + (fixes.length ? "+ Add your own" : "Fix") + "</button>");
+    return entriesHtml + (entriesHtml && addRowHtml ? "<div style=\"margin-top:4px;\">" + addRowHtml + "</div>" : addRowHtml);
   }
   function chartingSectionHtml(ty, typeList) {
     var headerCells = "<th>Student Record</th><th>Question / Concern</th><th>Reported by</th><th>Status</th><th>Fix</th><th></th>";
@@ -4975,7 +5013,7 @@ function appMain() {
           state.softwareIssueCategories = (state.softwareIssueCategories || []).filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
       case "start-issue-fix":
-        ui.editingIssueFixId = t.getAttribute("data-id");
+        ui.editingIssueFixId = t.getAttribute("data-id") + "::" + t.getAttribute("data-entry");
         render(); break;
       case "toggle-eod-archive":
         ui.eodShowArchive = !ui.eodShowArchive;
@@ -5423,15 +5461,21 @@ function appMain() {
       case "save-issue-fix":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (issue) {
-            issue.correctInfo = t.value;
-            if (!issue.fixedBy) {
-              var me = getStoredIdentity();
-              if (me) {
-                issue.fixedBy = me;
-                issue.fixedAt = new Date().toISOString();
-                issue.status = "Resolved";
-              }
+          var entryId = t.getAttribute("data-entry");
+          var me = getStoredIdentity();
+          if (issue && me) {
+            issue.fixes = issue.fixes || [];
+            if (entryId === "new") {
+              var wasFirstFix = issue.fixes.length === 0;
+              issue.fixes.push({ id: uid("fix"), by: me, at: new Date().toISOString(), text: t.value });
+              if (wasFirstFix) issue.status = "Resolved";
+            } else {
+              /* Re-checked here, not just kept out of view — the edit
+                 control for someone else's entry is never rendered, but
+                 this is the actual place that would matter if it somehow
+                 got called anyway. */
+              var entry = issue.fixes.find(function (x) { return x.id === entryId; });
+              if (entry && entry.by === me) entry.text = t.value;
             }
           }
           ui.editingIssueFixId = null;
