@@ -527,7 +527,7 @@
   /* Fixed layout + a colgroup (built from the longest school name) keeps
      every group's table the exact same width, and wide enough that
      nothing feels cramped. */
-  .dist-table { table-layout: fixed; min-width: 1650px; }
+  .dist-table { table-layout: fixed; min-width: 1540px; }
   .dist-table td { white-space: normal; overflow-wrap: break-word; }
   .dist-table td:first-child { padding-left: 8px; padding-right: 6px; }
   /* The two-row header reads better a touch bigger than the app's usual
@@ -553,6 +553,8 @@
   .dist-packet-size-input.text-input { max-width: 48px; padding: 2px 4px; font-size: 0.75rem; }
   .dist-th-note { display: block; font-size: 0.62rem; text-transform: none; font-weight: 400; color: var(--ink-faint); }
   .dist-detail-view { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; white-space: normal; }
+  .dist-detail-remarks { margin-top: 10px; font-size: 0.85rem; color: var(--ink-soft); }
+  .dist-detail-remarks strong { color: var(--ink); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
@@ -591,6 +593,10 @@
   .dist-table th.dist-col-num, .dist-table td.dist-col-num { text-align: center; }
   .dist-table th.dist-col-center, .dist-table td.dist-col-center { text-align: center; }
   .dist-remarks-edit-btn, .contact-note-edit-btn { display: block; margin-top: 4px; font-size: 0.72rem; }
+  /* Remarks stays narrow in the summary table — full text shows on hover
+     (title attribute) and via the pencil edit; the eye-icon view is the
+     other place to see everything without truncation. */
+  .dist-remarks-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .contact-move-select { display: block; width: 100%; font-size: 0.72rem; padding: 3px 4px; margin-bottom: 6px; }
   /* Cell highlights are literal marker colors, fixed regardless of theme
      (same reasoning as sticky notes) — a light highlight with the app's
@@ -3789,7 +3795,7 @@ function appMain() {
       "<col style=\"width:65px;\">" +   // HC
       "<col style=\"width:120px;\">" +  // Total Forms (2 lines)
       "<col style=\"width:140px;\">" +  // Contact Person
-      "<col style=\"width:200px;\">" +  // Remarks
+      "<col style=\"width:90px;\">" +   // Remarks (narrow — full text is in the eye-icon view)
       "<col style=\"width:90px;\">" +   // Actions
       "</colgroup>";
   }
@@ -3860,6 +3866,7 @@ function appMain() {
       "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
       "<th>Classroom Type</th><th>Language</th><th>Packets</th><th>Size</th><th>Loose</th><th>Extra Packets</th><th>Extra Loose</th><th>Row Total</th>" +
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>" +
+      (r.remarks ? "<div class=\"dist-detail-remarks\"><strong>Remarks:</strong> " + esc(r.remarks) + "</div>" : "") +
       "</div>";
   }
   function distributionListPageHtml() {
@@ -3894,7 +3901,7 @@ function appMain() {
         var remarksCell = remarksEditing
           ? "<td class=\"wrap dist-col-center\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
             "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"done-edit-distribution-remarks\" data-id=\"" + r.id + "\">Done</button></td>"
-          : "<td class=\"wrap dist-col-center\">" + esc(r.remarks || "") +
+          : "<td class=\"dist-col-center\"><div class=\"dist-remarks-truncate\" title=\"" + esc(r.remarks || "") + "\">" + esc(r.remarks || "—") + "</div>" +
             "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"edit-distribution-remarks\" data-id=\"" + r.id + "\" title=\"Edit remarks\">✏️</button></td>";
         return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
           "<td>" + esc(r.school) + "</td>" +
