@@ -4237,6 +4237,17 @@ function appMain() {
       document.getElementById("calcDisplay").textContent = "0";
     }
   }
+  /* Esc = cancel: closes whichever Distribution List row is open — the
+     Add/Edit form or the read-only breakdown view. If the calculator is
+     open, its own Escape handler above takes that key instead (closes the
+     calculator first, not the form underneath it). */
+  function handleDistributionEscape(e) {
+    if (e.key !== "Escape") return;
+    var popup = document.getElementById("calcPopup");
+    if (popup && popup.style.display === "flex") return;
+    if (ui.distributionFormFor) { ui.distributionFormFor = null; render(); return; }
+    if (ui.viewingDistributionRowId) { ui.viewingDistributionRowId = null; render(); return; }
+  }
 
   /* ============ event handling ============ */
   function onClick(e) {
@@ -5402,6 +5413,7 @@ function appMain() {
   document.addEventListener("click", onClick);
   document.addEventListener("change", onChange);
   document.addEventListener("keydown", handleCalcKeydown);
+  document.addEventListener("keydown", handleDistributionEscape);
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("keydown", onNoteEditorKeydown);
