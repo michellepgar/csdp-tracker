@@ -504,6 +504,12 @@
   .data-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
   .data-table td.wrap { white-space: normal; min-width: 160px; }
   .data-table tr:last-child td { border-bottom: none; }
+  /* Light-blue row hover, same idea as the Contact Info table's yellow one
+     just below — makes it obvious which row the cursor is over on wide,
+     dense tables (Issues & Concerns, Exported Files, etc). The !important
+     highlight-cell backgrounds above still win since those rules load
+     after this one and use !important themselves. */
+  .data-table:not(.contact-table) tbody tr:hover > td { background: rgba(66, 133, 244, 0.12); }
   /* A school that hasn't distributed its forms yet for the year gets a
      light red wash across the whole row, so it stands out while scanning
      down the list — same idea as the alerts-card treatment elsewhere. */
@@ -795,7 +801,7 @@ function appMain() {
        instead of the generic +Field pool every other type uses — every
        column always shows, and DOB/Insurance #/etc. are click-to-edit
        cells like the Schools Contact Information page. */
-    { id: "insurance_dob_correction", name: "Insurance & Date of Birth Correction", statusOptions: ["Pending", "Resolved"], customCorrection: true }
+    { id: "insurance_dob_correction", name: "Correction / Verification", statusOptions: ["Pending", "Resolved"], customCorrection: true }
   ];
   var NEW_ISSUE_TYPE_STATUS_OPTIONS = ["Pending", "Resolved"];
   /* Shared, editable "+Field" options for any issue — no type forces any
@@ -1213,6 +1219,19 @@ function appMain() {
     });
     return true;
   }
+  /* Type renamed to Correction / Verification once a row could be flagged
+     as either — every row saved before that had no way to say which, so
+     it defaults to "Correction" (the only kind that existed then). */
+  function migrateCorrectionKind(parsed) {
+    if (parsed._migratedCorrectionKind) return false;
+    parsed._migratedCorrectionKind = true;
+    (parsed.issues || []).forEach(function (it) {
+      if (it.type !== "insurance_dob_correction") return;
+      if (typeof it.correctionKind === "undefined") it.correctionKind = "Correction";
+      if (typeof it.needsOtherCorrection === "undefined") it.needsOtherCorrection = false;
+    });
+    return true;
+  }
   /* The team already removed "Record Needs Rechecking" once, before the
      tombstone mechanism above existed to make that removal stick — replay
      it now, one time, so it doesn't keep reappearing every reload. */
@@ -1257,6 +1276,13 @@ function appMain() {
          table — an already-saved copy predates that flag, so it has to be
          brought up to the current shape here too, same as the two above. */
       if (ty.id === "software_issue") ty.simpleIssueTable = true;
+      /* Insurance & Date of Birth Correction was renamed to Correction /
+         Verification once rows could be flagged as either kind — only
+         renames an already-saved copy still holding the old default name,
+         so a team-chosen custom name is left alone. */
+      if (ty.id === "insurance_dob_correction" && ty.name === "Insurance & Date of Birth Correction") {
+        ty.name = "Correction / Verification";
+      }
     });
   }
   /* Appends any of the standard checklist items that aren't already present
@@ -2021,6 +2047,7 @@ function appMain() {
       migrateHonorRecheckRemoval(fresh);
       migrateCorrectionFieldsExpansion(fresh);
       migrateCorrectionSimplify(fresh);
+      migrateCorrectionKind(fresh);
       migrateIssueTypes(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
@@ -2091,6 +2118,7 @@ function appMain() {
     var justMigratedRecheckRemoval = migrateHonorRecheckRemoval(s);
     var justMigratedCorrectionFields = migrateCorrectionFieldsExpansion(s);
     var justMigratedCorrectionSimplify = migrateCorrectionSimplify(s);
+    var justMigratedCorrectionKind = migrateCorrectionKind(s);
     migrateIssueTypes(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
@@ -2112,7 +2140,7 @@ function appMain() {
     var justMigratedDistributionYears = migrateDistributionYears(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -3335,7 +3363,7 @@ function appMain() {
      every column always shows (no per-row +Field toggles), and most cells
      are click-to-edit in place, the same pattern as the Schools Contact
      Information page, instead of needing to open "Edit" first. */
-  var CORRECTION_TABLE_COLS = 12;
+  var CORRECTION_TABLE_COLS = 13;
   /* Which fields a row can flag as needing correction — drives the Needs
      Correction column and the add-row form. Any combination can be
      checked; what to actually change lives in one shared Correct
@@ -3343,8 +3371,14 @@ function appMain() {
   var CORRECTION_NEEDS_FIELDS = [
     { key: "Name", needsKey: "needsNameCorrection" },
     { key: "DOB", needsKey: "needsDobCorrection" },
-    { key: "Insurance #", needsKey: "needsInsuranceCorrection" }
+    { key: "Insurance #", needsKey: "needsInsuranceCorrection" },
+    { key: "Other", needsKey: "needsOtherCorrection" }
   ];
+  /* Which kind of row this is — a Correction (something's wrong and needs
+     fixing) or a Verification (double-checking it's already right). Kept
+     as its own field rather than folded into Needs Correction, since a
+     row can need verifying without anything being wrong yet. */
+  var CORRECTION_KINDS = ["Correction", "Verification"];
   function correctionCellHtml(editing, it, field, placeholder) {
     if (!editing) return "<div class=\"contact-cell-view\">" + contactCellViewHtml(it[field] || "") + "</div>";
     return "<input class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"" + field + "\" value=\"" + esc(it[field] || "") + "\"" + (placeholder ? " placeholder=\"" + esc(placeholder) + "\"" : "") + ">";
@@ -3363,9 +3397,17 @@ function appMain() {
         "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.needsKey + "\"" + (it[f.needsKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
     }).join("");
   }
+  function correctionKindCellHtml(editing, it) {
+    var kind = it.correctionKind || "Correction";
+    if (!editing) return "<div class=\"contact-cell-view\">" + esc(kind) + "</div>";
+    var opts = CORRECTION_KINDS.map(function (k) {
+      return "<option value=\"" + esc(k) + "\"" + (k === kind ? " selected" : "") + ">" + esc(k) + "</option>";
+    }).join("");
+    return "<select class=\"contact-cell-input\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"correctionKind\">" + opts + "</select>";
+  }
   function correctionTypeSectionHtml(ty, typeList) {
-    var headerCells = "<th>Student Name</th><th>School</th><th>Grade</th>" +
-      "<th>Date of Birth</th><th>Insurance #</th><th>Needs Correction</th><th>Correct Information</th>" +
+    var headerCells = "<th>Student Name</th><th>Type</th><th>School</th><th>Grade</th>" +
+      "<th>Date of Birth</th><th>Insurance #</th><th>Needs Correction/Verification</th><th>Correct Information</th>" +
       "<th>Note</th><th>Reported by</th><th>Verified</th><th>Status</th><th></th>";
     var sortedSchools = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
     var rowsHtml = typeList.map(function (it) {
@@ -3385,6 +3427,7 @@ function appMain() {
       var editBtn = "<button class=\"link-btn\" data-action=\"" + (editing ? "done-edit-correction-row" : "edit-correction-row") + "\" data-id=\"" + it.id + "\">" + (editing ? "Done" : "Edit") + "</button>";
       return "<tr>" +
         "<td>" + correctionCellHtml(editing, it, "studentName") + "</td>" +
+        "<td>" + correctionKindCellHtml(editing, it) + "</td>" +
         "<td>" + schoolCell + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "grade") + "</td>" +
         "<td>" + correctionCellHtml(editing, it, "dob", "MM/DD/YYYY") + "</td>" +
@@ -3574,7 +3617,11 @@ function appMain() {
         "</span>" +
         (newType && newType.customCorrection
           ? "<span style=\"width:100%; margin-top:8px; display:flex; flex-wrap:wrap; align-items:center; gap:10px;\">" +
-            "<span class=\"field-mini-label\">Needs correction:</span>" +
+            "<span class=\"field-mini-label\">Type:</span>" +
+            "<select class=\"text-input\" name=\"correctionKind\" style=\"width:auto;\">" +
+            CORRECTION_KINDS.map(function (k) { return "<option value=\"" + esc(k) + "\">" + esc(k) + "</option>"; }).join("") +
+            "</select>" +
+            "<span class=\"field-mini-label\">Needs correction/verification:</span>" +
             CORRECTION_NEEDS_FIELDS.map(function (f) {
               return "<label style=\"display:flex; align-items:center; gap:4px;\"><input type=\"checkbox\" name=\"" + f.needsKey + "\"> " + esc(f.key) + "</label>";
             }).join("") +
@@ -6050,11 +6097,13 @@ function appMain() {
               id: uid("issue"),
               type: typeId,
               studentName: studentName,
+              correctionKind: (fd.get("correctionKind") || "Correction").toString(),
               schoolId: "",
               grade: "",
               needsNameCorrection: !!fd.get("needsNameCorrection"),
               needsDobCorrection: !!fd.get("needsDobCorrection"),
               needsInsuranceCorrection: !!fd.get("needsInsuranceCorrection"),
+              needsOtherCorrection: !!fd.get("needsOtherCorrection"),
               dob: "",
               insuranceNumber: "",
               correctInfo: "",
