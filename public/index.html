@@ -1836,6 +1836,21 @@ function appMain() {
     var va = state.vas.find(function (v) { return v.name === name; });
     return !!(va && va.role === "owner");
   }
+  /* Only a note's author can normally delete it — but once that person is
+     off the Team page, nobody can ever pick their name again to become
+     "the author," and it would sit there forever with no way to remove
+     it. General Notes are visible to the whole team, so an Admin/Owner
+     clears those (the same override used elsewhere in the app); a Private
+     Note stays gated to whoever it's actually visible to — the author or
+     someone it was shared with — since an Admin can't see a private note
+     at all unless it was shared with them. */
+  function canDeleteNote(note, scope) {
+    if (!note) return false;
+    if (note.author === getStoredIdentity()) return true;
+    var authorStillOnTeam = state.vas.some(function (v) { return v.name === note.author; });
+    if (authorStillOnTeam) return false;
+    return scope === "general" ? isSuperAdmin() : true;
+  }
   var THEME_KEY = "csdp_theme";
   function getStoredTheme() {
     try { return localStorage.getItem(THEME_KEY) || ""; } catch (e) { return ""; }
@@ -3832,6 +3847,8 @@ function appMain() {
       var isSharedPrivate = scope === "private" && n.author !== me;
       var ackBy = n.ackBy || [];
       var isAuthor = n.author === me;
+      var authorStillOnTeam = state.vas.some(function (v) { return v.name === n.author; });
+      var canDelete = canDeleteNote(n, scope);
       var ackHtml = "";
       if ((isUrgentGeneral && !isAuthor) || isSharedPrivate) {
         ackHtml = ackBy.indexOf(me) !== -1
@@ -3879,12 +3896,12 @@ function appMain() {
         (isUrgentGeneral ? "<div class=\"urgent-pill\">Urgent</div>" : "") +
         "<div class=\"sticky-note-text\">" + (n.text || "") + "</div>" +
         "<div class=\"sticky-note-meta\">" +
-        (scope === "general" ? esc(n.author || "Unnamed") + " · " : (scope === "private" && !isAuthor ? "Shared by " + esc(n.author || "Unnamed") + " · " : "")) +
+        (scope === "general" ? esc(n.author || "Unnamed") + (authorStillOnTeam ? "" : " (no longer on team)") + " · " : (scope === "private" && !isAuthor ? "Shared by " + esc(n.author || "Unnamed") + (authorStillOnTeam ? "" : " (no longer on team)") + " · " : "")) +
         fmtDateTime(n.createdAt) + "</div>" +
         seenByHtml + sharedWithHtml +
         "<div class=\"sticky-note-actions\">" +
-        (isAuthor ? "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" +
-          "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" : "") +
+        (isAuthor ? "<button data-action=\"edit-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">Edit</button>" : "") +
+        (canDelete ? "<button class=\"" + (pendingDelete ? "confirming" : "") + "\" data-action=\"remove-note\" data-id=\"" + n.id + "\" data-scope=\"" + scope + "\">" + (pendingDelete ? "Confirm?" : "Delete") + "</button>" : "") +
         ackHtml +
         "</div>" +
         "</div>";
@@ -4881,7 +4898,7 @@ function appMain() {
           var scope = t.getAttribute("data-scope");
           var arr = scope === "private" ? state.privateNotes : state.generalNotes;
           var note = arr.find(function (x) { return x.id === id; });
-          if (!note || note.author !== getStoredIdentity()) return;
+          if (!canDeleteNote(note, scope)) return;
           if (!isPending("note", id)) {
             ui.pendingDelete = { type: "note", id: id };
             render();
