@@ -619,8 +619,17 @@
      grid, since the columns are whatever the uploaded file happens to
      have. Reuses .cell-hl-*/.highlight-swatch/.contact-highlight-toolbar
      from Contact Info's highlight feature above. */
-  .xfile-sort-btn { background: none; border: none; font: inherit; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.7rem; color: var(--ink-faint); cursor: pointer; padding: 0; white-space: nowrap; }
+  /* --ink-faint on the header background measured at only 3.41:1 in light
+     mode (below the 4.5:1 AA minimum) — too washed out to notice as a
+     clickable sort control, which is exactly why it read as "missing."
+     --ink-soft clears 5.65:1+ in both themes. A shaded header background
+     plus an always-visible sort icon (not just after sorting) make the
+     control itself obvious regardless of color. */
+  .xfile-table thead th { background: var(--surface-2); }
+  .xfile-sort-btn { background: none; border: none; font: inherit; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; color: var(--ink-soft); cursor: pointer; padding: 4px 0; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
   .xfile-sort-btn:hover { color: var(--accent); }
+  .xfile-sort-icon { font-size: 0.85rem; opacity: 0.6; }
+  .xfile-sort-btn:hover .xfile-sort-icon, .xfile-sort-btn.sorted .xfile-sort-icon { opacity: 1; }
   .xfile-filter-input { width: 100%; padding: 3px 5px; font-size: 0.76rem; font-weight: 400; text-transform: none; letter-spacing: 0; }
   .xfile-cell { white-space: normal; min-width: 110px; vertical-align: top; }
   .xfile-cell-inner { display: flex; align-items: flex-start; gap: 4px; justify-content: space-between; }
@@ -4218,8 +4227,9 @@ function appMain() {
 
     var headerCells = (file.headers || []).map(function (h, c) {
       var isSorted = sort && sort.col === c;
-      var arrow = isSorted ? (sort.dir === "desc" ? " ▼" : " ▲") : "";
-      return "<th><button class=\"xfile-sort-btn\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\">" + esc(h || "(untitled)") + arrow + "</button></th>";
+      var icon = isSorted ? (sort.dir === "desc" ? "▼" : "▲") : "⇅";
+      return "<th><button class=\"xfile-sort-btn" + (isSorted ? " sorted" : "") + "\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" title=\"Sort by " + esc(h || "this column") + "\">" +
+        "<span>" + esc(h || "(untitled)") + "</span><span class=\"xfile-sort-icon\">" + icon + "</span></button></th>";
     }).join("") + "<th></th>";
     var filterCells = (file.headers || []).map(function (h, c) {
       return "<th><input class=\"text-input xfile-filter-input\" data-action-change=\"set-exported-filter\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" value=\"" + esc(filters[c] || "") + "\" placeholder=\"Filter…\"></th>";
