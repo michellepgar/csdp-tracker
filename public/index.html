@@ -228,9 +228,11 @@
   .card-title { font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .card-body { padding: 14px 18px 18px; }
   .card-actions { display: flex; align-items: center; gap: 10px; }
-  /* Group cards (Schools Contact Information / Distribution List): Rename
-     tucks into the bottom-right corner as a small icon instead of sitting
-     as a text button up top next to Remove. */
+  /* Schools Contact Information's group cards: Rename tucks into the
+     bottom-right corner of the title bar as a small icon instead of
+     sitting as a text button up top next to Remove. (Distribution List
+     dropped this title bar entirely — its group name lives in the table's
+     School header cell instead, see .dist-school-header-cell below.) */
   .group-card-head { position: relative; padding-bottom: 30px; }
   .group-rename-icon-btn {
     position: absolute; bottom: 6px; right: 12px; width: 24px; height: 24px; padding: 0;
@@ -238,6 +240,21 @@
     font-size: 0.78rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
   }
   .group-rename-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+  /* Distribution List's School header cell doubles as the group's title
+     bar: group name on top, "School" + Rename/Remove icons underneath. */
+  .dist-school-header-cell {
+    vertical-align: top !important; padding-top: 10px;
+    white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+  }
+  .dist-group-name-in-header {
+    font-size: 1rem; font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--ink);
+    margin-bottom: 6px; white-space: normal; overflow-wrap: break-word;
+  }
+  .dist-group-name-input { font-size: 0.92rem; font-weight: 600; width: 100%; margin-bottom: 6px; padding: 4px 6px; }
+  .dist-school-label-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-transform: uppercase; font-size: 0.76rem; color: var(--ink-faint); }
+  .dist-group-header-actions { display: flex; gap: 4px; align-items: center; }
+  .dist-group-header-actions .group-rename-icon-btn { position: static; width: 20px; height: 20px; font-size: 0.65rem; }
+  .dist-group-header-actions .icon-btn { padding: 2px 5px; font-size: 0.68rem; }
 
   .add-row-form { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
   .add-row-form input.text-input { flex: 1; min-width: 160px; }
@@ -3759,10 +3776,27 @@ function appMain() {
      full-width label row inside it, not a separate card+table — so the
      grouped headers (Number of Classrooms spanning Regular/Launch/CRR,
      Languages spanning ENG/SPN/POR/FR/HC) only need to be written once. */
-  function distributionTableHeadHtml() {
+  /* The group name (Pre-K, Elementary School, ...) lives right inside the
+     School header cell instead of a separate title bar above the table —
+     Rename/Remove ride along as small icons in the same box. */
+  function distributionSchoolHeaderCellHtml(g) {
+    var pendingGroup = isPending("distribution-group", g.id);
+    var groupEditing = ui.editingDistributionGroupId === g.id;
+    var groupNameHtml = groupEditing
+      ? "<input class=\"dist-group-name-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+      : "<div class=\"dist-group-name-in-header\">" + esc(g.name) + "</div>";
+    return "<th rowspan=\"2\" class=\"dist-school-header-cell\">" +
+      groupNameHtml +
+      "<div class=\"dist-school-label-row\"><span>School</span>" +
+      "<span class=\"dist-group-header-actions\">" +
+      "<button class=\"group-rename-icon-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\" title=\"" + (groupEditing ? "Done" : "Rename group") + "\">" + (groupEditing ? "✓" : "✏️") + "</button>" +
+      "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm?" : "🗑️") + "</button>" +
+      "</span></div></th>";
+  }
+  function distributionTableHeadHtml(g) {
     return "<thead>" +
       "<tr>" +
-      "<th rowspan=\"2\">School</th>" +
+      distributionSchoolHeaderCellHtml(g) +
       "<th rowspan=\"2\" class=\"dist-col-num\">Enrolled</th>" +
       "<th rowspan=\"2\" class=\"dist-col-center\">Distributed</th>" +
       "<th colspan=\"3\" class=\"dist-col-center dist-group-header dist-th-wrap\">Number of Classrooms</th>" +
@@ -3830,20 +3864,8 @@ function appMain() {
           "</td></tr>";
       }).join("");
 
-      var pendingGroup = isPending("distribution-group", g.id);
-      var groupEditing = ui.editingDistributionGroupId === g.id;
-      var titleHtml = groupEditing
-        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
-        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
-
-      return "<div class=\"card\"><div class=\"card-head group-card-head\">" +
-        titleHtml +
-        "<div class=\"card-actions\">" +
-        "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
-        "</div>" +
-        "<button class=\"group-rename-icon-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\" title=\"" + (groupEditing ? "Done" : "Rename group") + "\">" + (groupEditing ? "✓" : "✏️") + "</button>" +
-        "</div><div class=\"card-body\">" +
-        "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml() +
+      return "<div class=\"card\"><div class=\"card-body\">" +
+        "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml(g) +
         "<tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div></div></div>";
