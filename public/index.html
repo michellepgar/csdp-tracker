@@ -3886,7 +3886,7 @@ function appMain() {
         var totalForms = distributionRowTotalForms(r);
         var languageTotalsHtml = DISTRIBUTION_LANGUAGES.map(function (l) {
           var langTotal = distributionRowLanguageTotal(r, l.key);
-          return "<td class=\"mono dist-col-num\">" + (langTotal > 0 ? langTotal : "—") + "</td>";
+          return "<td class=\"mono dist-col-num\">" + (langTotal > 0 || r.distributed ? langTotal : "—") + "</td>";
         }).join("");
         var c = r.classrooms || {};
         var viewing = ui.viewingDistributionRowId === r.id;
