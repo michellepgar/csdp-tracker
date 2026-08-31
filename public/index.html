@@ -552,6 +552,9 @@
   .dist-packet-size-row { display: flex; align-items: center; gap: 3px; font-size: 0.72rem; color: var(--ink-faint); }
   .dist-packet-size-input.text-input { max-width: 48px; padding: 2px 4px; font-size: 0.75rem; }
   .dist-th-note { display: block; font-size: 0.62rem; text-transform: none; font-weight: 400; color: var(--ink-faint); }
+  .dist-detail-view { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; white-space: normal; }
+  .dist-detail-meta { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft); }
+  .dist-detail-meta strong { color: var(--ink); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
@@ -3833,6 +3836,38 @@ function appMain() {
       "</tr>" +
       "</thead>";
   }
+  /* Read-only expanded view (the eye button) — shows the full classroom x
+     language breakdown for one row without opening the editable form,
+     for a quick look at how a school's total got built up. */
+  function distributionDetailViewHtml(r) {
+    var bodyRows = "";
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+      DISTRIBUTION_LANGUAGES.forEach(function (l, li) {
+        var cell = r.breakdown[c.key][l.key];
+        var packetSize = distributionPacketSize(cell);
+        var cellTotal = (numOr0(cell.packets) + numOr0(cell.extraPackets)) * packetSize + numOr0(cell.loose) + numOr0(cell.extraLoose);
+        bodyRows += "<tr>" +
+          (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
+          "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(cell.packets) || "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">×" + packetSize + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(cell.loose) || "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(cell.extraPackets) || "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(cell.extraLoose) || "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (cellTotal || "—") + "</td>" +
+          "</tr>";
+      });
+    });
+    return "<div class=\"dist-detail-view\">" +
+      "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
+      "<th>Classroom Type</th><th>Language</th><th>Packets</th><th>Size</th><th>Loose</th><th>Extra Packets</th><th>Extra Loose</th><th>Row Total</th>" +
+      "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>" +
+      "<div class=\"dist-detail-meta\">" +
+      "<span><strong>Enrolled:</strong> " + esc(r.enrolled || "—") + "</span>" +
+      "<span><strong>Contact Person:</strong> " + esc(r.contactPerson || "—") + "</span>" +
+      "<span><strong>Remarks:</strong> " + esc(r.remarks || "—") + "</span>" +
+      "</div></div>";
+  }
   function distributionListPageHtml() {
     var groups = state.distributionGroups || [];
     var formTarget = ui.distributionFormFor;
@@ -3860,6 +3895,7 @@ function appMain() {
           return "<td class=\"mono dist-col-num\">" + (langTotal > 0 ? langTotal : "—") + "</td>";
         }).join("");
         var c = r.classrooms || {};
+        var viewing = ui.viewingDistributionRowId === r.id;
         var remarksEditing = ui.editingDistributionRemarksId === r.id;
         var remarksCell = remarksEditing
           ? "<td class=\"wrap dist-col-center\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
@@ -3879,9 +3915,11 @@ function appMain() {
           "<td class=\"dist-col-center\">" + esc(r.contactPerson || "—") + "</td>" +
           remarksCell +
           "<td class=\"dist-col-center\">" +
+          "<button class=\"link-btn\" data-action=\"toggle-view-distribution-row\" data-id=\"" + r.id + "\" title=\"View details\">" + (viewing ? "🙈" : "👁️") + "</button>" +
           "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-id=\"" + r.id + "\">Edit</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
-          "</td></tr>";
+          "</td></tr>" +
+          (viewing ? "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionDetailViewHtml(r) + "</td></tr>" : "");
       }).join("");
 
       return "<div class=\"card\"><div class=\"card-body\">" +
@@ -4380,9 +4418,16 @@ function appMain() {
         render(); break;
       case "edit-distribution-row":
         ui.distributionFormFor = { rowId: t.getAttribute("data-id") };
+        ui.viewingDistributionRowId = null;
         render(); break;
       case "cancel-distribution-form":
         ui.distributionFormFor = null;
+        render(); break;
+      case "toggle-view-distribution-row":
+        (function () {
+          var id = t.getAttribute("data-id");
+          ui.viewingDistributionRowId = ui.viewingDistributionRowId === id ? null : id;
+        })();
         render(); break;
       case "open-calculator":
         /* Deliberately no render()/persist() here — see the calculator
