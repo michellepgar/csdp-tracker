@@ -516,33 +516,6 @@
      highlight-cell backgrounds above still win since those rules load
      after this one and use !important themselves. */
   .data-table:not(.contact-table) tbody tr:hover > td { background: rgba(66, 133, 244, 0.12); }
-  /* Below 900px, dist-table and contact-table stop being laid out as an
-     actual table (rows/columns side by side) and become a plain vertical
-     stack of "cards" — one per school — with every field labeled and
-     readable top-to-bottom, the standard fix for a wide table on a phone.
-     data-label on each <td> (set where these tables are built) supplies
-     the text the ::before shows, since the header row itself is hidden. */
-  @media (max-width: 900px) {
-    .dist-table, .contact-table { min-width: 0; }
-    .dist-table thead, .contact-table thead { display: none; }
-    .dist-table, .dist-table tbody, .dist-table tr,
-    .contact-table, .contact-table tbody, .contact-table tr { display: block; width: 100%; }
-    .dist-table td, .contact-table td { display: block; width: 100% !important; box-sizing: border-box; text-align: left; white-space: normal; }
-    .dist-table tr, .contact-table tr {
-      border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; padding: 4px 10px; background: var(--surface);
-    }
-    .dist-table td, .contact-table td { border-right: none; padding-left: 44%; position: relative; min-height: 30px; }
-    .dist-table td::before, .contact-table td::before {
-      content: attr(data-label); position: absolute; left: 10px; top: 8px; width: 38%;
-      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-faint);
-      white-space: normal;
-    }
-    /* A blank data-label (the actions column) would otherwise still show
-       an empty bold caption taking up the usual left-hand space. */
-    .dist-table td[data-label=""]::before, .contact-table td[data-label=""]::before, .dist-table td:not([data-label])::before, .contact-table td:not([data-label])::before { content: none; }
-    .dist-table td[data-label=""], .contact-table td[data-label=""],
-    .dist-table td:not([data-label]), .contact-table td:not([data-label]) { padding-left: 10px; }
-  }
   /* A school that hasn't distributed its forms yet for the year gets a
      light red wash across the whole row, so it stands out while scanning
      down the list — same idea as the alerts-card treatment elsewhere. */
@@ -699,6 +672,47 @@
   .note-editor-area { min-height: 90px; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.6); outline: none; font-size: 0.9rem; }
   .note-editor-area ul { margin: 4px 0 4px 18px; padding: 0; list-style: disc; }
   .note-editor-area ul.list-dash { list-style-type: "- "; }
+  /* Below 900px, dist-table and contact-table stop being laid out as an
+     actual table (rows/columns side by side) and become a plain vertical
+     stack of "cards" — one per school — with every field labeled and
+     readable top-to-bottom, the standard fix for a wide table on a phone.
+     data-label on each <td> (set where these tables are built) supplies
+     the text the ::before shows, since the header row itself is hidden.
+     This block is placed at the very end of the stylesheet on purpose —
+     it overrides several earlier same-specificity rules (.dist-table's
+     own min-width/table-layout, .dist-col-num/.dist-col-center's
+     text-align), and for two selectors of equal specificity, plain
+     source order decides the winner regardless of which one sits inside
+     a @media block. Placed earlier, this lost to those later rules even
+     while its media condition matched — which was the actual bug behind
+     the "still messy on mobile" report after the first attempt at this. */
+  @media (max-width: 900px) {
+    .dist-table, .contact-table { min-width: 0; }
+    .dist-table thead, .contact-table thead { display: none; }
+    .dist-table, .dist-table tbody, .dist-table tr,
+    .contact-table, .contact-table tbody, .contact-table tr { display: block; width: 100%; }
+    .dist-table td, .contact-table td { display: block; width: 100% !important; box-sizing: border-box; text-align: left !important; white-space: normal; }
+    .dist-table tr, .contact-table tr {
+      border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; padding: 4px 10px; background: var(--surface);
+    }
+    /* !important on padding-left specifically: .dist-table td:first-child
+       (2 classes) and the dist-col-num/dist-col-center rules further up
+       (also 2 classes) both have higher specificity than this plain
+       ".dist-table td" (1 class + element), so without it the School
+       column and every centered numeric column would keep their desktop
+       padding/alignment instead of making room for the ::before label. */
+    .dist-table td, .contact-table td { border-right: none !important; padding-left: 44% !important; position: relative; min-height: 30px; }
+    .dist-table td::before, .contact-table td::before {
+      content: attr(data-label); position: absolute; left: 10px; top: 8px; width: 38%;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-faint);
+      white-space: normal; text-align: left;
+    }
+    /* A blank data-label (the actions column) would otherwise still show
+       an empty bold caption taking up the usual left-hand space. */
+    .dist-table td[data-label=""]::before, .contact-table td[data-label=""]::before, .dist-table td:not([data-label])::before, .contact-table td:not([data-label])::before { content: none; }
+    .dist-table td[data-label=""], .contact-table td[data-label=""],
+    .dist-table td:not([data-label]), .contact-table td:not([data-label]) { padding-left: 10px !important; }
+  }
 </style>
 </head>
 <body>
