@@ -2325,7 +2325,15 @@ function appMain() {
       navItem("distribution-list", "Distribution List", 0, function (v) { return v.type === "distribution-list"; }) +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
-      "</div></div>"
+      "</div></div>" +
+      (isSuperAdmin()
+        ? "<div class=\"sidebar-divider\"></div>" +
+          "<div class=\"sidebar-section\">" +
+          "<div class=\"sidebar-label\">Admin</div>" +
+          "<div class=\"nav-list\">" +
+          navItem("admin-settings", "Backup & School Year", 0, function (v) { return v.type === "admin-settings"; }) +
+          "</div></div>"
+        : "")
     );
   }
 
@@ -2471,6 +2479,7 @@ function appMain() {
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
       case "distribution-list": return distributionListPageHtml();
+      case "admin-settings": return isSuperAdmin() ? adminSettingsPageHtml() : homePageHtml();
       case "eod": return eodPageHtml();
       case "private-notes": return privateNotesPageHtml();
       case "approvals": return approvalsPageHtml();
@@ -3629,7 +3638,13 @@ function appMain() {
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">School Assignments</div></div>" +
       "<div class=\"card-body\">" +
       "<div class=\"row-list\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
-      "</div></div>" +
+      "</div></div>";
+  }
+
+  /* ---------- Backup, Restore & Start New School Year (its own page,
+     separate from Team) ---------- */
+  function adminSettingsPageHtml() {
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Backup &amp; School Year</div></div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Backup &amp; Restore</div></div>" +
       "<div class=\"card-body\">" +
       "<p style=\"margin:0 0 10px;\">Download a copy of everything in the tracker — schools, tasks, checklist progress, email tracker, distribution list, contacts, notes, all of it — anytime you want. " +
