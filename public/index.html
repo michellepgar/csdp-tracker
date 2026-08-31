@@ -486,9 +486,11 @@
      Fixed layout + a shared <colgroup> keeps columns lined up across all
      of them. */
   /* No min-width meant this table just squeezed all 10 columns to fit
-     whatever width was available — fine on desktop, but on a phone every
-     column shrank to an unreadable sliver instead of scrolling sideways
-     the way dist-table already does below. */
+     whatever width was available, which on a narrower desktop/tablet
+     window shrank every column to an unreadable sliver instead of
+     scrolling sideways the way dist-table already does below. Below
+     900px this stops applying at all — see the mobile stacked-card
+     layout further down, which replaces the table entirely on a phone. */
   .contact-table { table-layout: fixed; min-width: 1200px; }
   .contact-table th, .contact-table td { white-space: normal; overflow-wrap: break-word; }
   /* A translucent tint rather than a fixed hex — reads as a light yellow
@@ -514,23 +516,32 @@
      highlight-cell backgrounds above still win since those rules load
      after this one and use !important themselves. */
   .data-table:not(.contact-table) tbody tr:hover > td { background: rgba(66, 133, 244, 0.12); }
-  /* Only shown on phones (see the media query below) — explains the sticky
-     first column, since without this the swipe behavior itself is the
-     only clue anything's scrollable. */
-  .mobile-scroll-hint { display: none; }
-  /* dist-table and contact-table are both wider than a phone screen and
-     meant to scroll sideways inside .table-scroll — without pinning the
-     first column (School), scrolling to see later columns loses track of
-     which row you were even looking at. An explicit background is needed
-     since a sticky cell has to visually cover whatever scrolls underneath
-     it, not just sit at a fixed position with nothing behind it. */
-  .dist-table th:first-child, .dist-table td:first-child,
-  .contact-table th:first-child, .contact-table td:first-child {
-    position: sticky; left: 0; z-index: 2; background: var(--surface);
-  }
-  .dist-table thead th:first-child { z-index: 3; }
+  /* Below 900px, dist-table and contact-table stop being laid out as an
+     actual table (rows/columns side by side) and become a plain vertical
+     stack of "cards" — one per school — with every field labeled and
+     readable top-to-bottom, the standard fix for a wide table on a phone.
+     data-label on each <td> (set where these tables are built) supplies
+     the text the ::before shows, since the header row itself is hidden. */
   @media (max-width: 900px) {
-    .mobile-scroll-hint { display: block; font-size: 0.8rem; color: var(--ink-soft); margin-bottom: 8px; }
+    .dist-table, .contact-table { min-width: 0; }
+    .dist-table thead, .contact-table thead { display: none; }
+    .dist-table, .dist-table tbody, .dist-table tr,
+    .contact-table, .contact-table tbody, .contact-table tr { display: block; width: 100%; }
+    .dist-table td, .contact-table td { display: block; width: 100% !important; box-sizing: border-box; text-align: left; white-space: normal; }
+    .dist-table tr, .contact-table tr {
+      border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; padding: 4px 10px; background: var(--surface);
+    }
+    .dist-table td, .contact-table td { border-right: none; padding-left: 44%; position: relative; min-height: 30px; }
+    .dist-table td::before, .contact-table td::before {
+      content: attr(data-label); position: absolute; left: 10px; top: 8px; width: 38%;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-faint);
+      white-space: normal;
+    }
+    /* A blank data-label (the actions column) would otherwise still show
+       an empty bold caption taking up the usual left-hand space. */
+    .dist-table td[data-label=""]::before, .contact-table td[data-label=""]::before, .dist-table td:not([data-label])::before, .contact-table td:not([data-label])::before { content: none; }
+    .dist-table td[data-label=""], .contact-table td[data-label=""],
+    .dist-table td:not([data-label]), .contact-table td:not([data-label]) { padding-left: 10px; }
   }
   /* A school that hasn't distributed its forms yet for the year gets a
      light red wash across the whole row, so it stands out while scanning
@@ -2535,29 +2546,30 @@ function appMain() {
         var cells = CONTACT_FIELDS.map(function (f) {
           var hl = (r.highlights || {})[f.key];
           var tdClass = hl ? "cell-hl-" + hl : "";
+          var label = " data-label=\"" + esc(f.label) + "\"";
           if (highlightMode) {
-            return "<td class=\"" + tdClass + " cell-highlightable\" data-action=\"toggle-cell-highlight\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
+            return "<td class=\"" + tdClass + " cell-highlightable\"" + label + " data-action=\"toggle-cell-highlight\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
           }
           if (f.key === "notes" && !rowEditing) {
             var noteEditing = ui.editingContactNoteId === r.id;
             if (noteEditing) {
-              return "<td class=\"" + tdClass + "\"><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r.notes) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"notes\">" + esc(r.notes) + "</textarea>" +
+              return "<td class=\"" + tdClass + "\"" + label + "><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r.notes) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"notes\">" + esc(r.notes) + "</textarea>" +
                 "<button class=\"link-btn contact-note-edit-btn\" data-action=\"done-edit-contact-note\" data-id=\"" + r.id + "\">Done</button></td>";
             }
-            return "<td class=\"" + tdClass + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r.notes) + "</div>" +
+            return "<td class=\"" + tdClass + "\"" + label + "><div class=\"contact-cell-view\">" + contactCellViewHtml(r.notes) + "</div>" +
               "<button class=\"link-btn contact-note-edit-btn\" data-action=\"edit-contact-note\" data-id=\"" + r.id + "\" title=\"Edit notes\">✏️</button></td>";
           }
           if (rowEditing) {
-            return "<td class=\"" + tdClass + "\"><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r[f.key]) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\">" + esc(r[f.key]) + "</textarea></td>";
+            return "<td class=\"" + tdClass + "\"" + label + "><textarea class=\"contact-cell-input\" rows=\"" + contactTextareaRows(r[f.key]) + "\" data-action-change=\"set-contact-field\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" data-field=\"" + f.key + "\">" + esc(r[f.key]) + "</textarea></td>";
           }
-          return "<td class=\"" + tdClass + "\"><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
+          return "<td class=\"" + tdClass + "\"" + label + "><div class=\"contact-cell-view\">" + contactCellViewHtml(r[f.key]) + "</div></td>";
         }).join("");
         var pendingRow = isPending("contact-row", r.id);
         var moveGroupSelect = "<select class=\"text-input contact-move-select\" data-action-change=\"move-contact-row-group\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\" title=\"Move to a different group\">" +
           groups.map(function (og) { return "<option value=\"" + og.id + "\"" + (og.id === g.id ? " selected" : "") + ">" + esc(og.name) + "</option>"; }).join("") +
           "</select>";
         var actionsCell = highlightMode ? "<td></td>" :
-          "<td>" + (rowEditing ? moveGroupSelect : "") +
+          "<td data-label=\"Actions\">" + (rowEditing ? moveGroupSelect : "") +
           "<button class=\"link-btn\" data-action=\"" + (rowEditing ? "done-edit-contact-row" : "edit-contact-row") + "\" data-id=\"" + r.id + "\">" + (rowEditing ? "Done" : "Edit") + "</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-contact-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td>";
         return "<tr>" + cells + actionsCell + "</tr>";
@@ -2574,7 +2586,6 @@ function appMain() {
         "</div>" +
         "<button class=\"group-rename-icon-btn\" data-action=\"" + (groupEditing ? "done-edit-contact-group" : "edit-contact-group") + "\" data-id=\"" + g.id + "\" title=\"" + (groupEditing ? "Done" : "Rename group") + "\">" + (groupEditing ? "✓" : "✏️") + "</button>" +
         "</div><div class=\"card-body\">" +
-        "<div class=\"mobile-scroll-hint\">↔ Swipe sideways to see every column — the school name stays put.</div>" +
         "<div class=\"table-scroll\"><table class=\"data-table contact-table\">" + contactColgroupHtml() + "<thead><tr>" + headerCells + "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
@@ -4152,29 +4163,29 @@ function appMain() {
         var totalForms = distributionRowTotalForms(r);
         var languageTotalsHtml = DISTRIBUTION_LANGUAGES.map(function (l) {
           var langTotal = distributionRowLanguageTotal(r, l.key);
-          return "<td class=\"mono dist-col-num\">" + (langTotal > 0 || r.distributed ? langTotal : "—") + "</td>";
+          return "<td class=\"mono dist-col-num\" data-label=\"" + esc(l.label) + "\">" + (langTotal > 0 || r.distributed ? langTotal : "—") + "</td>";
         }).join("");
         var c = r.classrooms || {};
         var viewing = ui.viewingDistributionRowId === r.id;
         var remarksEditing = ui.editingDistributionRemarksId === r.id;
         var remarksCell = remarksEditing
-          ? "<td class=\"wrap dist-col-center\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
+          ? "<td class=\"wrap dist-col-center\" data-label=\"Remarks\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
             "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"done-edit-distribution-remarks\" data-id=\"" + r.id + "\">Done</button></td>"
-          : "<td class=\"dist-col-center\"><div class=\"dist-remarks-truncate\" title=\"" + esc(r.remarks || "") + "\">" + esc(r.remarks || "—") + "</div>" +
+          : "<td class=\"dist-col-center\" data-label=\"Remarks\"><div class=\"dist-remarks-truncate\" title=\"" + esc(r.remarks || "") + "\">" + esc(r.remarks || "—") + "</div>" +
             "<button class=\"link-btn dist-remarks-edit-btn\" data-action=\"edit-distribution-remarks\" data-id=\"" + r.id + "\" title=\"Edit remarks\">✏️</button></td>";
         return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
-          "<td>" + esc(r.school) + "</td>" +
-          "<td class=\"mono dist-col-num\">" + esc(r.enrolled || "—") + "</td>" +
-          "<td class=\"dist-col-center\"><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
-          "<td class=\"mono dist-col-num\">" + (numOr0(c.regular) > 0 ? esc(c.regular) : "—") + "</td>" +
-          "<td class=\"mono dist-col-num\">" + (numOr0(c.launch) > 0 ? esc(c.launch) : "—") + "</td>" +
-          "<td class=\"mono dist-col-num\">" + (numOr0(c.crr) > 0 ? esc(c.crr) : "—") + "</td>" +
-          "<td class=\"mono dist-col-num\">" + totalPackets + "</td>" +
+          "<td data-label=\"School\">" + esc(r.school) + "</td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"Enrolled\">" + esc(r.enrolled || "—") + "</td>" +
+          "<td class=\"dist-col-center\" data-label=\"Distributed\"><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"Regular\">" + (numOr0(c.regular) > 0 ? esc(c.regular) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"Launch\">" + (numOr0(c.launch) > 0 ? esc(c.launch) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"CRR\">" + (numOr0(c.crr) > 0 ? esc(c.crr) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"Consent Packets\">" + totalPackets + "</td>" +
           languageTotalsHtml +
-          "<td class=\"mono dist-col-num\">" + totalForms + "</td>" +
-          "<td class=\"dist-col-center\">" + esc(r.contactPerson || "—") + "</td>" +
+          "<td class=\"mono dist-col-num\" data-label=\"Total Forms\">" + totalForms + "</td>" +
+          "<td class=\"dist-col-center\" data-label=\"Contact Person\">" + esc(r.contactPerson || "—") + "</td>" +
           remarksCell +
-          "<td class=\"dist-col-center\">" +
+          "<td class=\"dist-col-center\" data-label=\"Actions\">" +
           "<button class=\"link-btn\" data-action=\"toggle-view-distribution-row\" data-id=\"" + r.id + "\" title=\"View details\">" + (viewing ? "🙈" : "👁️") + "</button>" +
           "<button class=\"link-btn\" data-action=\"" + (editingThisRow ? "cancel-distribution-form" : "edit-distribution-row") + "\" data-id=\"" + r.id + "\">" + (editingThisRow ? "Cancel" : "Edit") + "</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
@@ -4195,7 +4206,6 @@ function appMain() {
         "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
         "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
         "</div></div><div class=\"card-body\">" +
-        "<div class=\"mobile-scroll-hint\">↔ Swipe sideways to see every column — the school name stays put.</div>" +
         "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml(g) +
         "<tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
