@@ -756,7 +756,7 @@ function appMain() {
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
     contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: [],
-    distributionGroups: [], distributionSchoolYear: "", distributionArchive: []
+    distributionYears: []
   };
 
   /* ============ helpers ============ */
@@ -1554,6 +1554,51 @@ function appMain() {
     });
     return true;
   }
+  /* Folds the old single-year shape (distributionGroups/distributionSchoolYear,
+     plus any distributionArchive from a brief earlier design) into a list
+     of school-year entries — each with its own groups, all visible on the
+     page as collapsible sections instead of a separate "archive" view.
+     The earlier fields are left alone in storage (harmless) but nothing
+     live reads them after this. */
+  function migrateDistributionYears(parsed) {
+    if (parsed._migratedDistributionYears) return false;
+    parsed._migratedDistributionYears = true;
+    if (!Array.isArray(parsed.distributionYears) || parsed.distributionYears.length === 0) {
+      var years = [];
+      (parsed.distributionArchive || []).slice().sort(function (a, b) { return a.year.localeCompare(b.year); }).forEach(function (a) {
+        years.push({ id: uid("dyear"), year: a.year, groups: a.groups || [] });
+      });
+      years.push({
+        id: uid("dyear"),
+        year: parsed.distributionSchoolYear || DEFAULT_DISTRIBUTION_SCHOOL_YEAR,
+        groups: parsed.distributionGroups || []
+      });
+      parsed.distributionYears = years;
+    }
+    return true;
+  }
+  /* Group/row ids (uid("dgrp")/uid("dist")) are unique across every school
+     year, so finding one by id just means searching every year's groups —
+     no need to also track which year a form or edit-in-progress belongs
+     to for anything except brand-new rows (which don't have an id yet). */
+  function findDistributionGroupContext(groupId) {
+    var result = null;
+    (state.distributionYears || []).forEach(function (y) {
+      var g = (y.groups || []).find(function (x) { return x.id === groupId; });
+      if (g) result = { year: y, group: g };
+    });
+    return result;
+  }
+  function findDistributionRowContext(rowId) {
+    var result = null;
+    (state.distributionYears || []).forEach(function (y) {
+      (y.groups || []).forEach(function (g) {
+        var r = (g.rows || []).find(function (x) { return x.id === rowId; });
+        if (r) result = { year: y, group: g, row: r };
+      });
+    });
+    return result;
+  }
   /* Contact rows that originally packed multiple people into one cell
      separated by " / " (e.g. two nurses, two front-desk staff) are hard to
      copy cleanly — one-time reflow onto separate lines within the same
@@ -1925,6 +1970,7 @@ function appMain() {
       migrateDistributionSchoolYear(fresh);
       migrateDistributionGroups(fresh);
       migrateDistributionSeedSchools(fresh);
+      migrateDistributionYears(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -1998,13 +2044,14 @@ function appMain() {
       var justMigratedDistributionSchoolYear = migrateDistributionSchoolYear(state);
       var justMigratedDistributionGroups = migrateDistributionGroups(state);
       var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(state);
+      var justMigratedDistributionYears = migrateDistributionYears(state);
       migrateNotesToHtml(state.generalNotes);
       migrateNotesToHtml(state.privateNotes);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -3584,8 +3631,7 @@ function appMain() {
       "<p style=\"margin:0 0 10px;\">Clears every school's Tasks list — file names, statuses, Counts, and VA signatures — so each school starts the new year with an empty Tasks section. " +
       "Also clears every school's Yearly Checklist progress (who checked off what, and when) back to unchecked — the checklist's own items are <strong>not</strong> deleted, just the checkmarks. " +
       "Schools themselves, VA assignments, Email Tracker, Notes, and Issues &amp; Concerns are <strong>not</strong> touched. " +
-      "EOD Reports keep rolling into their own monthly archive automatically — nothing to do there. Schools Contact Information is <strong>not</strong> touched. " +
-      "The Distribution List starts a new blank table for the new school year — last year's numbers are saved and viewable anytime under Distribution List → View Archive. This cannot be undone.</p>" +
+      "EOD Reports keep rolling into their own monthly archive automatically — nothing to do there. Schools Contact Information and the Distribution List are <strong>not</strong> touched either (the Distribution List has its own \"+ Add School Year\" instead). This cannot be undone.</p>" +
       "<form class=\"add-row-form\" data-action=\"reset-all-tasks\">" +
       "<input class=\"text-input\" name=\"confirm\" placeholder=\"Type RESET to confirm\" autocomplete=\"off\" style=\"max-width:220px;\">" +
       "<button class=\"btn danger\" type=\"submit\">Reset all tasks</button>" +
@@ -3895,83 +3941,28 @@ function appMain() {
   }
   /* Read-only — archived years are a frozen snapshot, not something to
      edit in place. No Add/Edit/Remove controls, no group rename. */
-  function distributionArchiveGroupCardHtml(g, colgroupHtml) {
-    var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
-      var totalPackets = distributionRowTotalPackets(r);
-      var totalForms = distributionRowTotalForms(r);
-      var languageTotalsHtml = DISTRIBUTION_LANGUAGES.map(function (l) {
-        var langTotal = distributionRowLanguageTotal(r, l.key);
-        return "<td class=\"mono dist-col-num\">" + (langTotal > 0 || r.distributed ? langTotal : "—") + "</td>";
-      }).join("");
-      var c = r.classrooms || {};
-      return "<tr class=\"" + (!r.distributed ? "dist-row-pending" : "") + "\">" +
-        "<td>" + esc(r.school) + "</td>" +
-        "<td class=\"mono dist-col-num\">" + esc(r.enrolled || "—") + "</td>" +
-        "<td class=\"dist-col-center\">" + (r.distributed ? "✓" : "—") + "</td>" +
-        "<td class=\"mono dist-col-num\">" + (numOr0(c.regular) > 0 ? esc(c.regular) : "—") + "</td>" +
-        "<td class=\"mono dist-col-num\">" + (numOr0(c.launch) > 0 ? esc(c.launch) : "—") + "</td>" +
-        "<td class=\"mono dist-col-num\">" + (numOr0(c.crr) > 0 ? esc(c.crr) : "—") + "</td>" +
-        "<td class=\"mono dist-col-num\">" + totalPackets + "</td>" +
-        languageTotalsHtml +
-        "<td class=\"mono dist-col-num\">" + totalForms + "</td>" +
-        "<td class=\"dist-col-center\">" + esc(r.contactPerson || "—") + "</td>" +
-        "<td class=\"dist-col-center\"><div class=\"dist-remarks-truncate\" title=\"" + esc(r.remarks || "") + "\">" + esc(r.remarks || "—") + "</div></td>" +
-        "<td></td></tr>";
-    }).join("");
-    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(g.name) + "</div></div><div class=\"card-body\">" +
-      "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + "<thead><tr>" +
-      "<th>School</th><th class=\"dist-col-num\">Enrolled</th><th class=\"dist-col-center\">Distributed</th>" +
-      "<th class=\"dist-col-num\">Regular</th><th class=\"dist-col-num\">Launch</th><th class=\"dist-col-num\">CRR</th>" +
-      "<th class=\"dist-col-num\">Packets</th>" +
-      DISTRIBUTION_LANGUAGES.map(function (l) { return "<th class=\"dist-col-num\">" + esc(l.label) + "</th>"; }).join("") +
-      "<th class=\"dist-col-num\">Total Forms</th><th>Contact Person</th><th>Remarks</th><th></th>" +
-      "</tr></thead><tbody>" +
-      (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group.") + "</td></tr>") +
-      "</tbody></table></div></div></div>";
+  /* Each school year is its own collapsible section on one page, instead
+     of a separate "current" page plus a read-only archive elsewhere — a
+     year is exactly as editable as any other, just collapsed by default
+     once a newer year exists. */
+  function isDistributionYearCollapsed(yearId, isLast) {
+    var overrides = ui.distributionYearCollapsed || {};
+    if (yearId in overrides) return overrides[yearId];
+    return !isLast;
   }
-  function distributionArchiveViewHtml() {
-    var archive = (state.distributionArchive || []).slice().sort(function (a, b) { return b.year.localeCompare(a.year); });
-    if (archive.length === 0) {
-      return "<div class=\"card\"><div class=\"card-body\">" +
-        emptyState("No archived school years yet — this fills in the next time Start New School Year is used, under Team.") +
-        "</div></div>";
-    }
-    var selectedYear = ui.distributionArchiveYear && archive.some(function (a) { return a.year === ui.distributionArchiveYear; })
-      ? ui.distributionArchiveYear : archive[0].year;
-    var snapshot = archive.filter(function (a) { return a.year === selectedYear; })[0];
-    var yearOpts = archive.map(function (a) { return "<option value=\"" + esc(a.year) + "\"" + (a.year === selectedYear ? " selected" : "") + ">" + esc(a.year) + "</option>"; }).join("");
-    var longestSchoolChars = (snapshot.groups || []).reduce(function (max, g) {
-      return (g.rows || []).reduce(function (m, r) { return Math.max(m, (r.school || "").length); }, max);
-    }, 10);
-    var colgroupHtml = distributionColgroupHtml(longestSchoolChars);
-    return "<div class=\"card\"><div class=\"card-body\">" +
-      "<label class=\"field-mini-label\">Viewing archived year</label> " +
-      "<select class=\"text-input\" style=\"max-width:160px;\" data-action-change=\"set-distribution-archive-year\">" + yearOpts + "</select>" +
-      "</div></div>" +
-      (snapshot.groups || []).map(function (g) { return distributionArchiveGroupCardHtml(g, colgroupHtml); }).join("");
-  }
-  function distributionListPageHtml() {
-    var showArchive = !!ui.distributionShowArchive;
-    var currentYear = state.distributionSchoolYear || DEFAULT_DISTRIBUTION_SCHOOL_YEAR;
-    var archiveToggleHtml = "<button class=\"btn ghost\" data-action=\"toggle-distribution-archive\">" +
-      (showArchive ? "← Back to current year" : "View Archive (previous years)") + "</button>";
-    var headerHtml = "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div>" +
-      "<div class=\"page-sub\">" + (showArchive ? "Archived school years" : "School Year " + esc(currentYear)) + "</div></div>" +
-      archiveToggleHtml + "</div>";
-    if (showArchive) return headerHtml + distributionArchiveViewHtml();
-
-    var groups = state.distributionGroups || [];
+  function distributionYearBodyHtml(entry) {
+    var groups = entry.groups || [];
     var formTarget = ui.distributionFormFor;
-    var addingNew = formTarget && !formTarget.rowId;
+    var addingNewHere = formTarget && !formTarget.rowId && formTarget.yearId === entry.id;
     var editingRowId = formTarget ? formTarget.rowId : null;
     var longestSchoolChars = groups.reduce(function (max, g) {
       return (g.rows || []).reduce(function (m, r) { return Math.max(m, (r.school || "").length); }, max);
     }, 10);
     var colgroupHtml = distributionColgroupHtml(longestSchoolChars);
 
-    var addSchoolHtml = addingNew
-      ? "<div class=\"card\"><div class=\"card-body\">" + distributionFormHtml(distributionRow(""), false, "", groups) + "</div></div>"
-      : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\">+ Add school</button>";
+    var addSchoolHtml = addingNewHere
+      ? "<div class=\"card\"><div class=\"card-body\">" + distributionFormHtml(distributionRow("", entry.year), false, "", groups) + "</div></div>"
+      : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\" data-year=\"" + entry.id + "\">+ Add school</button>";
 
     var groupsHtml = groups.map(function (g) {
       var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
@@ -4013,17 +4004,49 @@ function appMain() {
           (viewing ? "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionDetailViewHtml(r) + "</td></tr>" : "");
       }).join("");
 
-      return "<div class=\"card\"><div class=\"card-body\">" +
+      var pendingGroup = isPending("distribution-group", g.id);
+      var groupEditing = ui.editingDistributionGroupId === g.id;
+      var titleHtml = groupEditing
+        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
+
+      return "<div class=\"card\"><div class=\"card-head\">" +
+        titleHtml +
+        "<div class=\"card-actions\">" +
+        "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
+        "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
+        "</div></div><div class=\"card-body\">" +
         "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml(g) +
         "<tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div></div></div>";
     }).join("");
 
-    return headerHtml + addSchoolHtml + groupsHtml +
-      "<form class=\"mini-form\" data-action=\"add-distribution-group\">" +
+    return addSchoolHtml + groupsHtml +
+      "<form class=\"mini-form\" data-action=\"add-distribution-group\" data-year=\"" + entry.id + "\">" +
       "<input class=\"text-input\" name=\"name\" placeholder=\"New group name\" required>" +
       "<button class=\"btn small\" type=\"submit\">+ Add group</button></form>";
+  }
+  function distributionListPageHtml() {
+    var years = state.distributionYears || [];
+    var yearsHtml = years.map(function (entry, idx) {
+      var isLast = idx === years.length - 1;
+      var collapsed = isDistributionYearCollapsed(entry.id, isLast);
+      return "<div class=\"card dist-year-card\"><div class=\"card-head\">" +
+        "<div class=\"card-title\">School Year " + esc(entry.year) + "</div>" +
+        "<div class=\"card-actions\">" +
+        "<button class=\"btn ghost\" data-action=\"toggle-distribution-year-collapse\" data-id=\"" + entry.id + "\">" + (collapsed ? "▶ Show" : "▼ Hide") + "</button>" +
+        "</div></div>" +
+        (collapsed ? "" : "<div class=\"card-body\">" + distributionYearBodyHtml(entry) + "</div>") +
+        "</div>";
+    }).join("");
+
+    var lastYearLabel = years.length ? years[years.length - 1].year : DEFAULT_DISTRIBUTION_SCHOOL_YEAR;
+    var suggestedYear = nextSchoolYear(lastYearLabel);
+    var addYearHtml = "<button class=\"add-inline-btn\" data-action=\"add-distribution-year\">+ Add School Year (" + esc(suggestedYear) + ")</button>";
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div></div></div>" +
+      (yearsHtml || emptyState("No school years yet.")) + addYearHtml;
   }
 
   /* ---------- Private Notes ---------- */
@@ -4528,19 +4551,51 @@ function appMain() {
         }); break;
       case "remove-distribution-row":
         (function () {
-          var groupId = t.getAttribute("data-group"), rowId = t.getAttribute("data-id");
+          var rowId = t.getAttribute("data-id");
           requestDelete("distribution-row", rowId, function () {
-            var g = state.distributionGroups.find(function (x) { return x.id === groupId; });
-            if (g) g.rows = g.rows.filter(function (r) { return r.id !== rowId; });
+            var ctx = findDistributionRowContext(rowId);
+            if (ctx) ctx.group.rows = ctx.group.rows.filter(function (r) { return r.id !== rowId; });
             if (ui.distributionFormFor && ui.distributionFormFor.rowId === rowId) ui.distributionFormFor = null;
           });
         })(); break;
       case "remove-distribution-group":
         requestDelete("distribution-group", t.getAttribute("data-id"), function () {
-          state.distributionGroups = state.distributionGroups.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
+          var groupId = t.getAttribute("data-id");
+          var ctx = findDistributionGroupContext(groupId);
+          if (ctx) ctx.year.groups = ctx.year.groups.filter(function (x) { return x.id !== groupId; });
         }); break;
       case "open-add-distribution-row":
-        ui.distributionFormFor = { rowId: null };
+        ui.distributionFormFor = { rowId: null, yearId: t.getAttribute("data-year") };
+        render(); break;
+      case "add-distribution-year":
+        (function () {
+          var years = state.distributionYears || [];
+          var lastEntry = years[years.length - 1];
+          var newYear = nextSchoolYear(lastEntry ? lastEntry.year : DEFAULT_DISTRIBUTION_SCHOOL_YEAR);
+          /* Same schools/groups as the most recent year, blanked out —
+             matches how a fresh year always used to start, just without
+             touching anything else and without needing RESET to trigger
+             it. */
+          var newEntry = {
+            id: uid("dyear"),
+            year: newYear,
+            groups: lastEntry
+              ? lastEntry.groups.map(function (g) {
+                  return { id: uid("dgrp"), name: g.name, rows: (g.rows || []).map(function (r) { return distributionRow(r.school, newYear); }) };
+                })
+              : buildDefaultDistributionGroups(newYear)
+          };
+          state.distributionYears = years.concat([newEntry]);
+          persist();
+        })(); break;
+      case "toggle-distribution-year-collapse":
+        (function () {
+          var id = t.getAttribute("data-id");
+          var years = state.distributionYears || [];
+          var isLast = years.length > 0 && years[years.length - 1].id === id;
+          ui.distributionYearCollapsed = ui.distributionYearCollapsed || {};
+          ui.distributionYearCollapsed[id] = !isDistributionYearCollapsed(id, isLast);
+        })();
         render(); break;
       case "edit-distribution-row":
         ui.distributionFormFor = { rowId: t.getAttribute("data-id") };
@@ -4579,9 +4634,6 @@ function appMain() {
       case "toggle-eod-archive":
         ui.eodShowArchive = !ui.eodShowArchive;
         ui.eodFilterMonth = "";
-        render(); break;
-      case "toggle-distribution-archive":
-        ui.distributionShowArchive = !ui.distributionShowArchive;
         render(); break;
       case "toggle-issue-field-editor": ui.issueFieldEditorOpen = !ui.issueFieldEditorOpen; render(); break;
       case "edit-contact-row": ui.editingContactRowId = t.getAttribute("data-id"); render(); break;
@@ -4880,22 +4932,20 @@ function appMain() {
         })(); break;
       case "toggle-distribution-distributed":
         (function () {
-          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
-          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
-          if (r) r.distributed = !!t.checked;
+          var ctx = findDistributionRowContext(t.getAttribute("data-row"));
+          if (ctx) ctx.row.distributed = !!t.checked;
           persist();
         })(); break;
       case "set-distribution-group-name":
         (function () {
-          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
-          if (g) g.name = t.value;
+          var ctx = findDistributionGroupContext(t.getAttribute("data-group"));
+          if (ctx) ctx.group.name = t.value;
           persist();
         })(); break;
       case "set-distribution-remarks":
         (function () {
-          var g = state.distributionGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
-          var r = g && g.rows.find(function (x) { return x.id === t.getAttribute("data-row"); });
-          if (r) r.remarks = t.value;
+          var ctx = findDistributionRowContext(t.getAttribute("data-row"));
+          if (ctx) ctx.row.remarks = t.value;
           persist();
         })(); break;
       case "set-contact-group-name":
@@ -5050,9 +5100,6 @@ function appMain() {
       case "filter-eod-month":
         ui.eodFilterMonth = t.value;
         render(); break;
-      case "set-distribution-archive-year":
-        ui.distributionArchiveYear = t.value;
-        render(); break;
       case "select-new-issue-type":
         ui.newIssueType = t.value;
         render(); break;
@@ -5157,23 +5204,27 @@ function appMain() {
           var rowId = form.getAttribute("data-row");
           var school = (fd.get("school") || "").toString().trim();
           if (!school) return;
-          var targetGroup = state.distributionGroups.find(function (x) { return x.id === groupId; });
-          if (!targetGroup) return;
+          var targetGroupCtx = findDistributionGroupContext(groupId);
+          if (!targetGroupCtx) return;
+          var targetGroup = targetGroupCtx.group;
           targetGroup.rows = targetGroup.rows || [];
           /* The row being edited might currently live in a DIFFERENT group
              than the one just picked (that's exactly what "move to another
              group" means) — find and remove it from wherever it actually
              is, not just from the target group, or a group change here
              would leave the old copy behind and add a new one instead of
-             moving it. */
+             moving it. Groups only ever move within their own school
+             year (the form's Group dropdown only lists that year's
+             groups), so this never crosses years. */
           var row = null;
           if (rowId) {
-            state.distributionGroups.forEach(function (g) {
-              var idx = (g.rows || []).findIndex(function (x) { return x.id === rowId; });
-              if (idx !== -1) row = g.rows.splice(idx, 1)[0];
-            });
+            var existingCtx = findDistributionRowContext(rowId);
+            if (existingCtx) {
+              existingCtx.group.rows = existingCtx.group.rows.filter(function (x) { return x.id !== rowId; });
+              row = existingCtx.row;
+            }
           }
-          if (!row) row = distributionRow("");
+          if (!row) row = distributionRow("", targetGroupCtx.year.year);
           targetGroup.rows.push(row);
           row.school = school;
           row.enrolled = (fd.get("enrolled") || "").toString().trim();
@@ -5200,9 +5251,11 @@ function appMain() {
       case "add-distribution-group":
         (function () {
           var name = (fd.get("name") || "").toString().trim();
-          if (!name) return;
-          state.distributionGroups = state.distributionGroups || [];
-          state.distributionGroups.push({ id: uid("dgrp"), name: name, rows: [] });
+          var yearId = form.getAttribute("data-year");
+          var yearEntry = (state.distributionYears || []).find(function (y) { return y.id === yearId; });
+          if (!name || !yearEntry) return;
+          yearEntry.groups = yearEntry.groups || [];
+          yearEntry.groups.push({ id: uid("dgrp"), name: name, rows: [] });
           persist();
         })(); break;
       case "add-email-item":
@@ -5509,27 +5562,10 @@ function appMain() {
              leaves the checklist's own items alone — same template, just
              starting the new year unchecked. */
           state.checklistProgress = {};
-
-          /* Distribution List: snapshot this year's full numbers into the
-             archive, then start next year with the same schools/groups
-             but every number blanked out — same idea as Tasks/Checklist,
-             just for this page's own data instead. Schools Contact
-             Information isn't part of this at all; EOD Reports already
-             rolls into its own monthly archive automatically and needs
-             nothing done to it here. */
-          var closingYear = state.distributionSchoolYear || DEFAULT_DISTRIBUTION_SCHOOL_YEAR;
-          state.distributionArchive = state.distributionArchive || [];
-          state.distributionArchive.push({
-            year: closingYear,
-            groups: JSON.parse(JSON.stringify(state.distributionGroups || []))
-          });
-          var newYear = nextSchoolYear(closingYear);
-          (state.distributionGroups || []).forEach(function (g) {
-            g.rows = (g.rows || []).map(function (r) { return distributionRow(r.school, newYear); });
-          });
-          state.distributionSchoolYear = newYear;
-
-          showToast("Reset for the new school year: Tasks and Yearly Checklist progress cleared, and the Distribution List has started a new blank " + newYear + " table (last year's numbers are saved under Distribution List → View Archive).");
+          /* The Distribution List is deliberately NOT touched here — it
+             has its own "+ Add School Year" control instead, so a new
+             year there doesn't have to line up with this button. */
+          showToast("All schools' Tasks lists and Yearly Checklist progress have been reset for the new school year.");
           persist();
         })(); break;
       case "save-template":
