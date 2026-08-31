@@ -563,6 +563,16 @@
   .dist-detail-remarks strong { color: var(--ink); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
+  /* Full-width language divider between the Edit form's breakdown
+     sections — bold enough (thicker top border, accent-tinted background)
+     that each language's block of rows reads as its own clearly separated
+     section instead of blending into the one above it. */
+  .dist-lang-divider-row td.dist-lang-divider-cell {
+    background: var(--accent-soft); color: var(--accent-soft-ink);
+    font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em;
+    text-align: left; padding: 6px 10px; border-top: 2px solid var(--accent);
+  }
+  .dist-lang-divider-row:first-child td.dist-lang-divider-cell { border-top: none; }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   .num-input-wrap { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
   .num-input-wrap input.text-input { flex: 1; min-width: 0; }
@@ -3936,14 +3946,18 @@ function appMain() {
       "<button type=\"button\" class=\"calc-trigger\" data-action=\"open-calculator\" data-target=\"" + name + "\" title=\"Open calculator\">🧮</button>" +
       "</span>";
   }
-  /* One compact 9-row table (3 classroom types x 3 languages) instead of
-     three separate titled blocks — same data, much less sprawl. Classroom
-     type only prints once per group of 3 rows (rowspan) since repeating
-     it on every row added nothing but noise. */
+  /* Grouped by language first, classroom type second — a divider row with
+     the language name spans the full width between each group, so whoever
+     is filling in one language's numbers can see clearly where that
+     language's section starts and ends instead of hunting through a single
+     undivided 9-row grid. Field names are unchanged either way (still
+     breakdown__<classroom>__<language>__<field>), so saving needs no
+     changes. */
   function distributionBreakdownFieldsHtml(row) {
     var bodyRows = "";
-    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
-      DISTRIBUTION_LANGUAGES.forEach(function (l, li) {
+    DISTRIBUTION_LANGUAGES.forEach(function (l) {
+      bodyRows += "<tr class=\"dist-lang-divider-row\"><td colspan=\"5\" class=\"dist-lang-divider-cell\">" + esc(l.label) + "</td></tr>";
+      DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
         var cell = row.breakdown[c.key][l.key];
         var fieldName = function (f) { return "breakdown__" + c.key + "__" + l.key + "__" + f; };
         /* A packet is 25 forms by default, but not always ("24 packets x
@@ -3954,8 +3968,7 @@ function appMain() {
           "<span class=\"dist-packet-size-row\">×<input class=\"text-input dist-packet-size-input\" type=\"number\" min=\"1\" name=\"" + fieldName("packetSize") + "\" value=\"" + esc(cell.packetSize) + "\" placeholder=\"25\" title=\"Forms per packet (default 25)\"></span>" +
           "</div>";
         bodyRows += "<tr>" +
-          (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
-          "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
+          "<td class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" +
           "<td>" + packetsCellHtml + "</td>" +
           "<td>" + numInputWithCalc(fieldName("loose"), cell.loose) + "</td>" +
           "<td>" + numInputWithCalc(fieldName("extraPackets"), cell.extraPackets) + "</td>" +
@@ -3964,7 +3977,7 @@ function appMain() {
       });
     });
     return "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
-      "<th>Classroom Type</th><th>Language</th><th>Packets<br><span class=\"dist-th-note\">(size editable)</span></th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
+      "<th>Classroom Type</th><th>Packets<br><span class=\"dist-th-note\">(size editable)</span></th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>";
   }
   function distributionFormHtml(row, isEdit, groupId, groupOptions) {
