@@ -562,17 +562,17 @@
   .dist-detail-remarks { margin-top: 10px; font-size: 0.85rem; color: var(--ink-soft); }
   .dist-detail-remarks strong { color: var(--ink); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
-  .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
-  /* Full-width language divider between the Edit form's breakdown
-     sections — bold enough (thicker top border, accent-tinted background)
-     that each language's block of rows reads as its own clearly separated
-     section instead of blending into the one above it. */
-  .dist-lang-divider-row td.dist-lang-divider-cell {
-    background: var(--accent-soft); color: var(--accent-soft-ink);
-    font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em;
-    text-align: left; padding: 6px 10px; border-top: 2px solid var(--accent);
-  }
-  .dist-lang-divider-row:first-child td.dist-lang-divider-cell { border-top: none; }
+  /* border-bottom sits directly on the rowspan'd cell (not just the group's
+     last <tr>) because a rowspan cell's own bottom edge always lands at the
+     bottom of its span — the actual classroom-type group boundary — no
+     matter which row's class list it's nominally part of. !important
+     matches the vertical-align rule above it, both needed to beat the
+     higher-specificity ".data-table td" default border. */
+  .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); border-bottom: 2px solid var(--accent) !important; }
+  /* Matching thick line under the rest of that same last row, so the
+     divider reads as one continuous line all the way across the table
+     instead of just showing under the Classroom Type column. */
+  .dist-breakdown-table tr.dist-classroom-group-end > td { border-bottom: 2px solid var(--accent); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   .num-input-wrap { display: inline-flex; align-items: center; gap: 4px; width: 100%; }
   .num-input-wrap input.text-input { flex: 1; min-width: 0; }
@@ -1536,22 +1536,34 @@ function appMain() {
     var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
     return (a + 1) + "-" + (b + 1);
   }
+  /* Regular Classroom only ever gets ENG/SPN forms — Launch and CRR are the
+     two that hand out all three languages. Each type lists which language
+     keys actually apply to it, so the breakdown only ever asks for cells
+     that are real for that classroom type. */
   var DISTRIBUTION_CLASSROOM_TYPES = [
-    { key: "regular", label: "Regular Classroom" },
-    { key: "launch", label: "Launch Classes" },
-    { key: "crr", label: "CRR Classes" }
+    { key: "regular", label: "Regular Classroom", languages: ["engSpn"] },
+    { key: "launch", label: "Launch Classes", languages: ["engSpn", "porFr", "hc"] },
+    { key: "crr", label: "CRR Classes", languages: ["engSpn", "porFr", "hc"] }
   ];
   var DISTRIBUTION_LANGUAGES = [
     { key: "engSpn", label: "ENG/SPN" },
     { key: "porFr", label: "POR/FR" },
     { key: "hc", label: "HC" }
   ];
+  /* The DISTRIBUTION_LANGUAGES objects (key + label) that actually apply to
+     one classroom type, in the same order — every place that renders a
+     classroom type's language rows filters through this instead of
+     hardcoding all three. */
+  function distributionLanguagesForType(c) {
+    var allowed = c.languages || [];
+    return DISTRIBUTION_LANGUAGES.filter(function (l) { return allowed.indexOf(l.key) !== -1; });
+  }
   function emptyDistributionBreakdown() {
     var out = {};
     DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
       out[c.key] = {};
-      DISTRIBUTION_LANGUAGES.forEach(function (l) {
-        out[c.key][l.key] = { packets: "", packetSize: "", loose: "", extraPackets: "", extraLoose: "" };
+      (c.languages || []).forEach(function (langKey) {
+        out[c.key][langKey] = { packets: "", packetSize: "", loose: "", extraPackets: "", extraLoose: "" };
       });
     });
     return out;
@@ -3946,20 +3958,19 @@ function appMain() {
       "<button type=\"button\" class=\"calc-trigger\" data-action=\"open-calculator\" data-target=\"" + name + "\" title=\"Open calculator\">🧮</button>" +
       "</span>";
   }
-  /* Grouped by language first, classroom type second — a divider row with
-     the language name spans the full width between each group, so whoever
-     is filling in one language's numbers can see clearly where that
-     language's section starts and ends instead of hunting through a single
-     undivided 9-row grid. Field names are unchanged either way (still
-     breakdown__<classroom>__<language>__<field>), so saving needs no
-     changes. */
+  /* Grouped by classroom type (Regular's one ENG/SPN row, then Launch's and
+     CRR's three language rows each) — a thick line under the last language
+     row of every type (dist-classroom-group-end) marks exactly where one
+     classroom type's section ends and the next begins. */
   function distributionBreakdownFieldsHtml(row) {
     var bodyRows = "";
-    DISTRIBUTION_LANGUAGES.forEach(function (l) {
-      bodyRows += "<tr class=\"dist-lang-divider-row\"><td colspan=\"5\" class=\"dist-lang-divider-cell\">" + esc(l.label) + "</td></tr>";
-      DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c, ci) {
+      var langs = distributionLanguagesForType(c);
+      var isLastGroup = ci === DISTRIBUTION_CLASSROOM_TYPES.length - 1;
+      langs.forEach(function (l, li) {
         var cell = row.breakdown[c.key][l.key];
         var fieldName = function (f) { return "breakdown__" + c.key + "__" + l.key + "__" + f; };
+        var isLastRowOfGroup = li === langs.length - 1;
         /* A packet is 25 forms by default, but not always ("24 packets x
            30") — the packet-size input rides right alongside the packet
            count, in the same column, instead of a whole extra column. */
@@ -3967,8 +3978,9 @@ function appMain() {
           numInputWithCalc(fieldName("packets"), cell.packets) +
           "<span class=\"dist-packet-size-row\">×<input class=\"text-input dist-packet-size-input\" type=\"number\" min=\"1\" name=\"" + fieldName("packetSize") + "\" value=\"" + esc(cell.packetSize) + "\" placeholder=\"25\" title=\"Forms per packet (default 25)\"></span>" +
           "</div>";
-        bodyRows += "<tr>" +
-          "<td class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" +
+        bodyRows += "<tr" + (isLastRowOfGroup && !isLastGroup ? " class=\"dist-classroom-group-end\"" : "") + ">" +
+          (li === 0 ? "<td rowspan=\"" + langs.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
+          "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
           "<td>" + packetsCellHtml + "</td>" +
           "<td>" + numInputWithCalc(fieldName("loose"), cell.loose) + "</td>" +
           "<td>" + numInputWithCalc(fieldName("extraPackets"), cell.extraPackets) + "</td>" +
@@ -3977,7 +3989,7 @@ function appMain() {
       });
     });
     return "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
-      "<th>Classroom Type</th><th>Packets<br><span class=\"dist-th-note\">(size editable)</span></th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
+      "<th>Classroom Type</th><th>Language</th><th>Packets<br><span class=\"dist-th-note\">(size editable)</span></th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>";
   }
   function distributionFormHtml(row, isEdit, groupId, groupOptions) {
@@ -4078,13 +4090,16 @@ function appMain() {
      for a quick look at how a school's total got built up. */
   function distributionDetailViewHtml(r) {
     var bodyRows = "";
-    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
-      DISTRIBUTION_LANGUAGES.forEach(function (l, li) {
-        var cell = r.breakdown[c.key][l.key];
+    DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c, ci) {
+      var langs = distributionLanguagesForType(c);
+      var isLastGroup = ci === DISTRIBUTION_CLASSROOM_TYPES.length - 1;
+      langs.forEach(function (l, li) {
+        var cell = r.breakdown[c.key][l.key] || {};
         var packetSize = distributionPacketSize(cell);
         var cellTotal = (numOr0(cell.packets) + numOr0(cell.extraPackets)) * packetSize + numOr0(cell.loose) + numOr0(cell.extraLoose);
-        bodyRows += "<tr>" +
-          (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
+        var isLastRowOfGroup = li === langs.length - 1;
+        bodyRows += "<tr" + (isLastRowOfGroup && !isLastGroup ? " class=\"dist-classroom-group-end\"" : "") + ">" +
+          (li === 0 ? "<td rowspan=\"" + langs.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
           "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
           "<td class=\"mono dist-col-num\">" + (numOr0(cell.packets) || "—") + "</td>" +
           "<td class=\"mono dist-col-num\">×" + packetSize + "</td>" +
