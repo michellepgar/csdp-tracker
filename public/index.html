@@ -553,8 +553,6 @@
   .dist-packet-size-input.text-input { max-width: 48px; padding: 2px 4px; font-size: 0.75rem; }
   .dist-th-note { display: block; font-size: 0.62rem; text-transform: none; font-weight: 400; color: var(--ink-faint); }
   .dist-detail-view { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; white-space: normal; }
-  .dist-detail-meta { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft); }
-  .dist-detail-meta strong { color: var(--ink); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
@@ -3862,11 +3860,7 @@ function appMain() {
       "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
       "<th>Classroom Type</th><th>Language</th><th>Packets</th><th>Size</th><th>Loose</th><th>Extra Packets</th><th>Extra Loose</th><th>Row Total</th>" +
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>" +
-      "<div class=\"dist-detail-meta\">" +
-      "<span><strong>Enrolled:</strong> " + esc(r.enrolled || "—") + "</span>" +
-      "<span><strong>Contact Person:</strong> " + esc(r.contactPerson || "—") + "</span>" +
-      "<span><strong>Remarks:</strong> " + esc(r.remarks || "—") + "</span>" +
-      "</div></div>";
+      "</div>";
   }
   function distributionListPageHtml() {
     var groups = state.distributionGroups || [];
