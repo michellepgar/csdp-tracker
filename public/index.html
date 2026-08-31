@@ -404,6 +404,13 @@
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
   .card-head.accent-card-head .card-title { color: var(--card-head-accent-ink); }
+  /* .link-btn's own color (--ink-soft) is tuned to sit on the plain card
+     background, not on this header's accent background — on the light
+     theme that's a medium gray-blue on top of a dark blue bar, nearly
+     unreadable. Anything sitting directly on the accent bar needs the
+     accent's own ink token instead. */
+  .accent-card-head .link-btn { color: var(--card-head-accent-ink); opacity: 0.85; }
+  .accent-card-head .link-btn:hover { opacity: 1; }
   .va-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; }
   .va-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; font-family: Calibri, "Segoe UI", sans-serif; color: var(--ink); white-space: nowrap; }
   .va-tag-remove { background: none; border: none; color: inherit; opacity: 0.55; font-size: 0.85rem; line-height: 1; padding: 0; }
