@@ -485,7 +485,11 @@
      column (e.g. Nurse Email) ends up a different width in every group.
      Fixed layout + a shared <colgroup> keeps columns lined up across all
      of them. */
-  .contact-table { table-layout: fixed; }
+  /* No min-width meant this table just squeezed all 10 columns to fit
+     whatever width was available — fine on desktop, but on a phone every
+     column shrank to an unreadable sliver instead of scrolling sideways
+     the way dist-table already does below. */
+  .contact-table { table-layout: fixed; min-width: 1200px; }
   .contact-table th, .contact-table td { white-space: normal; overflow-wrap: break-word; }
   /* A translucent tint rather than a fixed hex — reads as a light yellow
      highlight against either theme's row background without needing a
@@ -510,6 +514,24 @@
      highlight-cell backgrounds above still win since those rules load
      after this one and use !important themselves. */
   .data-table:not(.contact-table) tbody tr:hover > td { background: rgba(66, 133, 244, 0.12); }
+  /* Only shown on phones (see the media query below) — explains the sticky
+     first column, since without this the swipe behavior itself is the
+     only clue anything's scrollable. */
+  .mobile-scroll-hint { display: none; }
+  /* dist-table and contact-table are both wider than a phone screen and
+     meant to scroll sideways inside .table-scroll — without pinning the
+     first column (School), scrolling to see later columns loses track of
+     which row you were even looking at. An explicit background is needed
+     since a sticky cell has to visually cover whatever scrolls underneath
+     it, not just sit at a fixed position with nothing behind it. */
+  .dist-table th:first-child, .dist-table td:first-child,
+  .contact-table th:first-child, .contact-table td:first-child {
+    position: sticky; left: 0; z-index: 2; background: var(--surface);
+  }
+  .dist-table thead th:first-child { z-index: 3; }
+  @media (max-width: 900px) {
+    .mobile-scroll-hint { display: block; font-size: 0.8rem; color: var(--ink-soft); margin-bottom: 8px; }
+  }
   /* A school that hasn't distributed its forms yet for the year gets a
      light red wash across the whole row, so it stands out while scanning
      down the list — same idea as the alerts-card treatment elsewhere. */
@@ -2552,6 +2574,7 @@ function appMain() {
         "</div>" +
         "<button class=\"group-rename-icon-btn\" data-action=\"" + (groupEditing ? "done-edit-contact-group" : "edit-contact-group") + "\" data-id=\"" + g.id + "\" title=\"" + (groupEditing ? "Done" : "Rename group") + "\">" + (groupEditing ? "✓" : "✏️") + "</button>" +
         "</div><div class=\"card-body\">" +
+        "<div class=\"mobile-scroll-hint\">↔ Swipe sideways to see every column — the school name stays put.</div>" +
         "<div class=\"table-scroll\"><table class=\"data-table contact-table\">" + contactColgroupHtml() + "<thead><tr>" + headerCells + "</tr></thead><tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + (CONTACT_FIELDS.length + 1) + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
         "</tbody></table></div>" +
@@ -4172,6 +4195,7 @@ function appMain() {
         "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
         "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
         "</div></div><div class=\"card-body\">" +
+        "<div class=\"mobile-scroll-hint\">↔ Swipe sideways to see every column — the school name stays put.</div>" +
         "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml(g) +
         "<tbody>" +
         (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
