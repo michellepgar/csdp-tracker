@@ -4186,7 +4186,11 @@ function appMain() {
     var key = exportedCellKey(r, c);
     var comments = (file.comments || {})[key] || [];
     var list = comments.map(function (cm) {
-      return "<div class=\"xfile-comment\"><strong>" + esc(cm.author) + "</strong> <span class=\"xfile-comment-time\">" + fmtDateTime(cm.createdAt) + "</span><div>" + esc(cm.text) + "</div></div>";
+      var pending = isPending("exported-comment", cm.id);
+      return "<div class=\"xfile-comment\">" +
+        "<strong>" + esc(cm.author) + "</strong> <span class=\"xfile-comment-time\">" + fmtDateTime(cm.createdAt) + "</span> " +
+        "<button class=\"icon-btn" + (pending ? " confirming" : "") + "\" data-action=\"remove-exported-comment\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\" data-comment=\"" + cm.id + "\" title=\"Remove\">" + (pending ? "Confirm?" : "✕") + "</button>" +
+        "<div>" + esc(cm.text) + "</div></div>";
     }).join("");
     return "<div class=\"xfile-comment-panel\">" +
       (list || "<div class=\"xfile-comment-empty\">No comments yet.</div>") +
@@ -4199,7 +4203,12 @@ function appMain() {
   function exportedFileViewHtml(file) {
     var highlightMode = !!ui.exportedHighlightMode;
     var highlightColor = ui.exportedHighlightColor || "yellow";
-    var sort = (ui.exportedSort || {})[file.id];
+    /* An array, not a single {col,dir} — plain click sorts by just that
+       column (like before); Shift+click adds it as an additional
+       tiebreaker on top of whatever's already sorted, so "Grade A-Z,
+       then Student Name Z-A" is click Grade, then Shift+click Name
+       twice (asc, then desc). */
+    var sortList = (ui.exportedSort || {})[file.id] || [];
     var filters = (ui.exportedFilters || {})[file.id] || {};
     var rowCount = (file.rows || []).length;
     var order = [];
@@ -4213,23 +4222,30 @@ function appMain() {
       });
       if (passesFilters) order.push(i);
     }
-    if (sort) {
+    if (sortList.length) {
       order.sort(function (a, b) {
-        var va = (file.rows[a] || [])[sort.col] || "";
-        var vb = (file.rows[b] || [])[sort.col] || "";
-        var na = parseFloat(va), nb = parseFloat(vb);
-        var cmp;
-        if (!isNaN(na) && !isNaN(nb) && va !== "" && vb !== "") cmp = na - nb;
-        else cmp = String(va).localeCompare(String(vb));
-        return sort.dir === "desc" ? -cmp : cmp;
+        for (var i = 0; i < sortList.length; i++) {
+          var s = sortList[i];
+          var va = (file.rows[a] || [])[s.col] || "";
+          var vb = (file.rows[b] || [])[s.col] || "";
+          var na = parseFloat(va), nb = parseFloat(vb);
+          var cmp;
+          if (!isNaN(na) && !isNaN(nb) && va !== "" && vb !== "") cmp = na - nb;
+          else cmp = String(va).localeCompare(String(vb));
+          if (s.dir === "desc") cmp = -cmp;
+          if (cmp !== 0) return cmp;
+        }
+        return 0;
       });
     }
 
     var headerCells = (file.headers || []).map(function (h, c) {
-      var isSorted = sort && sort.col === c;
-      var icon = isSorted ? (sort.dir === "desc" ? "▼" : "▲") : "⇅";
-      return "<th><button class=\"xfile-sort-btn" + (isSorted ? " sorted" : "") + "\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" title=\"Sort by " + esc(h || "this column") + "\">" +
-        "<span>" + esc(h || "(untitled)") + "</span><span class=\"xfile-sort-icon\">" + icon + "</span></button></th>";
+      var sortIdx = sortList.findIndex(function (s) { return s.col === c; });
+      var isSorted = sortIdx !== -1;
+      var icon = isSorted ? (sortList[sortIdx].dir === "desc" ? "▼" : "▲") : "⇅";
+      var priorityBadge = (isSorted && sortList.length > 1) ? "<sup>" + (sortIdx + 1) + "</sup>" : "";
+      return "<th><button class=\"xfile-sort-btn" + (isSorted ? " sorted" : "") + "\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" title=\"Click to sort by " + esc(h || "this column") + " — Shift+click to add as a secondary sort\">" +
+        "<span>" + esc(h || "(untitled)") + priorityBadge + "</span><span class=\"xfile-sort-icon\">" + icon + "</span></button></th>";
     }).join("") + "<th></th>";
     var filterCells = (file.headers || []).map(function (h, c) {
       return "<th><input class=\"text-input xfile-filter-input\" data-action-change=\"set-exported-filter\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" value=\"" + esc(filters[c] || "") + "\" placeholder=\"Filter…\"></th>";
@@ -4260,6 +4276,8 @@ function appMain() {
       return "<tr>" + cells + "<td></td></tr>";
     }).join("");
 
+    var addingColumn = ui.addingExportedColumnFor === file.id;
+
     return "<div class=\"page-header\"><div><div class=\"page-title display\">" + esc(file.name) + "</div>" +
       "<div class=\"page-sub\">" + (file.rows || []).length + " rows</div></div>" +
       "<div class=\"contact-highlight-toolbar\">" +
@@ -4268,7 +4286,17 @@ function appMain() {
       (highlightMode ? EXPORTED_HIGHLIGHT_COLORS.map(function (c) {
         return "<button type=\"button\" class=\"highlight-swatch hl-" + c + (highlightColor === c ? " selected" : "") + "\" data-action=\"set-exported-highlight-color\" data-color=\"" + c + "\"></button>";
       }).join("") : "") +
-      "</div></div>" +
+      "<button class=\"btn small ghost\" data-action=\"add-exported-row\" data-file=\"" + file.id + "\">+ Add Row</button>" +
+      "<button class=\"btn small ghost\" data-action=\"toggle-add-exported-column\" data-file=\"" + file.id + "\">+ Add Column</button>" +
+      "</div>" +
+      (addingColumn
+        ? "<form class=\"add-row-form\" data-action=\"add-exported-column\" data-file=\"" + file.id + "\" style=\"margin-top:8px;\">" +
+          "<input class=\"text-input\" name=\"name\" placeholder=\"New column name\" required autofocus style=\"max-width:220px;\">" +
+          "<button class=\"btn small\" type=\"submit\">Add</button>" +
+          "<button class=\"link-btn\" type=\"button\" data-action=\"toggle-add-exported-column\" data-file=\"" + file.id + "\">Cancel</button>" +
+          "</form>"
+        : "") +
+      "</div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
       "<div class=\"table-scroll\"><table class=\"data-table xfile-table\"><thead><tr>" + headerCells + "</tr><tr>" + filterCells + "</tr></thead><tbody>" +
       (bodyRows || "<tr><td colspan=\"" + ((file.headers || []).length + 1) + "\">" + emptyState("No rows in this file.") + "</td></tr>") +
@@ -4858,11 +4886,48 @@ function appMain() {
         (function () {
           var fileId = t.getAttribute("data-file"), col = parseInt(t.getAttribute("data-col"), 10);
           ui.exportedSort = ui.exportedSort || {};
-          var cur = ui.exportedSort[fileId];
-          var dir = (cur && cur.col === col && cur.dir === "asc") ? "desc" : "asc";
-          ui.exportedSort[fileId] = { col: col, dir: dir };
+          var list = ui.exportedSort[fileId] || [];
+          var idx = list.findIndex(function (s) { return s.col === col; });
+          if (e.shiftKey) {
+            /* Shift+click stacks this column on top of whatever's already
+               sorted, so "Grade A-Z then Student Name Z-A" is: click
+               Grade, then Shift+click Name twice. */
+            if (idx === -1) list = list.concat([{ col: col, dir: "asc" }]);
+            else if (list[idx].dir === "asc") list[idx].dir = "desc";
+            else list = list.slice(0, idx).concat(list.slice(idx + 1));
+          } else if (list.length === 1 && idx === 0) {
+            list = list[0].dir === "asc" ? [{ col: col, dir: "desc" }] : [];
+          } else {
+            list = [{ col: col, dir: "asc" }];
+          }
+          ui.exportedSort[fileId] = list;
         })();
         render(); break;
+      case "add-exported-row":
+        (function () {
+          var file = (state.exportedFiles || []).find(function (f) { return f.id === t.getAttribute("data-file"); });
+          if (!file) return;
+          var blank = [];
+          for (var i = 0; i < (file.headers || []).length; i++) blank.push("");
+          file.rows = file.rows || [];
+          file.rows.push(blank);
+          persist();
+        })(); break;
+      case "toggle-add-exported-column":
+        ui.addingExportedColumnFor = ui.addingExportedColumnFor === t.getAttribute("data-file") ? null : t.getAttribute("data-file");
+        render(); break;
+      case "remove-exported-comment":
+        (function () {
+          var commentId = t.getAttribute("data-comment");
+          requestDelete("exported-comment", commentId, function () {
+            var file = (state.exportedFiles || []).find(function (f) { return f.id === t.getAttribute("data-file"); });
+            if (!file) return;
+            var key = exportedCellKey(t.getAttribute("data-row"), t.getAttribute("data-col"));
+            if (file.comments && file.comments[key]) {
+              file.comments[key] = file.comments[key].filter(function (cm) { return cm.id !== commentId; });
+            }
+          });
+        })(); break;
       case "edit-exported-cell":
         ui.editingExportedCell = t.getAttribute("data-file") + ":" + t.getAttribute("data-row") + "," + t.getAttribute("data-col");
         render(); break;
@@ -5936,6 +6001,17 @@ function appMain() {
           file.comments = file.comments || {};
           file.comments[key] = file.comments[key] || [];
           file.comments[key].push({ id: uid("xcm"), author: getStoredIdentity(), text: text, createdAt: new Date().toISOString() });
+          persist();
+        })(); break;
+      case "add-exported-column":
+        (function () {
+          var file = (state.exportedFiles || []).find(function (f) { return f.id === form.getAttribute("data-file"); });
+          var name = (fd.get("name") || "").toString().trim();
+          if (!file || !name) return;
+          file.headers = file.headers || [];
+          file.headers.push(name);
+          (file.rows || []).forEach(function (row) { row.push(""); });
+          ui.addingExportedColumnFor = null;
           persist();
         })(); break;
       case "reset-all-tasks":
