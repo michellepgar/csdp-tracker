@@ -496,6 +496,12 @@
   .dist-table { table-layout: fixed; min-width: 1300px; }
   .dist-table th, .dist-table td { white-space: normal; overflow-wrap: break-word; }
   .dist-row-pending { background: var(--danger-soft); }
+  .dist-group-row td {
+    background: var(--surface-2); font-weight: 700; font-size: 0.95rem;
+    padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; white-space: nowrap;
+  }
+  .dist-group-name { font-weight: 700; }
+  .dist-group-actions { display: flex; gap: 8px; align-items: center; font-weight: 400; }
   .dist-row-pending:hover { background: var(--danger-soft); }
   .dist-form { background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; margin-top: 4px; white-space: normal; }
   .dist-form-grid { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -1433,14 +1439,6 @@ function appMain() {
       total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * 25 + numOr0(cell.loose) + numOr0(cell.extraLoose);
     });
     return total;
-  }
-  function distributionRowClassroomsSummary(r) {
-    var c = r.classrooms || {};
-    var parts = [];
-    if (numOr0(c.regular) > 0) parts.push(c.regular + " Reg");
-    if (numOr0(c.launch) > 0) parts.push(c.launch + " Launch");
-    if (numOr0(c.crr) > 0) parts.push(c.crr + " CRR");
-    return parts.join(" / ");
   }
   /* Pre-fills every real school as its own row, using the exact same
      schools and grouping as Schools Contact Information, so entering
@@ -3718,21 +3716,61 @@ function appMain() {
      every group (not just that group's own rows), so every group's table
      lines up at the exact same width down the page instead of each one
      sizing itself independently. */
+  var DIST_TOTAL_COLS = 14;
   function distributionColgroupHtml(longestSchoolChars) {
     return "<colgroup>" +
       "<col style=\"width:" + (longestSchoolChars + 2) + "ch;\">" +
-      "<col style=\"width:70px;\">" +
-      "<col style=\"width:90px;\">" +
-      "<col style=\"width:130px;\">" +
-      "<col style=\"width:70px;\">" +
-      "<col style=\"width:80px;\">" +
-      "<col style=\"width:80px;\">" +
-      "<col style=\"width:70px;\">" +
-      "<col style=\"width:100px;\">" +
-      "<col style=\"width:140px;\">" +
-      "<col style=\"width:200px;\">" +
-      "<col style=\"width:90px;\">" +
+      "<col style=\"width:70px;\">" +   // Enrolled
+      "<col style=\"width:70px;\">" +   // Distributed
+      "<col style=\"width:70px;\">" +   // Regular
+      "<col style=\"width:70px;\">" +   // Launch
+      "<col style=\"width:60px;\">" +   // CRR
+      "<col style=\"width:80px;\">" +   // Packets
+      "<col style=\"width:70px;\">" +   // ENG/SPN
+      "<col style=\"width:70px;\">" +   // POR/FR
+      "<col style=\"width:60px;\">" +   // HC
+      "<col style=\"width:90px;\">" +   // Total Forms
+      "<col style=\"width:140px;\">" +  // Contact Person
+      "<col style=\"width:200px;\">" +  // Remarks
+      "<col style=\"width:90px;\">" +   // Actions
       "</colgroup>";
+  }
+  /* One continuous table for every group — a grade-band name is just a
+     full-width label row inside it, not a separate card+table — so the
+     grouped headers (Number of Classrooms spanning Regular/Launch/CRR,
+     Languages spanning ENG/SPN/POR/FR/HC) only need to be written once. */
+  function distributionTableHeadHtml() {
+    return "<thead>" +
+      "<tr>" +
+      "<th rowspan=\"2\">School</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-num\">Enrolled</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-center\">Distr.</th>" +
+      "<th colspan=\"3\">Number of Classrooms</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-num\">Number of<br>Consent Packets</th>" +
+      "<th colspan=\"3\">Languages</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-num\">Total number<br>of forms Dis.</th>" +
+      "<th rowspan=\"2\">Contact Person</th>" +
+      "<th rowspan=\"2\">Remarks</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-center\"></th>" +
+      "</tr>" +
+      "<tr>" +
+      "<th class=\"dist-col-num\">Regular</th><th class=\"dist-col-num\">Launch</th><th class=\"dist-col-num\">CRR</th>" +
+      DISTRIBUTION_LANGUAGES.map(function (l) { return "<th class=\"dist-col-num\">" + esc(l.label) + "</th>"; }).join("") +
+      "</tr>" +
+      "</thead>";
+  }
+  function distributionGroupLabelRowHtml(g) {
+    var pendingGroup = isPending("distribution-group", g.id);
+    var groupEditing = ui.editingDistributionGroupId === g.id;
+    var titleHtml = groupEditing
+      ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+      : "<span class=\"dist-group-name\">" + esc(g.name) + "</span>";
+    return "<tr class=\"dist-group-row\"><td colspan=\"" + DIST_TOTAL_COLS + "\">" +
+      titleHtml +
+      "<span class=\"dist-group-actions\">" +
+      "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
+      "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
+      "</span></td></tr>";
   }
   function distributionListPageHtml() {
     var groups = state.distributionGroups || [];
@@ -3748,10 +3786,10 @@ function appMain() {
       ? "<div class=\"card\"><div class=\"card-body\">" + distributionFormHtml(distributionRow(""), false, "", groups) + "</div></div>"
       : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\">+ Add school</button>";
 
-    var groupsHtml = groups.map(function (g) {
+    var bodyHtml = groups.map(function (g) {
       var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
         if (editingRowId === r.id) {
-          return "<tr><td colspan=\"12\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
+          return "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
         }
         var pendingRow = isPending("distribution-row", r.id);
         var totalPackets = distributionRowTotalPackets(r);
@@ -3760,7 +3798,7 @@ function appMain() {
           var langTotal = distributionRowLanguageTotal(r, l.key);
           return "<td class=\"mono dist-col-num\">" + (langTotal > 0 ? langTotal : "—") + "</td>";
         }).join("");
-        var classroomsSummary = distributionRowClassroomsSummary(r);
+        var c = r.classrooms || {};
         var remarksEditing = ui.editingDistributionRemarksId === r.id;
         var remarksCell = remarksEditing
           ? "<td class=\"wrap\"><textarea class=\"text-input\" rows=\"2\" data-action-change=\"set-distribution-remarks\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\">" + esc(r.remarks) + "</textarea>" +
@@ -3771,7 +3809,9 @@ function appMain() {
           "<td>" + esc(r.school) + "</td>" +
           "<td class=\"mono dist-col-num\">" + esc(r.enrolled || "—") + "</td>" +
           "<td class=\"dist-col-center\"><input type=\"checkbox\" data-action-change=\"toggle-distribution-distributed\" data-group=\"" + g.id + "\" data-row=\"" + r.id + "\"" + (r.distributed ? " checked" : "") + "></td>" +
-          "<td>" + (classroomsSummary ? esc(classroomsSummary) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(c.regular) > 0 ? esc(c.regular) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(c.launch) > 0 ? esc(c.launch) : "—") + "</td>" +
+          "<td class=\"mono dist-col-num\">" + (numOr0(c.crr) > 0 ? esc(c.crr) : "—") + "</td>" +
           "<td class=\"mono dist-col-num\">" + totalPackets + "</td>" +
           languageTotalsHtml +
           "<td class=\"mono dist-col-num\">" + totalForms + "</td>" +
@@ -3782,30 +3822,15 @@ function appMain() {
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
           "</td></tr>";
       }).join("");
-
-      var pendingGroup = isPending("distribution-group", g.id);
-      var groupEditing = ui.editingDistributionGroupId === g.id;
-      var titleHtml = groupEditing
-        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
-        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
-
-      return "<div class=\"card\"><div class=\"card-head\">" +
-        titleHtml +
-        "<div class=\"card-actions\">" +
-        "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
-        "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
-        "</div></div><div class=\"card-body\">" +
-        "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + "<thead><tr>" +
-        "<th>School</th><th class=\"dist-col-num\">Enrolled</th><th class=\"dist-col-center\">Distributed</th><th>Classrooms</th><th class=\"dist-col-num\">Packets</th>" +
-        DISTRIBUTION_LANGUAGES.map(function (l) { return "<th class=\"dist-col-num\">" + esc(l.label) + "</th>"; }).join("") +
-        "<th class=\"dist-col-num\">Total Forms</th><th>Contact Person</th><th>Remarks</th><th class=\"dist-col-center\"></th>" +
-        "</tr></thead><tbody>" +
-        (rowsHtml || "<tr><td colspan=\"12\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
-        "</tbody></table></div></div></div>";
+      return distributionGroupLabelRowHtml(g) +
+        (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>");
     }).join("");
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div><div class=\"page-sub\">School Year " + esc(DISTRIBUTION_SCHOOL_YEAR) + "</div></div></div>" +
-      addSchoolHtml + groupsHtml +
+      addSchoolHtml +
+      "<div class=\"card\"><div class=\"card-body\">" +
+      "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml() +
+      "<tbody>" + bodyHtml + "</tbody></table></div></div></div>" +
       "<form class=\"mini-form\" data-action=\"add-distribution-group\">" +
       "<input class=\"text-input\" name=\"name\" placeholder=\"New group name\" required>" +
       "<button class=\"btn small\" type=\"submit\">+ Add group</button></form>";
