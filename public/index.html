@@ -493,13 +493,16 @@
   /* Fixed layout + a colgroup (built from the longest school name) keeps
      every group's table the exact same width, and wide enough that
      nothing feels cramped. */
-  .dist-table { table-layout: fixed; min-width: 1300px; }
-  .dist-table th, .dist-table td { white-space: normal; overflow-wrap: break-word; }
+  .dist-table { table-layout: fixed; min-width: 1550px; }
+  .dist-table td { white-space: normal; overflow-wrap: break-word; }
   /* The two-row header reads better a touch bigger than the app's usual
      tiny table-header size, and the group headers (Number of Classrooms /
      Languages) get a bit more weight than the plain column headers under
-     them, so the spanning relationship is obvious at a glance. */
-  .dist-table th { font-size: 0.76rem; vertical-align: middle; }
+     them, so the spanning relationship is obvious at a glance. Headers
+     stay on one line by default — columns are sized to fit their label —
+     except the three that are deliberately two lines (dist-th-wrap). */
+  .dist-table th { font-size: 0.76rem; vertical-align: middle; white-space: nowrap; }
+  .dist-table th.dist-th-wrap { white-space: normal; line-height: 1.25; }
   .dist-table th.dist-group-header { font-size: 0.8rem; border-bottom: 1px solid var(--border-strong); }
   .dist-row-pending { background: var(--danger-soft); }
   .dist-row-pending:hover { background: var(--danger-soft); }
@@ -3720,16 +3723,16 @@ function appMain() {
   function distributionColgroupHtml(longestSchoolChars) {
     return "<colgroup>" +
       "<col style=\"width:" + (longestSchoolChars + 2) + "ch;\">" +
-      "<col style=\"width:70px;\">" +   // Enrolled
-      "<col style=\"width:70px;\">" +   // Distributed
-      "<col style=\"width:70px;\">" +   // Regular
-      "<col style=\"width:70px;\">" +   // Launch
-      "<col style=\"width:60px;\">" +   // CRR
-      "<col style=\"width:80px;\">" +   // Packets
-      "<col style=\"width:70px;\">" +   // ENG/SPN
-      "<col style=\"width:70px;\">" +   // POR/FR
-      "<col style=\"width:60px;\">" +   // HC
-      "<col style=\"width:90px;\">" +   // Total Forms
+      "<col style=\"width:85px;\">" +   // Enrolled
+      "<col style=\"width:110px;\">" +  // Distributed
+      "<col style=\"width:75px;\">" +   // Regular
+      "<col style=\"width:75px;\">" +   // Launch
+      "<col style=\"width:55px;\">" +   // CRR
+      "<col style=\"width:100px;\">" +  // Packets (2 lines)
+      "<col style=\"width:75px;\">" +   // ENG/SPN
+      "<col style=\"width:75px;\">" +   // POR/FR
+      "<col style=\"width:55px;\">" +   // HC
+      "<col style=\"width:115px;\">" +  // Total Forms (2 lines)
       "<col style=\"width:140px;\">" +  // Contact Person
       "<col style=\"width:200px;\">" +  // Remarks
       "<col style=\"width:90px;\">" +   // Actions
@@ -3745,10 +3748,10 @@ function appMain() {
       "<th rowspan=\"2\">School</th>" +
       "<th rowspan=\"2\" class=\"dist-col-num\">Enrolled</th>" +
       "<th rowspan=\"2\" class=\"dist-col-center\">Distributed</th>" +
-      "<th colspan=\"3\" class=\"dist-col-center dist-group-header\">Number of Classrooms</th>" +
-      "<th rowspan=\"2\" class=\"dist-col-num\">Number of<br>Consent Packets</th>" +
+      "<th colspan=\"3\" class=\"dist-col-center dist-group-header dist-th-wrap\">Number of Classrooms</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-num dist-th-wrap\">Number of<br>Consent Packets</th>" +
       "<th colspan=\"3\" class=\"dist-col-center dist-group-header\">Languages</th>" +
-      "<th rowspan=\"2\" class=\"dist-col-num\">Total number<br>of forms Dis.</th>" +
+      "<th rowspan=\"2\" class=\"dist-col-num dist-th-wrap\">Total number of<br>forms distributed</th>" +
       "<th rowspan=\"2\" class=\"dist-col-center\">Contact Person</th>" +
       "<th rowspan=\"2\" class=\"dist-col-center\">Remarks</th>" +
       "<th rowspan=\"2\" class=\"dist-col-center\"></th>" +
