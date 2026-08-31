@@ -773,7 +773,7 @@ function appMain() {
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
     contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: [],
-    distributionYears: []
+    distributionYears: [], classRosters: []
   };
 
   /* ============ helpers ============ */
@@ -1832,6 +1832,13 @@ function appMain() {
     var va = state.vas.find(function (v) { return v.name === name; });
     return !!(va && (va.admin || va.role === "owner"));
   }
+  /* Class Rosters is being tested privately before it opens to the whole
+     team — visible only to Michelle herself, not even other admins or the
+     Owner, unlike isSuperAdmin()'s broader "Michelle + anyone she made
+     admin + Owner" gate used everywhere else. */
+  function isMichelleHerself() {
+    return getStoredIdentity() === SUPERADMIN_NAME;
+  }
   function isOwner(name) {
     var va = state.vas.find(function (v) { return v.name === name; });
     return !!(va && va.role === "owner");
@@ -2319,7 +2326,7 @@ function appMain() {
       "<button class=\"theme-toggle\" data-action=\"toggle-theme\" title=\"Switch to " + (currentEffectiveTheme() === "dark" ? "light" : "dark") + " mode\">" + (currentEffectiveTheme() === "dark" ? "☀" : "🌙") + "</button>" +
       "<div class=\"main\">" +
       "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
-      "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts" || ui.view.type === "distribution-list") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
+      "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts" || ui.view.type === "distribution-list" || ui.view.type === "class-rosters") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
       "</div></div>"
     );
   }
@@ -2406,6 +2413,7 @@ function appMain() {
       navItem("eod", "EOD Reports", 0, function (v) { return v.type === "eod"; }) +
       navItem("contacts", "Schools Contact Information", 0, function (v) { return v.type === "contacts"; }) +
       navItem("distribution-list", "Distribution List", 0, function (v) { return v.type === "distribution-list"; }) +
+      (isMichelleHerself() ? navItem("class-rosters", "Class Rosters", 0, function (v) { return v.type === "class-rosters"; }) : "") +
       navItem("templates", "Email Templates", 0, function (v) { return v.type === "templates"; }) +
       navItem("suggestions", "Suggestions", 0, function (v) { return v.type === "suggestions"; }) +
       "</div></div>" +
@@ -2562,6 +2570,7 @@ function appMain() {
       case "notes": return generalNotesPageHtml();
       case "suggestions": return suggestionsPageHtml();
       case "distribution-list": return distributionListPageHtml();
+      case "class-rosters": return isMichelleHerself() ? classRostersPageHtml() : homePageHtml();
       case "admin-settings": return isSuperAdmin() ? adminSettingsPageHtml() : homePageHtml();
       case "eod": return eodPageHtml();
       case "private-notes": return privateNotesPageHtml();
@@ -4188,6 +4197,183 @@ function appMain() {
       (yearsHtml || emptyState("No school years yet.")) + addYearHtml;
   }
 
+  /* ---------- Class Rosters (scanned PDF -> searchable list via OCR) ---------- */
+  /* Michelle-only while this is being tried out — see isMichelleHerself().
+     Uploads a scanned roster PDF, reads it entirely in the browser (no
+     server): pdf.js renders each page to an image, then Tesseract.js OCRs
+     that image into text. Both libraries plus Tesseract's language data
+     live under /vendor as their own static files rather than embedded in
+     this HTML the way the old Exported Files' SheetJS was — the language
+     data alone is ~10MB, far too big to inline into the one page every VA
+     loads on every visit. They're only fetched the first time this page
+     actually opens. */
+  var CLASS_ROSTER_VENDOR_BASE = "vendor/";
+  var classRosterScriptPromises = {};
+  function loadScriptOnce(src) {
+    if (!classRosterScriptPromises[src]) {
+      classRosterScriptPromises[src] = new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = src;
+        s.onload = function () { resolve(); };
+        s.onerror = function () { reject(new Error("Couldn't load " + src)); };
+        document.head.appendChild(s);
+      });
+    }
+    return classRosterScriptPromises[src];
+  }
+  function ensureClassRosterLibs() {
+    return Promise.all([
+      loadScriptOnce(CLASS_ROSTER_VENDOR_BASE + "pdf.min.js"),
+      loadScriptOnce(CLASS_ROSTER_VENDOR_BASE + "tesseract.min.js")
+    ]).then(function () {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = CLASS_ROSTER_VENDOR_BASE + "pdf.worker.min.js";
+    });
+  }
+  function classRosterRecord(name, uploadedBy, pages, rows) {
+    return { id: uid("roster"), name: name || "Untitled roster", uploadedBy: uploadedBy || "", uploadedAt: new Date().toISOString(), pages: pages || [], rows: rows || [] };
+  }
+  /* Recurses page by page (rather than a for-loop of promises) so each
+     page number is captured correctly in its own closure — a plain
+     var-based for-loop here would have every page's callback see the same
+     final loop value once the async work actually resolves. One shared
+     Tesseract worker handles every page so the ~10MB language data is only
+     loaded once per upload, not once per page. */
+  function ocrAllRosterPages(pdf, worker, onProgress) {
+    var pages = [];
+    var lines = [];
+    function processPage(pageNum) {
+      if (pageNum > pdf.numPages) return Promise.resolve();
+      onProgress("Reading page " + pageNum + " of " + pdf.numPages + "…");
+      return pdf.getPage(pageNum).then(function (page) {
+        var viewport = page.getViewport({ scale: 2 });
+        var canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        var ctx = canvas.getContext("2d");
+        /* The PDF content stream only paints the scanned image/text itself
+           — without a white base fill first, any transparent margin OCRs
+           as noise instead of blank space. */
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+          /* Compressed JPEG, not the raw canvas PNG — every roster's page
+             images live inside the one shared app_state blob the whole
+             team loads, so keeping each page to roughly a hundred KB
+             instead of several MB matters even though only Michelle uses
+             this today. */
+          pages.push({ id: uid("rpg"), image: canvas.toDataURL("image/jpeg", 0.55) });
+          onProgress("Scanning names on page " + pageNum + " of " + pdf.numPages + "…");
+          return worker.recognize(canvas);
+        }).then(function (result) {
+          (result.data.text || "").split("\n").forEach(function (line) {
+            var trimmed = line.trim();
+            if (trimmed) lines.push(trimmed);
+          });
+          return processPage(pageNum + 1);
+        });
+      });
+    }
+    return processPage(1).then(function () {
+      return { pages: pages, rows: lines.map(function (name) { return { id: uid("rrow"), name: name }; }) };
+    });
+  }
+  function processRosterPdf(file, onProgress) {
+    return ensureClassRosterLibs().then(function () {
+      onProgress("Reading PDF…");
+      return file.arrayBuffer();
+    }).then(function (buf) {
+      return window.pdfjsLib.getDocument({ data: buf }).promise;
+    }).then(function (pdf) {
+      return Tesseract.createWorker("eng", 1, {
+        workerPath: CLASS_ROSTER_VENDOR_BASE + "worker.min.js",
+        corePath: CLASS_ROSTER_VENDOR_BASE + "tesseract-core-simd.wasm.js",
+        langPath: CLASS_ROSTER_VENDOR_BASE,
+        gzip: true
+      }).then(function (worker) {
+        return ocrAllRosterPages(pdf, worker, onProgress).then(function (result) {
+          return worker.terminate().then(function () { return result; });
+        });
+      });
+    });
+  }
+  function focusRosterSearch() {
+    var el = document.querySelector("[data-role='roster-search']");
+    if (el) { el.focus(); var v = el.value; el.value = ""; el.value = v; }
+  }
+  function classRostersPageHtml() {
+    var rosters = state.classRosters || [];
+    var processing = ui.rosterProcessing;
+    var rows = rosters.map(function (r) {
+      var pending = isPending("class-roster", r.id);
+      var renaming = ui.renamingClassRosterId === r.id;
+      var nameCell = renaming
+        ? "<input class=\"text-input\" data-action-change=\"rename-class-roster\" data-id=\"" + r.id + "\" value=\"" + esc(r.name) + "\" autofocus>"
+        : "<button class=\"link-btn\" data-action=\"open-class-roster\" data-id=\"" + r.id + "\">" + esc(r.name) + "</button>";
+      return "<tr><td>" + nameCell +
+        " <button class=\"link-btn\" data-action=\"" + (renaming ? "done-rename-class-roster" : "start-rename-class-roster") + "\" data-id=\"" + r.id + "\" title=\"" + (renaming ? "Done" : "Rename") + "\">" + (renaming ? "Done" : "✏️") + "</button></td>" +
+        "<td>" + (r.rows || []).length + " names</td>" +
+        "<td>" + esc(r.uploadedBy || "") + "</td>" +
+        "<td>" + fmtDateTime(r.uploadedAt) + "</td>" +
+        "<td><button class=\"icon-btn" + (pending ? " confirming" : "") + "\" data-action=\"remove-class-roster\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pending ? "Confirm?" : "✕") + "</button></td>" +
+        "</tr>";
+    }).join("");
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">Class Rosters</div>" +
+      "<div class=\"page-sub\">Visible only to you for now — upload a scanned roster PDF and it's read with OCR into a searchable list. OCR isn't perfect on scans, so double-check names before relying on it.</div></div></div>" +
+      "<div class=\"card\"><div class=\"card-body\">" +
+      (processing
+        ? "<div class=\"page-sub\">" + esc(processing.status) + "</div>"
+        : "<form class=\"add-row-form\" data-action=\"upload-class-roster\" style=\"flex-wrap:wrap;\">" +
+          "<input class=\"text-input\" name=\"name\" placeholder=\"Roster name, e.g. Grade 3 - Ms. Smith\" required style=\"flex:2;\">" +
+          "<input type=\"file\" name=\"file\" accept=\"application/pdf\" required>" +
+          "<button class=\"btn\" type=\"submit\">Upload &amp; Read</button></form>") +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr><th>Roster</th><th>Names found</th><th>Uploaded by</th><th>Uploaded</th><th></th></tr></thead><tbody>" +
+      (rows || "<tr><td colspan=\"5\">" + emptyState("No rosters uploaded yet.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+  }
+  function classRosterViewHtml(roster) {
+    var query = ui.rosterSearchQuery || "";
+    var filteredRows = query
+      ? (roster.rows || []).filter(function (r) { return (r.name || "").toLowerCase().indexOf(query.toLowerCase()) !== -1; })
+      : (roster.rows || []);
+    var showingOriginal = ui.viewingRosterPagesFor === roster.id;
+
+    var bodyRows = filteredRows.map(function (r) {
+      var editing = ui.editingRosterRowId === r.id;
+      var pendingRow = isPending("roster-row", r.id);
+      var nameCell = editing
+        ? "<input class=\"contact-cell-input\" data-action-change=\"set-roster-row-name\" data-roster=\"" + roster.id + "\" data-row=\"" + r.id + "\" value=\"" + esc(r.name) + "\" autofocus>"
+        : "<div class=\"contact-cell-view\" data-action=\"edit-roster-row\" data-id=\"" + r.id + "\" style=\"cursor:pointer;\">" + esc(r.name || "(blank)") + "</div>";
+      return "<tr><td>" + nameCell + "</td>" +
+        "<td class=\"dist-col-center\"><button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-roster-row\" data-roster=\"" + roster.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td></tr>";
+    }).join("");
+
+    var pagesHtml = showingOriginal
+      ? "<div class=\"card\"><div class=\"card-body\">" +
+        (roster.pages || []).map(function (p, i) {
+          return "<div style=\"margin-bottom:12px;\"><div class=\"field-mini-label\">Page " + (i + 1) + " (original scan)</div><img src=\"" + p.image + "\" style=\"max-width:100%; border:1px solid var(--border); border-radius:6px;\"></div>";
+        }).join("") + "</div></div>"
+      : "";
+
+    return "<div class=\"page-header\"><div><div class=\"page-title display\">" + esc(roster.name) + "</div>" +
+      "<div class=\"page-sub\">" + (roster.rows || []).length + " names</div></div>" +
+      "<div class=\"contact-highlight-toolbar\">" +
+      "<button class=\"link-btn\" data-action=\"back-to-class-rosters\">← All rosters</button>" +
+      (roster.pages && roster.pages.length
+        ? "<button class=\"btn small ghost\" data-action=\"toggle-roster-pages\" data-id=\"" + roster.id + "\">" + (showingOriginal ? "Hide" : "View") + " original scan</button>"
+        : "") +
+      "<button class=\"btn small ghost\" data-action=\"add-roster-row\" data-id=\"" + roster.id + "\">+ Add name</button>" +
+      "</div>" +
+      "<input class=\"text-input\" data-role=\"roster-search\" value=\"" + esc(query) + "\" placeholder=\"Search for a name…\" style=\"margin:10px 0; max-width:320px;\">" +
+      "</div>" +
+      pagesHtml +
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr><th>Name</th><th></th></tr></thead><tbody>" +
+      (bodyRows || "<tr><td colspan=\"2\">" + emptyState(query ? "No names match that search." : "No names yet.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+  }
 
   /* ---------- Private Notes ---------- */
   function privateNotesPageHtml() {
@@ -4764,6 +4950,51 @@ function appMain() {
           ui.viewingDistributionRowId = ui.viewingDistributionRowId === id ? null : id;
         })();
         render(); break;
+      case "open-class-roster":
+        ui.openClassRosterId = t.getAttribute("data-id");
+        ui.rosterSearchQuery = "";
+        render(); break;
+      case "back-to-class-rosters":
+        ui.openClassRosterId = null;
+        ui.viewingRosterPagesFor = null;
+        render(); break;
+      case "remove-class-roster":
+        requestDelete("class-roster", t.getAttribute("data-id"), function () {
+          var id = t.getAttribute("data-id");
+          state.classRosters = (state.classRosters || []).filter(function (r) { return r.id !== id; });
+          if (ui.openClassRosterId === id) ui.openClassRosterId = null;
+        }); break;
+      case "start-rename-class-roster": ui.renamingClassRosterId = t.getAttribute("data-id"); render(); break;
+      case "done-rename-class-roster": ui.renamingClassRosterId = null; render(); break;
+      case "toggle-roster-pages":
+        (function () {
+          var id = t.getAttribute("data-id");
+          ui.viewingRosterPagesFor = ui.viewingRosterPagesFor === id ? null : id;
+        })();
+        render(); break;
+      case "add-roster-row":
+        (function () {
+          var roster = (state.classRosters || []).find(function (r) { return r.id === t.getAttribute("data-id"); });
+          if (!roster) return;
+          var row = { id: uid("rrow"), name: "" };
+          roster.rows = roster.rows || [];
+          roster.rows.push(row);
+          ui.editingRosterRowId = row.id;
+          persist();
+        })(); break;
+      case "edit-roster-row":
+        ui.editingRosterRowId = t.getAttribute("data-id");
+        render(); break;
+      case "remove-roster-row":
+        (function () {
+          var rosterId = t.getAttribute("data-roster");
+          requestDelete("roster-row", t.getAttribute("data-id"), function () {
+            var roster = (state.classRosters || []).find(function (r) { return r.id === rosterId; });
+            if (!roster) return;
+            var rowId = t.getAttribute("data-id");
+            roster.rows = (roster.rows || []).filter(function (r) { return r.id !== rowId; });
+          });
+        })(); break;
       case "open-calculator":
         /* Deliberately no render()/persist() here — see the calculator
            module's comment above onClick for why. */
@@ -5102,6 +5333,22 @@ function appMain() {
           if (ctx) ctx.row.remarks = t.value;
           persist();
         })(); break;
+      case "rename-class-roster":
+        (function () {
+          var roster = (state.classRosters || []).find(function (r) { return r.id === t.getAttribute("data-id"); });
+          var name = t.value.trim();
+          if (roster && name) roster.name = name;
+          persist();
+        })(); break;
+      case "set-roster-row-name":
+        (function () {
+          var roster = (state.classRosters || []).find(function (r) { return r.id === t.getAttribute("data-roster"); });
+          if (!roster) return;
+          var row = (roster.rows || []).find(function (r) { return r.id === t.getAttribute("data-row"); });
+          if (row) row.name = t.value;
+          ui.editingRosterRowId = null;
+          persist();
+        })(); break;
       case "set-contact-group-name":
         (function () {
           var g = state.contactGroups.find(function (x) { return x.id === t.getAttribute("data-group"); });
@@ -5267,6 +5514,7 @@ function appMain() {
   function onInput(e) {
     var t = e.target;
     if (t.matches && t.matches("[data-role='school-search']")) { ui.search = t.value; render(); focusSearch(); return; }
+    if (t.matches && t.matches("[data-role='roster-search']")) { ui.rosterSearchQuery = t.value; render(); focusRosterSearch(); return; }
     var key = t.getAttribute && t.getAttribute("data-draft-key");
     if (!key) return;
     /* A rich-text note editor is a contenteditable div, not a normal
@@ -5732,6 +5980,32 @@ function appMain() {
             persist();
           }).catch(function () {
             showToast("Couldn't read that file.");
+          });
+        })(); break;
+      case "upload-class-roster":
+        (function () {
+          if (!isMichelleHerself()) return;
+          var rosterName = (fd.get("name") || "").toString().trim();
+          var file = fd.get("file");
+          if (!rosterName || !file || !(file instanceof File) || !file.size) {
+            showToast("Name the roster and choose a PDF first.");
+            return;
+          }
+          ui.rosterProcessing = { status: "Starting…" };
+          render();
+          processRosterPdf(file, function (status) {
+            ui.rosterProcessing = { status: status };
+            render();
+          }).then(function (result) {
+            state.classRosters = state.classRosters || [];
+            state.classRosters.push(classRosterRecord(rosterName, getStoredIdentity(), result.pages, result.rows));
+            ui.rosterProcessing = null;
+            showToast("Read " + result.rows.length + " name(s) from " + rosterName + " — check them over before relying on it.");
+            persist();
+          }).catch(function (err) {
+            ui.rosterProcessing = null;
+            showToast("Couldn't read that PDF: " + (err && err.message ? err.message : err));
+            render();
           });
         })(); break;
       case "reset-all-tasks":
