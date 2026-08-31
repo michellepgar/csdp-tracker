@@ -4238,15 +4238,40 @@ function appMain() {
     }
   }
   /* Esc = cancel: closes whichever Distribution List row is open — the
-     Add/Edit form or the read-only breakdown view. If the calculator is
-     open, its own Escape handler above takes that key instead (closes the
-     calculator first, not the form underneath it). */
-  function handleDistributionEscape(e) {
+     Add/Edit form, edit toggle, or expanded view anywhere in the app —
+     same "Esc = cancel" convention everywhere instead of just one page.
+     If the calculator is open, its own Escape handler above takes that
+     key instead (closes the calculator first, not the form underneath
+     it). Checked in roughly most-specific-first order, but in practice
+     only one of these is ever open at a time. */
+  function handleGlobalEscape(e) {
     if (e.key !== "Escape") return;
     var popup = document.getElementById("calcPopup");
     if (popup && popup.style.display === "flex") return;
+    if (ui.pendingDelete) { ui.pendingDelete = null; render(); return; }
     if (ui.distributionFormFor) { ui.distributionFormFor = null; render(); return; }
     if (ui.viewingDistributionRowId) { ui.viewingDistributionRowId = null; render(); return; }
+    if (ui.editingDistributionGroupId) { ui.editingDistributionGroupId = null; render(); return; }
+    if (ui.editingDistributionRemarksId) { ui.editingDistributionRemarksId = null; render(); return; }
+    if (ui.editingContactRowId) { ui.editingContactRowId = null; render(); return; }
+    if (ui.editingContactNoteId) { ui.editingContactNoteId = null; render(); return; }
+    if (ui.editingContactGroupId) { ui.editingContactGroupId = null; render(); return; }
+    if (ui.editingNurseLeader) { ui.editingNurseLeader = false; render(); return; }
+    if (ui.editingCorrectionId) { ui.editingCorrectionId = null; render(); return; }
+    if (ui.editingSimpleIssueId) { ui.editingSimpleIssueId = null; render(); return; }
+    if (ui.editingChartingId) { ui.editingChartingId = null; render(); return; }
+    if (ui.editingTemplateId) { ui.editingTemplateId = null; render(); return; }
+    if (ui.editingIssueId) { ui.editingIssueId = null; ui.editingIssueType = null; render(); return; }
+    if (ui.editingNoteId) { ui.editingNoteId = null; render(); return; }
+    if (ui.sharingNoteId) { ui.sharingNoteId = null; render(); return; }
+    if (ui.addingVaForTask) { ui.addingVaForTask = null; render(); return; }
+    if (ui.requestingAccessFor) { ui.requestingAccessFor = null; render(); return; }
+    if (ui.addSchoolOpen) { ui.addSchoolOpen = false; render(); return; }
+    if (ui.templateEditorOpen) { ui.templateEditorOpen = false; render(); return; }
+    if (ui.taskCategoryEditorOpen) { ui.taskCategoryEditorOpen = false; render(); return; }
+    if (ui.issueTypeEditorOpen) { ui.issueTypeEditorOpen = false; render(); return; }
+    if (ui.issueFieldEditorOpen) { ui.issueFieldEditorOpen = false; render(); return; }
+    if (ui.contactHighlightMode) { ui.contactHighlightMode = false; render(); return; }
   }
 
   /* ============ event handling ============ */
@@ -5413,7 +5438,7 @@ function appMain() {
   document.addEventListener("click", onClick);
   document.addEventListener("change", onChange);
   document.addEventListener("keydown", handleCalcKeydown);
-  document.addEventListener("keydown", handleDistributionEscape);
+  document.addEventListener("keydown", handleGlobalEscape);
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("keydown", onNoteEditorKeydown);
