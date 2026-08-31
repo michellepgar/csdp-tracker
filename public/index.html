@@ -635,6 +635,7 @@
   .xfile-cell-inner { display: flex; align-items: flex-start; gap: 4px; justify-content: space-between; }
   .xfile-cell-value { cursor: pointer; flex: 1; min-width: 0; word-break: break-word; padding: 2px 0; }
   .xfile-cell-value:hover { outline: 1px dashed var(--accent); outline-offset: 2px; }
+  .xfile-formula-value { color: var(--accent); font-family: "IBM Plex Mono", monospace; }
   .xfile-cell-input { flex: 1; min-width: 60px; padding: 3px 5px; font-size: 0.82rem; }
   .xfile-comment-btn { flex: none; background: none; border: none; font-size: 0.7rem; color: var(--ink-faint); cursor: pointer; padding: 0 2px; opacity: 0.5; }
   .xfile-comment-btn:hover { opacity: 1; }
@@ -4148,6 +4149,93 @@ function appMain() {
     };
   }
   function exportedCellKey(r, c) { return r + "," + c; }
+  /* Lightweight formulas — SUM/AVERAGE/COUNT/MIN/MAX over a range, plus
+     plain arithmetic between cells (=A1+B1*2). Not a full spreadsheet
+     engine (no nested function calls, no text functions), but covers
+     what "spreadsheet functions" means for a data export in practice.
+     Recomputed fresh on every render, so editing a cell other formulas
+     depend on updates them automatically — no manual recalc needed. */
+  function exportedColLetterToIndex(letters) {
+    var n = 0;
+    letters = letters.toUpperCase();
+    for (var i = 0; i < letters.length; i++) n = n * 26 + (letters.charCodeAt(i) - 64);
+    return n - 1;
+  }
+  function exportedParseCellRef(ref) {
+    var m = /^([A-Za-z]+)(\d+)$/.exec(ref.trim());
+    if (!m) return null;
+    return { col: exportedColLetterToIndex(m[1]), row: parseInt(m[2], 10) - 1 };
+  }
+  function exportedRawCellValue(file, r, c) {
+    var row = file.rows[r] || [];
+    return row[c] === undefined ? "" : row[c];
+  }
+  function exportedIsFormula(v) { return typeof v === "string" && v.charAt(0) === "="; }
+  function exportedGetRangeValues(file, rangeStr, visiting) {
+    var parts = rangeStr.split(":");
+    var start = exportedParseCellRef(parts[0]);
+    var end = parts[1] ? exportedParseCellRef(parts[1]) : start;
+    if (!start || !end) return [];
+    var values = [];
+    var r0 = Math.min(start.row, end.row), r1 = Math.max(start.row, end.row);
+    var c0 = Math.min(start.col, end.col), c1 = Math.max(start.col, end.col);
+    for (var r = r0; r <= r1; r++) {
+      for (var c = c0; c <= c1; c++) values.push(exportedEvaluateCell(file, r, c, visiting));
+    }
+    return values;
+  }
+  function exportedEvaluateFormula(file, expr, visiting) {
+    expr = expr.trim();
+    var fnMatch = /^([A-Za-z]+)\(([^()]*)\)$/.exec(expr);
+    if (fnMatch) {
+      var fnName = fnMatch[1].toUpperCase();
+      var nums = [];
+      fnMatch[2].split(",").forEach(function (part) {
+        part = part.trim();
+        if (!part) return;
+        if (/^[A-Za-z]+\d+(:[A-Za-z]+\d+)?$/.test(part)) {
+          exportedGetRangeValues(file, part, visiting).forEach(function (v) {
+            var n = parseFloat(v);
+            if (!isNaN(n)) nums.push(n);
+          });
+        } else {
+          var n2 = parseFloat(part);
+          if (!isNaN(n2)) nums.push(n2);
+        }
+      });
+      switch (fnName) {
+        case "SUM": return nums.reduce(function (a, b) { return a + b; }, 0);
+        case "AVERAGE": return nums.length ? nums.reduce(function (a, b) { return a + b; }, 0) / nums.length : 0;
+        case "COUNT": return nums.length;
+        case "MIN": return nums.length ? Math.min.apply(null, nums) : 0;
+        case "MAX": return nums.length ? Math.max.apply(null, nums) : 0;
+        default: return "#FUNC?";
+      }
+    }
+    // Plain arithmetic — substitute each cell reference with its own
+    // evaluated numeric value, then run the arithmetic.
+    var substituted = expr.replace(/[A-Za-z]+\d+/g, function (ref) {
+      var parsed = exportedParseCellRef(ref);
+      if (!parsed) return "0";
+      var n = parseFloat(exportedEvaluateCell(file, parsed.row, parsed.col, visiting));
+      return isNaN(n) ? "0" : String(n);
+    });
+    if (!/^[0-9+\-*/.() ]+$/.test(substituted)) return "#ERROR";
+    try {
+      var result = Function("\"use strict\"; return (" + substituted + ")")();
+      return (typeof result === "number" && isFinite(result)) ? result : "#ERROR";
+    } catch (e) { return "#ERROR"; }
+  }
+  function exportedEvaluateCell(file, r, c, visiting) {
+    var key = exportedCellKey(r, c);
+    visiting = visiting || {};
+    if (visiting[key]) return "#CIRCULAR";
+    var raw = exportedRawCellValue(file, r, c);
+    if (!exportedIsFormula(raw)) return raw;
+    var nextVisiting = Object.assign({}, visiting);
+    nextVisiting[key] = true;
+    return exportedEvaluateFormula(file, raw.slice(1), nextVisiting);
+  }
   function exportedFilesPageHtml() {
     var files = state.exportedFiles || [];
     var openFile = ui.openExportedFileId ? files.find(function (f) { return f.id === ui.openExportedFileId; }) : null;
@@ -4172,7 +4260,7 @@ function appMain() {
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Exported Files</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
-      "<p class=\"page-sub\" style=\"margin:0 0 10px;\">Upload an Excel file exported from your official software — it opens here like a spreadsheet: sortable columns, click any cell to edit it, highlight cells, and leave comments.</p>" +
+      "<p class=\"page-sub\" style=\"margin:0 0 10px;\">Upload an Excel file exported from your official software — it opens here like a spreadsheet: sortable columns, click any cell to edit it, highlight cells, leave comments, and use formulas like <span class=\"mono\">=SUM(A1:A10)</span>, <span class=\"mono\">=AVERAGE(A1:A10)</span>, <span class=\"mono\">=COUNT(...)</span>, <span class=\"mono\">=MIN(...)</span>/<span class=\"mono\">=MAX(...)</span>, or plain math like <span class=\"mono\">=A1+B1</span>.</p>" +
       "<form class=\"add-row-form\" data-action=\"upload-exported-file\">" +
       "<input type=\"file\" name=\"file\" accept=\".xlsx,.xls\" required>" +
       "<button class=\"btn\" type=\"submit\">+ Upload File</button>" +
@@ -4213,21 +4301,25 @@ function appMain() {
     var rowCount = (file.rows || []).length;
     var order = [];
     for (var i = 0; i < rowCount; i++) {
-      var candidateRow = file.rows[i] || [];
+      var rowIdx = i;
       var passesFilters = Object.keys(filters).every(function (colStr) {
         var f = (filters[colStr] || "").toLowerCase();
         if (!f) return true;
-        var v = candidateRow[parseInt(colStr, 10)];
+        var v = exportedEvaluateCell(file, rowIdx, parseInt(colStr, 10));
         return String(v === undefined ? "" : v).toLowerCase().indexOf(f) !== -1;
       });
       if (passesFilters) order.push(i);
     }
+    /* Sorting and filtering both use the evaluated (calculated) value of
+       a formula cell, not its raw "=SUM(...)" text — sorting a column of
+       totals sorts by the numbers, the way it would in a real
+       spreadsheet. */
     if (sortList.length) {
       order.sort(function (a, b) {
         for (var i = 0; i < sortList.length; i++) {
           var s = sortList[i];
-          var va = (file.rows[a] || [])[s.col] || "";
-          var vb = (file.rows[b] || [])[s.col] || "";
+          var va = exportedEvaluateCell(file, a, s.col) || "";
+          var vb = exportedEvaluateCell(file, b, s.col) || "";
           var na = parseFloat(va), nb = parseFloat(vb);
           var cmp;
           if (!isNaN(na) && !isNaN(nb) && va !== "" && vb !== "") cmp = na - nb;
@@ -4258,17 +4350,20 @@ function appMain() {
         var cellId = file.id + ":" + key;
         var hl = (file.highlights || {})[key];
         var tdClass = hl ? "cell-hl-" + hl : "";
-        var val = row[c] === undefined ? "" : row[c];
+        var raw = row[c] === undefined ? "" : row[c];
+        var displayVal = exportedIsFormula(raw) ? exportedEvaluateCell(file, r, c) : raw;
         var commentCount = ((file.comments || {})[key] || []).length;
         var commenting = ui.commentingExportedCell === cellId;
 
         if (highlightMode) {
-          return "<td class=\"" + tdClass + " cell-highlightable\" data-action=\"toggle-exported-highlight\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\">" + esc(val) + "</td>";
+          return "<td class=\"" + tdClass + " cell-highlightable\" data-action=\"toggle-exported-highlight\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\">" + esc(displayVal) + "</td>";
         }
         var editing = ui.editingExportedCell === cellId;
+        // Editing shows the raw "=SUM(...)" text so it can be changed;
+        // the normal view shows the calculated result.
         var cellContent = editing
-          ? "<input class=\"text-input xfile-cell-input\" data-action-change=\"set-exported-cell\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\" value=\"" + esc(val) + "\" autofocus>"
-          : "<span class=\"xfile-cell-value\" data-action=\"edit-exported-cell\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\">" + esc(val) + "</span>";
+          ? "<input class=\"text-input xfile-cell-input\" data-action-change=\"set-exported-cell\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\" value=\"" + esc(raw) + "\" autofocus>"
+          : "<span class=\"xfile-cell-value" + (exportedIsFormula(raw) ? " xfile-formula-value" : "") + "\" data-action=\"edit-exported-cell\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\" title=\"" + (exportedIsFormula(raw) ? esc(raw) : "") + "\">" + esc(displayVal) + "</span>";
         var commentBtn = "<button class=\"xfile-comment-btn" + (commentCount ? " has-comments" : "") + "\" data-action=\"toggle-exported-comment\" data-file=\"" + file.id + "\" data-row=\"" + r + "\" data-col=\"" + c + "\" title=\"Comments\">💬" + (commentCount ? commentCount : "") + "</button>";
         return "<td class=\"" + tdClass + " xfile-cell\"><div class=\"xfile-cell-inner\">" + cellContent + commentBtn + "</div>" +
           (commenting ? exportedCommentPanelHtml(file, r, c) : "") + "</td>";
