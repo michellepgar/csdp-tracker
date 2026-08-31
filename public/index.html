@@ -548,6 +548,10 @@
   .dist-breakdown-table td.dist-lang-cell { text-align: center; }
   .dist-breakdown-table td:has(input) { text-align: center; }
   .dist-breakdown-table input.text-input { max-width: 80px; text-align: center; }
+  .dist-packet-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .dist-packet-size-row { display: flex; align-items: center; gap: 3px; font-size: 0.72rem; color: var(--ink-faint); }
+  .dist-packet-size-input.text-input { max-width: 48px; padding: 2px 4px; font-size: 0.75rem; }
+  .dist-th-note { display: block; font-size: 0.62rem; text-transform: none; font-weight: 400; color: var(--ink-faint); }
   .dist-remarks-label textarea { width: 100%; min-height: 34px; }
   .dist-classroom-cell { font-weight: 700; vertical-align: middle !important; background: var(--surface-2); }
   .dist-form-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
@@ -1427,7 +1431,7 @@ function appMain() {
     DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
       out[c.key] = {};
       DISTRIBUTION_LANGUAGES.forEach(function (l) {
-        out[c.key][l.key] = { packets: "", loose: "", extraPackets: "", extraLoose: "" };
+        out[c.key][l.key] = { packets: "", packetSize: "", loose: "", extraPackets: "", extraLoose: "" };
       });
     });
     return out;
@@ -1442,6 +1446,14 @@ function appMain() {
     };
   }
   function numOr0(v) { var n = Number(v); return isNaN(n) ? 0 : n; }
+  /* A packet is usually 25 forms, but not always (e.g. "24 packets x 30")
+     -- packetSize is editable right next to the packet count, defaulting
+     to 25 whenever it's left blank so nothing changes for the common
+     case. */
+  function distributionPacketSize(cell) {
+    var n = numOr0(cell.packetSize);
+    return n > 0 ? n : 25;
+  }
   /* Packets and forms both fold in whatever was typed into the matching
      "extra" fields — from the numbers alone there's no way to tell a
      planned packet from an extra one after the fact, so the totals just
@@ -1461,7 +1473,7 @@ function appMain() {
     DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
       DISTRIBUTION_LANGUAGES.forEach(function (l) {
         var cell = (r.breakdown[c.key] || {})[l.key] || {};
-        total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * 25 + numOr0(cell.loose) + numOr0(cell.extraLoose);
+        total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * distributionPacketSize(cell) + numOr0(cell.loose) + numOr0(cell.extraLoose);
       });
     });
     return total;
@@ -1474,7 +1486,7 @@ function appMain() {
     var total = 0;
     DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
       var cell = (r.breakdown[c.key] || {})[langKey] || {};
-      total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * 25 + numOr0(cell.loose) + numOr0(cell.extraLoose);
+      total += (numOr0(cell.packets) + numOr0(cell.extraPackets)) * distributionPacketSize(cell) + numOr0(cell.loose) + numOr0(cell.extraLoose);
     });
     return total;
   }
@@ -3707,10 +3719,17 @@ function appMain() {
       DISTRIBUTION_LANGUAGES.forEach(function (l, li) {
         var cell = row.breakdown[c.key][l.key];
         var fieldName = function (f) { return "breakdown__" + c.key + "__" + l.key + "__" + f; };
+        /* A packet is 25 forms by default, but not always ("24 packets x
+           30") — the packet-size input rides right alongside the packet
+           count, in the same column, instead of a whole extra column. */
+        var packetsCellHtml = "<div class=\"dist-packet-cell\">" +
+          numInputWithCalc(fieldName("packets"), cell.packets) +
+          "<span class=\"dist-packet-size-row\">×<input class=\"text-input dist-packet-size-input\" type=\"number\" min=\"1\" name=\"" + fieldName("packetSize") + "\" value=\"" + esc(cell.packetSize) + "\" placeholder=\"25\" title=\"Forms per packet (default 25)\"></span>" +
+          "</div>";
         bodyRows += "<tr>" +
           (li === 0 ? "<td rowspan=\"" + DISTRIBUTION_LANGUAGES.length + "\" class=\"dist-classroom-cell\">" + esc(c.label) + "</td>" : "") +
           "<td class=\"dist-lang-cell\">" + esc(l.label) + "</td>" +
-          "<td>" + numInputWithCalc(fieldName("packets"), cell.packets) + "</td>" +
+          "<td>" + packetsCellHtml + "</td>" +
           "<td>" + numInputWithCalc(fieldName("loose"), cell.loose) + "</td>" +
           "<td>" + numInputWithCalc(fieldName("extraPackets"), cell.extraPackets) + "</td>" +
           "<td>" + numInputWithCalc(fieldName("extraLoose"), cell.extraLoose) + "</td>" +
@@ -3718,7 +3737,7 @@ function appMain() {
       });
     });
     return "<div class=\"table-scroll\"><table class=\"data-table dist-breakdown-table\"><thead><tr>" +
-      "<th>Classroom Type</th><th>Language</th><th>Packets</th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
+      "<th>Classroom Type</th><th>Language</th><th>Packets<br><span class=\"dist-th-note\">(size editable)</span></th><th>Loose Forms</th><th>Extra Packets</th><th>Extra Loose</th>" +
       "</tr></thead><tbody>" + bodyRows + "</tbody></table></div>";
   }
   function distributionFormHtml(row, isEdit, groupId, groupOptions) {
@@ -3739,7 +3758,7 @@ function appMain() {
       "<label>Launch Classes" + numInputWithCalc("classrooms__launch", row.classrooms.launch) + "</label>" +
       "<label>CRR Classes" + numInputWithCalc("classrooms__crr", row.classrooms.crr) + "</label>" +
       "</div>" +
-      "<div class=\"field-mini-label\" style=\"margin-top:10px;\">Consent Packets (each packet = 25 forms)</div>" +
+      "<div class=\"field-mini-label\" style=\"margin-top:10px;\">Consent Packets (25 forms per packet unless changed)</div>" +
       distributionBreakdownFieldsHtml(row) +
       "<div class=\"dist-form-grid\" style=\"margin-top:8px;\">" +
       "<label>Contact Person<input class=\"text-input\" name=\"contactPerson\" value=\"" + esc(row.contactPerson) + "\"></label>" +
@@ -4991,7 +5010,7 @@ function appMain() {
           DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
             DISTRIBUTION_LANGUAGES.forEach(function (l) {
               var cell = row.breakdown[c.key][l.key];
-              ["packets", "loose", "extraPackets", "extraLoose"].forEach(function (f) {
+              ["packets", "packetSize", "loose", "extraPackets", "extraLoose"].forEach(function (f) {
                 cell[f] = (fd.get("breakdown__" + c.key + "__" + l.key + "__" + f) || "").toString().trim();
               });
             });
