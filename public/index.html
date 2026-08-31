@@ -1468,12 +1468,13 @@ function appMain() {
     var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
     return (a + 1) + "-" + (b + 1);
   }
-  /* Regular Classroom only ever gets ENG/SPN forms — Launch and CRR are the
-     two that hand out all three languages. Each type lists which language
-     keys actually apply to it, so the breakdown only ever asks for cells
-     that are real for that classroom type. */
+  /* All three classroom types hand out all three languages. Each type
+     still lists which language keys apply to it (rather than hardcoding
+     DISTRIBUTION_LANGUAGES everywhere) so a future type-specific
+     restriction is just a one-line change to its languages array, the
+     same way Regular briefly went ENG/SPN-only and back. */
   var DISTRIBUTION_CLASSROOM_TYPES = [
-    { key: "regular", label: "Regular Classroom", languages: ["engSpn"] },
+    { key: "regular", label: "Regular Classroom", languages: ["engSpn", "porFr", "hc"] },
     { key: "launch", label: "Launch Classes", languages: ["engSpn", "porFr", "hc"] },
     { key: "crr", label: "CRR Classes", languages: ["engSpn", "porFr", "hc"] }
   ];
@@ -1625,6 +1626,35 @@ function appMain() {
       parsed.distributionYears = years;
     }
     return true;
+  }
+  /* Backfills any classroom-type/language cell that DISTRIBUTION_CLASSROOM_
+     TYPES currently says should exist but an already-saved row doesn't
+     have — e.g. Regular Classroom briefly went ENG/SPN-only, so any row
+     saved during that window is missing its POR/FR and HC cells now that
+     all three languages are back. Always runs (not gated behind a one-time
+     flag) since it only ever adds a blank cell that's missing, never
+     touches or removes one that's already there — safe to re-run on every
+     load, and automatically covers whatever the classroom-type language
+     lists say right now, not just today's specific change. */
+  function migrateDistributionBreakdownLanguages(parsed) {
+    var changed = false;
+    (parsed.distributionYears || []).forEach(function (entry) {
+      (entry.groups || []).forEach(function (g) {
+        (g.rows || []).forEach(function (r) {
+          r.breakdown = r.breakdown || {};
+          DISTRIBUTION_CLASSROOM_TYPES.forEach(function (c) {
+            r.breakdown[c.key] = r.breakdown[c.key] || {};
+            (c.languages || []).forEach(function (langKey) {
+              if (!r.breakdown[c.key][langKey]) {
+                r.breakdown[c.key][langKey] = { packets: "", packetSize: "", loose: "", extraPackets: "", extraLoose: "" };
+                changed = true;
+              }
+            });
+          });
+        });
+      });
+    });
+    return changed;
   }
   /* Group/row ids (uid("dgrp")/uid("dist")) are unique across every school
      year, so finding one by id just means searching every year's groups —
@@ -2021,6 +2051,7 @@ function appMain() {
       migrateDistributionGroups(fresh);
       migrateDistributionSeedSchools(fresh);
       migrateDistributionYears(fresh);
+      migrateDistributionBreakdownLanguages(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -2092,9 +2123,10 @@ function appMain() {
     var justMigratedDistributionGroups = migrateDistributionGroups(s);
     var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(s);
     var justMigratedDistributionYears = migrateDistributionYears(s);
+    var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind;
   }
   function boot() {
     var pw = getStoredPassword();
