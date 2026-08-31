@@ -4129,9 +4129,7 @@ function appMain() {
 
     var groupsHtml = groups.map(function (g) {
       var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
-        if (editingRowId === r.id) {
-          return "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
-        }
+        var editingThisRow = editingRowId === r.id;
         var pendingRow = isPending("distribution-row", r.id);
         var totalPackets = distributionRowTotalPackets(r);
         var totalForms = distributionRowTotalForms(r);
@@ -4161,10 +4159,11 @@ function appMain() {
           remarksCell +
           "<td class=\"dist-col-center\">" +
           "<button class=\"link-btn\" data-action=\"toggle-view-distribution-row\" data-id=\"" + r.id + "\" title=\"View details\">" + (viewing ? "🙈" : "👁️") + "</button>" +
-          "<button class=\"link-btn\" data-action=\"edit-distribution-row\" data-id=\"" + r.id + "\">Edit</button>" +
+          "<button class=\"link-btn\" data-action=\"" + (editingThisRow ? "cancel-distribution-form" : "edit-distribution-row") + "\" data-id=\"" + r.id + "\">" + (editingThisRow ? "Cancel" : "Edit") + "</button>" +
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
           "</td></tr>" +
-          (viewing ? "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionDetailViewHtml(r) + "</td></tr>" : "");
+          (viewing ? "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionDetailViewHtml(r) + "</td></tr>" : "") +
+          (editingThisRow ? "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>" : "");
       }).join("");
 
       var pendingGroup = isPending("distribution-group", g.id);
