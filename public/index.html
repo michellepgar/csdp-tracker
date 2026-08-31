@@ -646,6 +646,10 @@
   .xfile-comment-empty { color: var(--ink-faint); font-size: 0.78rem; margin-bottom: 6px; }
   .xfile-comment-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
   .xfile-comment-form input.text-input { min-width: 120px; flex: 1; }
+  .xfile-sort-panel { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .xfile-sort-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .xfile-sort-row select.text-input { max-width: 200px; }
+  .xfile-sort-panel-actions { display: flex; gap: 14px; margin-top: 4px; }
 
   /* Sticky notes always use a fixed dark ink on pastel backgrounds,
      regardless of app theme — like real sticky notes look the same in
@@ -4288,6 +4292,34 @@ function appMain() {
       "<button class=\"link-btn\" type=\"button\" data-action=\"close-exported-comment\">Close</button>" +
       "</form></div>";
   }
+  /* A dedicated "Sort by…" panel — rows in the order they'll be sorted
+     (Sort by X, Then by Y, Then by Z), each pickable from a dropdown
+     instead of needing to know Shift+click on headers. Both this panel
+     and Shift+click on a header write to the same ui.exportedSort list,
+     so either way of building a sort ends up in the same place. */
+  function exportedSortPanelHtml(file) {
+    var list = (ui.exportedSort || {})[file.id] || [];
+    var rows = list.map(function (s, i) {
+      var colOpts = (file.headers || []).map(function (h, c) {
+        return "<option value=\"" + c + "\"" + (s.col === c ? " selected" : "") + ">" + esc(h || "(untitled)") + "</option>";
+      }).join("");
+      return "<div class=\"xfile-sort-row\">" +
+        "<span class=\"field-mini-label\">" + (i === 0 ? "Sort by" : "Then by") + "</span>" +
+        "<select class=\"text-input\" data-action-change=\"set-exported-sort-level-col\" data-file=\"" + file.id + "\" data-level=\"" + i + "\">" + colOpts + "</select>" +
+        "<select class=\"text-input\" data-action-change=\"set-exported-sort-level-dir\" data-file=\"" + file.id + "\" data-level=\"" + i + "\">" +
+        "<option value=\"asc\"" + (s.dir === "asc" ? " selected" : "") + ">A → Z / Low → High</option>" +
+        "<option value=\"desc\"" + (s.dir === "desc" ? " selected" : "") + ">Z → A / High → Low</option>" +
+        "</select>" +
+        "<button class=\"icon-btn\" data-action=\"remove-exported-sort-level\" data-file=\"" + file.id + "\" data-level=\"" + i + "\" title=\"Remove this sort level\">✕</button>" +
+        "</div>";
+    }).join("");
+    return "<div class=\"xfile-sort-panel\">" +
+      (rows || "<div class=\"xfile-comment-empty\">No sort applied — add a level below.</div>") +
+      "<div class=\"xfile-sort-panel-actions\">" +
+      "<button class=\"link-btn\" data-action=\"add-exported-sort-level\" data-file=\"" + file.id + "\">+ Add sort level</button>" +
+      (list.length ? "<button class=\"link-btn\" data-action=\"clear-exported-sort\" data-file=\"" + file.id + "\">Clear all</button>" : "") +
+      "</div></div>";
+  }
   function exportedFileViewHtml(file) {
     var highlightMode = !!ui.exportedHighlightMode;
     var highlightColor = ui.exportedHighlightColor || "yellow";
@@ -4372,11 +4404,13 @@ function appMain() {
     }).join("");
 
     var addingColumn = ui.addingExportedColumnFor === file.id;
+    var sortPanelOpen = ui.exportedSortPanelFor === file.id;
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">" + esc(file.name) + "</div>" +
       "<div class=\"page-sub\">" + (file.rows || []).length + " rows</div></div>" +
       "<div class=\"contact-highlight-toolbar\">" +
       "<button class=\"link-btn\" data-action=\"back-to-exported-files\">← All files</button>" +
+      "<button class=\"btn small ghost\" data-action=\"toggle-exported-sort-panel\" data-file=\"" + file.id + "\">🔀 Sort by…" + (sortList.length > 1 ? " (" + sortList.length + ")" : "") + "</button>" +
       "<button class=\"btn small\" data-action=\"toggle-exported-highlight-mode\">" + (highlightMode ? "Save All" : "Edit All (Highlight cells)") + "</button>" +
       (highlightMode ? EXPORTED_HIGHLIGHT_COLORS.map(function (c) {
         return "<button type=\"button\" class=\"highlight-swatch hl-" + c + (highlightColor === c ? " selected" : "") + "\" data-action=\"set-exported-highlight-color\" data-color=\"" + c + "\"></button>";
@@ -4384,6 +4418,7 @@ function appMain() {
       "<button class=\"btn small ghost\" data-action=\"add-exported-row\" data-file=\"" + file.id + "\">+ Add Row</button>" +
       "<button class=\"btn small ghost\" data-action=\"toggle-add-exported-column\" data-file=\"" + file.id + "\">+ Add Column</button>" +
       "</div>" +
+      (sortPanelOpen ? exportedSortPanelHtml(file) : "") +
       (addingColumn
         ? "<form class=\"add-row-form\" data-action=\"add-exported-column\" data-file=\"" + file.id + "\" style=\"margin-top:8px;\">" +
           "<input class=\"text-input\" name=\"name\" placeholder=\"New column name\" required autofocus style=\"max-width:220px;\">" +
@@ -5011,6 +5046,35 @@ function appMain() {
       case "toggle-add-exported-column":
         ui.addingExportedColumnFor = ui.addingExportedColumnFor === t.getAttribute("data-file") ? null : t.getAttribute("data-file");
         render(); break;
+      case "toggle-exported-sort-panel":
+        ui.exportedSortPanelFor = ui.exportedSortPanelFor === t.getAttribute("data-file") ? null : t.getAttribute("data-file");
+        render(); break;
+      case "add-exported-sort-level":
+        (function () {
+          var fileId = t.getAttribute("data-file");
+          var file = (state.exportedFiles || []).find(function (f) { return f.id === fileId; });
+          ui.exportedSort = ui.exportedSort || {};
+          var list = ui.exportedSort[fileId] || [];
+          var usedCols = list.map(function (s) { return s.col; });
+          var headerCount = file ? (file.headers || []).length : 0;
+          var nextCol = 0;
+          for (var i = 0; i < headerCount; i++) { if (usedCols.indexOf(i) === -1) { nextCol = i; break; } }
+          ui.exportedSort[fileId] = list.concat([{ col: nextCol, dir: "asc" }]);
+        })();
+        render(); break;
+      case "remove-exported-sort-level":
+        (function () {
+          var fileId = t.getAttribute("data-file"), level = parseInt(t.getAttribute("data-level"), 10);
+          ui.exportedSort = ui.exportedSort || {};
+          var list = (ui.exportedSort[fileId] || []).slice();
+          list.splice(level, 1);
+          ui.exportedSort[fileId] = list;
+        })();
+        render(); break;
+      case "clear-exported-sort":
+        ui.exportedSort = ui.exportedSort || {};
+        ui.exportedSort[t.getAttribute("data-file")] = [];
+        render(); break;
       case "remove-exported-comment":
         (function () {
           var commentId = t.getAttribute("data-comment");
@@ -5425,6 +5489,22 @@ function appMain() {
           ui.exportedFilters = ui.exportedFilters || {};
           ui.exportedFilters[fileId] = ui.exportedFilters[fileId] || {};
           ui.exportedFilters[fileId][col] = t.value;
+        })();
+        render(); break;
+      case "set-exported-sort-level-col":
+        (function () {
+          var fileId = t.getAttribute("data-file"), level = parseInt(t.getAttribute("data-level"), 10);
+          ui.exportedSort = ui.exportedSort || {};
+          var list = ui.exportedSort[fileId] || [];
+          if (list[level]) list[level].col = parseInt(t.value, 10);
+        })();
+        render(); break;
+      case "set-exported-sort-level-dir":
+        (function () {
+          var fileId = t.getAttribute("data-file"), level = parseInt(t.getAttribute("data-level"), 10);
+          ui.exportedSort = ui.exportedSort || {};
+          var list = ui.exportedSort[fileId] || [];
+          if (list[level]) list[level].dir = t.value;
         })();
         render(); break;
       case "set-contact-group-name":
