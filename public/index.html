@@ -3506,14 +3506,23 @@ function appMain() {
      the checkboxes themselves, so any combination can be changed. */
   function needsCorrectionHtml(editing, it) {
     if (!editing) {
-      var checked = CORRECTION_NEEDS_FIELDS.filter(function (f) { return it[f.needsKey]; }).map(function (f) { return f.key; });
+      var checked = CORRECTION_NEEDS_FIELDS.filter(function (f) { return it[f.needsKey]; }).map(function (f) {
+        return f.key === "Other" && it.otherCorrectionDetail ? "Other (" + it.otherCorrectionDetail + ")" : f.key;
+      });
       if (!checked.length) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
       return "<div class=\"contact-cell-view\">" + esc(checked.join(", ")) + "</div>";
     }
-    return CORRECTION_NEEDS_FIELDS.map(function (f) {
+    var checkboxesHtml = CORRECTION_NEEDS_FIELDS.map(function (f) {
       return "<label style=\"display:flex; align-items:center; gap:4px; white-space:nowrap;\">" +
         "<input type=\"checkbox\" data-action-change=\"set-correction-checkbox\" data-id=\"" + it.id + "\" data-field=\"" + f.needsKey + "\"" + (it[f.needsKey] ? " checked" : "") + "> " + esc(f.key) + "</label>";
     }).join("");
+    /* Checking "Other" alone doesn't say what's actually being corrected
+       or verified — a blank space opens right underneath it to spell that
+       out, only while "Other" is actually checked. */
+    var otherDetailHtml = it.needsOtherCorrection
+      ? "<input class=\"contact-cell-input\" style=\"display:block; margin-top:4px;\" data-action-change=\"set-correction-field\" data-id=\"" + it.id + "\" data-field=\"otherCorrectionDetail\" placeholder=\"What else needs correcting/verifying?\" value=\"" + esc(it.otherCorrectionDetail || "") + "\">"
+      : "";
+    return checkboxesHtml + otherDetailHtml;
   }
   function correctionKindCellHtml(editing, it) {
     var kind = it.correctionKind || "Correction";
