@@ -2226,6 +2226,15 @@ function appMain() {
      breaks (so a school with two nurses shows one per line) while still
      escaping everything else. */
   function contactCellViewHtml(v) { return esc(v).replace(/\n/g, "<br>"); }
+  /* Displayed alphabetically regardless of insertion/move order — used by
+     both Schools Contact Information and Distribution List, so a school
+     moved into a group always lands in the right alphabetical spot rather
+     than just appended to the end. */
+  function sortRowsBySchoolName(rows) {
+    return (rows || []).slice().sort(function (a, b) {
+      return String(a.school || "").localeCompare(String(b.school || ""), undefined, { sensitivity: "base" });
+    });
+  }
   /* Auto-sized so a cell with 2-3 people (one per line) doesn't clip in
      edit mode — grows with however many lines are already in the value. */
   function contactTextareaRows(v) { return Math.max(1, String(v || "").split("\n").length); }
@@ -2263,7 +2272,7 @@ function appMain() {
 
     var groupsHtml = groups.map(function (g) {
       var headerCells = CONTACT_FIELDS.map(function (f) { return "<th>" + esc(f.label) + "</th>"; }).join("") + "<th></th>";
-      var rowsHtml = (g.rows || []).map(function (r) {
+      var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
         /* Unlocked one row at a time — editing one school never risks
            typing into a different one by mistake. */
         var rowEditing = ui.editingContactRowId === r.id;
@@ -3740,7 +3749,7 @@ function appMain() {
       : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\">+ Add school</button>";
 
     var groupsHtml = groups.map(function (g) {
-      var rowsHtml = (g.rows || []).map(function (r) {
+      var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
         if (editingRowId === r.id) {
           return "<tr><td colspan=\"12\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
         }
