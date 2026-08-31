@@ -3753,7 +3753,7 @@ function appMain() {
       "<div class=\"dist-form-grid\">" +
       groupField +
       "<label>School<input class=\"text-input\" name=\"school\" required value=\"" + esc(row.school) + "\" placeholder=\"School name\"></label>" +
-      "<label>Enrolled" + numInputWithCalc("enrolled", row.enrolled) + "</label>" +
+      "<label>Enrolled<input class=\"text-input\" type=\"number\" min=\"0\" name=\"enrolled\" value=\"" + esc(row.enrolled) + "\" placeholder=\"0\"></label>" +
       "<label class=\"dist-checkbox-label\"><input type=\"checkbox\" name=\"distributed\"" + (row.distributed ? " checked" : "") + "> Distributed</label>" +
       "<label>Regular Classroom" + numInputWithCalc("classrooms__regular", row.classrooms.regular) + "</label>" +
       "<label>Launch Classes" + numInputWithCalc("classrooms__launch", row.classrooms.launch) + "</label>" +
