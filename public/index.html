@@ -2012,46 +2012,50 @@ function appMain() {
   function startPollingForUpdates() {
     setInterval(checkForRemoteUpdates, 12000);
   }
+  /* Runs every one-time migration against whatever state object is
+     passed in — shared by normal boot-up and by restoring an older
+     backup file, so a backup from months ago still comes back up to
+     date instead of the app choking on fields it didn't have yet. */
+  function runAllMigrations(s) {
+    for (var k in DEFAULT_STATE) { if (!(k in s)) s[k] = DEFAULT_STATE[k]; }
+    migrateTaskFields(s);
+    var justMigratedRecheckRemoval = migrateHonorRecheckRemoval(s);
+    var justMigratedCorrectionFields = migrateCorrectionFieldsExpansion(s);
+    var justMigratedCorrectionSimplify = migrateCorrectionSimplify(s);
+    migrateIssueTypes(s);
+    migrateChecklistTemplate(s);
+    var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
+    var justMigratedTimestamps = migrateRecordTimestamps(s);
+    var justMigratedSchools = migrateBrocktonSchools(s);
+    var justMigratedDavis = migrateDavisSchool(s);
+    var justMigratedRenames = migrateSchoolRenames(s);
+    var justMigratedVaColors = migrateVaColors(s);
+    var justMigratedVaColors2 = migrateVaColors2(s);
+    var justMigratedVaAdminField = migrateVaAdminField(s);
+    var justMigratedFaithOwner = migrateFaithOwner(s);
+    var justMigratedIssueStatusUniform = migrateIssueStatusUniform(s);
+    var justMigratedContacts = migrateSchoolContacts(s);
+    var justMigratedContactGroupRename = migrateContactGroupRename(s);
+    var justMigratedContactMultiLine = migrateContactMultiLineFields(s);
+    var justMigratedDistributionSchoolYear = migrateDistributionSchoolYear(s);
+    var justMigratedDistributionGroups = migrateDistributionGroups(s);
+    var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(s);
+    var justMigratedDistributionYears = migrateDistributionYears(s);
+    migrateNotesToHtml(s.generalNotes);
+    migrateNotesToHtml(s.privateNotes);
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify;
+  }
   function boot() {
     var pw = getStoredPassword();
     if (!pw) { showPasswordPrompt(); return; }
     loadStateFromServer().then(function (data) {
       state = data;
-      for (var k in DEFAULT_STATE) { if (!(k in state)) state[k] = DEFAULT_STATE[k]; }
-      migrateTaskFields(state);
-      var justMigratedRecheckRemoval = migrateHonorRecheckRemoval(state);
-      var justMigratedCorrectionFields = migrateCorrectionFieldsExpansion(state);
-      var justMigratedCorrectionSimplify = migrateCorrectionSimplify(state);
-      migrateIssueTypes(state);
-      migrateChecklistTemplate(state);
-      /* Save right away if this just ran for the first time, so the
-         one-time flag itself is persisted — otherwise it'd only get
-         written back on the user's next unrelated change, and until then
-         a fresh reload would still see the reorder as "not done yet". */
-      var justMigratedCategoryOrder = migrateTaskCategoryOrder(state);
-      var justMigratedTimestamps = migrateRecordTimestamps(state);
-      var justMigratedSchools = migrateBrocktonSchools(state);
-      var justMigratedDavis = migrateDavisSchool(state);
-      var justMigratedRenames = migrateSchoolRenames(state);
-      var justMigratedVaColors = migrateVaColors(state);
-      var justMigratedVaColors2 = migrateVaColors2(state);
-      var justMigratedVaAdminField = migrateVaAdminField(state);
-      var justMigratedFaithOwner = migrateFaithOwner(state);
-      var justMigratedIssueStatusUniform = migrateIssueStatusUniform(state);
-      var justMigratedContacts = migrateSchoolContacts(state);
-      var justMigratedContactGroupRename = migrateContactGroupRename(state);
-      var justMigratedContactMultiLine = migrateContactMultiLineFields(state);
-      var justMigratedDistributionSchoolYear = migrateDistributionSchoolYear(state);
-      var justMigratedDistributionGroups = migrateDistributionGroups(state);
-      var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(state);
-      var justMigratedDistributionYears = migrateDistributionYears(state);
-      migrateNotesToHtml(state.generalNotes);
-      migrateNotesToHtml(state.privateNotes);
+      var anyMigrated = runAllMigrations(state);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      if (justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify) {
+      if (anyMigrated) {
         saveStateToServer(state).catch(function () {});
       }
     }).catch(function (err) {
@@ -3626,6 +3630,19 @@ function appMain() {
       "<div class=\"card-body\">" +
       "<div class=\"row-list\">" + (assignmentRows || emptyState("No schools yet.")) + "</div>" +
       "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Backup &amp; Restore</div></div>" +
+      "<div class=\"card-body\">" +
+      "<p style=\"margin:0 0 10px;\">Download a copy of everything in the tracker — schools, tasks, checklist progress, email tracker, distribution list, contacts, notes, all of it — anytime you want. " +
+      "Save the file somewhere safe (Google Drive, email it to yourself). If something ever breaks, restoring that file below puts everything back exactly as it was when you downloaded it.</p>" +
+      "<button class=\"btn\" data-action=\"download-backup\">⬇ Download Backup</button>" +
+      "<div style=\"margin-top:18px; padding-top:16px; border-top:1px solid var(--border);\">" +
+      "<p style=\"margin:0 0 10px;\"><strong>Restore from a backup file</strong> — this replaces <strong>everything</strong> currently in the tracker with what's in the file you pick. This cannot be undone.</p>" +
+      "<form class=\"add-row-form\" data-action=\"restore-backup\">" +
+      "<input type=\"file\" name=\"file\" accept=\".json\" required>" +
+      "<input class=\"text-input\" name=\"confirm\" placeholder=\"Type RESTORE to confirm\" autocomplete=\"off\" style=\"max-width:200px;\">" +
+      "<button class=\"btn danger\" type=\"submit\">Restore</button>" +
+      "</form>" +
+      "</div></div></div>" +
       "<div class=\"card danger-zone\"><div class=\"card-head\"><div class=\"card-title\">Start New School Year</div></div>" +
       "<div class=\"card-body\">" +
       "<p style=\"margin:0 0 10px;\">Clears every school's Tasks list — file names, statuses, Counts, and VA signatures — so each school starts the new year with an empty Tasks section. " +
@@ -4601,6 +4618,20 @@ function appMain() {
         ui.distributionFormFor = { rowId: t.getAttribute("data-id") };
         ui.viewingDistributionRowId = null;
         render(); break;
+      case "download-backup":
+        (function () {
+          if (!isSuperAdmin()) return;
+          var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = "csdp-tracker-backup-" + todayIsoDate() + ".json";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast("Backup downloaded.");
+        })(); break;
       case "cancel-distribution-form":
         ui.distributionFormFor = null;
         render(); break;
@@ -5546,6 +5577,37 @@ function appMain() {
         (function () {
           addVaIfNew((fd.get("name") || "").toString());
           persist();
+        })(); break;
+      case "restore-backup":
+        (function () {
+          if (!isSuperAdmin()) return;
+          var confirmText = (fd.get("confirm") || "").toString();
+          if (confirmText !== "RESTORE") {
+            showToast("Type RESTORE exactly (all caps) to confirm.");
+            return;
+          }
+          var file = fd.get("file");
+          if (!file || !(file instanceof File) || !file.size) {
+            showToast("Choose a backup file first.");
+            return;
+          }
+          file.text().then(function (text) {
+            var parsed;
+            try { parsed = JSON.parse(text); } catch (e) {
+              showToast("That file isn't valid JSON — couldn't read it as a backup.");
+              return;
+            }
+            if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.schools)) {
+              showToast("That doesn't look like a CSDP Tracker backup file.");
+              return;
+            }
+            state = parsed;
+            runAllMigrations(state);
+            showToast("Restored from backup — everything now matches that file.");
+            persist();
+          }).catch(function () {
+            showToast("Couldn't read that file.");
+          });
         })(); break;
       case "reset-all-tasks":
         (function () {
