@@ -529,6 +529,7 @@
      nothing feels cramped. */
   .dist-table { table-layout: fixed; min-width: 1650px; }
   .dist-table td { white-space: normal; overflow-wrap: break-word; }
+  .dist-table td:first-child { padding-left: 8px; padding-right: 6px; }
   /* The two-row header reads better a touch bigger than the app's usual
      tiny table-header size, and the group headers (Number of Classrooms /
      Languages) get a bit more weight than the plain column headers under
@@ -3756,7 +3757,7 @@ function appMain() {
   var DIST_TOTAL_COLS = 14;
   function distributionColgroupHtml(longestSchoolChars) {
     return "<colgroup>" +
-      "<col style=\"width:" + (longestSchoolChars + 2) + "ch;\">" +
+      "<col style=\"width:" + longestSchoolChars + "ch;\">" +
       "<col style=\"width:100px;\">" +  // Enrolled
       "<col style=\"width:120px;\">" +  // Distributed
       "<col style=\"width:85px;\">" +   // Regular
