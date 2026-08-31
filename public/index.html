@@ -4884,11 +4884,24 @@ function appMain() {
           var rowId = form.getAttribute("data-row");
           var school = (fd.get("school") || "").toString().trim();
           if (!school) return;
-          var g = state.distributionGroups.find(function (x) { return x.id === groupId; });
-          if (!g) return;
-          g.rows = g.rows || [];
-          var row = rowId ? g.rows.find(function (x) { return x.id === rowId; }) : null;
-          if (!row) { row = distributionRow(""); g.rows.push(row); }
+          var targetGroup = state.distributionGroups.find(function (x) { return x.id === groupId; });
+          if (!targetGroup) return;
+          targetGroup.rows = targetGroup.rows || [];
+          /* The row being edited might currently live in a DIFFERENT group
+             than the one just picked (that's exactly what "move to another
+             group" means) — find and remove it from wherever it actually
+             is, not just from the target group, or a group change here
+             would leave the old copy behind and add a new one instead of
+             moving it. */
+          var row = null;
+          if (rowId) {
+            state.distributionGroups.forEach(function (g) {
+              var idx = (g.rows || []).findIndex(function (x) { return x.id === rowId; });
+              if (idx !== -1) row = g.rows.splice(idx, 1)[0];
+            });
+          }
+          if (!row) row = distributionRow("");
+          targetGroup.rows.push(row);
           row.school = school;
           row.enrolled = (fd.get("enrolled") || "").toString().trim();
           row.distributed = !!fd.get("distributed");
