@@ -4302,6 +4302,8 @@ function appMain() {
   }
   function classRostersPageHtml() {
     var rosters = state.classRosters || [];
+    var openRoster = ui.openClassRosterId ? rosters.find(function (r) { return r.id === ui.openClassRosterId; }) : null;
+    if (openRoster) return classRosterViewHtml(openRoster);
     var processing = ui.rosterProcessing;
     var rows = rosters.map(function (r) {
       var pending = isPending("class-roster", r.id);
