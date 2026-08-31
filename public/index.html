@@ -1656,6 +1656,24 @@ function appMain() {
     });
     return changed;
   }
+  /* Class Rosters' rows briefly stored a single { id, name } shape before
+     column detection existed — brings any already-saved roster from that
+     window up to the current { id, cells: [...] } shape (one cell per
+     header) instead of leaving it showing blank. */
+  function migrateClassRosterCells(parsed) {
+    if (parsed._migratedClassRosterCells) return false;
+    parsed._migratedClassRosterCells = true;
+    (parsed.classRosters || []).forEach(function (r) {
+      if (!r.headers || !r.headers.length) r.headers = ["Name"];
+      (r.rows || []).forEach(function (row) {
+        if (!row.cells && typeof row.name !== "undefined") {
+          row.cells = [row.name];
+          delete row.name;
+        }
+      });
+    });
+    return true;
+  }
   /* Group/row ids (uid("dgrp")/uid("dist")) are unique across every school
      year, so finding one by id just means searching every year's groups —
      no need to also track which year a form or edit-in-progress belongs
@@ -2059,6 +2077,7 @@ function appMain() {
       migrateDistributionSeedSchools(fresh);
       migrateDistributionYears(fresh);
       migrateDistributionBreakdownLanguages(fresh);
+      migrateClassRosterCells(fresh);
       migrateNotesToHtml(fresh.generalNotes);
       migrateNotesToHtml(fresh.privateNotes);
       return fresh;
@@ -2131,9 +2150,10 @@ function appMain() {
     var justMigratedDistributionSeedSchools = migrateDistributionSeedSchools(s);
     var justMigratedDistributionYears = migrateDistributionYears(s);
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
+    var justMigratedClassRosterCells = migrateClassRosterCells(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedClassRosterCells || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -4229,18 +4249,62 @@ function appMain() {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = CLASS_ROSTER_VENDOR_BASE + "pdf.worker.min.js";
     });
   }
-  function classRosterRecord(name, uploadedBy, pages, rows) {
-    return { id: uid("roster"), name: name || "Untitled roster", uploadedBy: uploadedBy || "", uploadedAt: new Date().toISOString(), pages: pages || [], rows: rows || [] };
+  function classRosterRecord(name, uploadedBy, pages, headers, rows) {
+    return { id: uid("roster"), name: name || "Untitled roster", uploadedBy: uploadedBy || "", uploadedAt: new Date().toISOString(), pages: pages || [], headers: headers || ["Name"], rows: rows || [] };
+  }
+  /* Turns a page's first recognized line into column boundaries, using
+     each word's x-position — a real column gap (e.g. "Name" ... "ID") is
+     much wider than the space between two words that make up one header
+     label (e.g. "Student" "ID"), so a gap noticeably bigger than the
+     line's own text height marks a new column rather than a continuation
+     of the same one. Falls back to a single column when the header line
+     is only one word (a plain name list), so this one path covers both a
+     simple list and a real multi-column table. */
+  function rosterColumnsFromHeaderLine(headerLine) {
+    var words = (headerLine.words || []).slice().sort(function (a, b) { return a.bbox.x0 - b.bbox.x0; });
+    if (!words.length) return [{ label: "Name", x0: 0 }];
+    var avgHeight = words.reduce(function (sum, w) { return sum + (w.bbox.y1 - w.bbox.y0); }, 0) / words.length;
+    var gapThreshold = avgHeight * 0.9;
+    var groups = [[words[0]]];
+    for (var i = 1; i < words.length; i++) {
+      var gap = words[i].bbox.x0 - words[i - 1].bbox.x1;
+      if (gap > gapThreshold) groups.push([words[i]]);
+      else groups[groups.length - 1].push(words[i]);
+    }
+    return groups.map(function (g) {
+      return { label: g.map(function (w) { return w.text; }).join(" ").trim(), x0: Math.min.apply(null, g.map(function (w) { return w.bbox.x0; })) };
+    });
+  }
+  /* Every word on a data row gets assigned to whichever column's starting
+     x-position it sits at or past — the same "which zone does this x fall
+     in" idea as the header split above, just applied per row instead of
+     used to find the zones in the first place. */
+  function rosterLineToCells(line, columns) {
+    var cells = columns.map(function () { return []; });
+    (line.words || []).forEach(function (w) {
+      var colIdx = 0;
+      for (var i = 0; i < columns.length; i++) {
+        if (w.bbox.x0 >= columns[i].x0) colIdx = i;
+      }
+      cells[colIdx].push(w.text);
+    });
+    return cells.map(function (c) { return c.join(" ").trim(); });
   }
   /* Recurses page by page (rather than a for-loop of promises) so each
      page number is captured correctly in its own closure — a plain
      var-based for-loop here would have every page's callback see the same
      final loop value once the async work actually resolves. One shared
      Tesseract worker handles every page so the ~10MB language data is only
-     loaded once per upload, not once per page. */
+     loaded once per upload, not once per page. Columns are detected once,
+     from the very first recognized line on the very first page — a
+     repeated header on later pages (common on multi-page printed reports)
+     is then recognized by matching text and skipped rather than becoming
+     a blank data row. */
   function ocrAllRosterPages(pdf, worker, onProgress) {
     var pages = [];
-    var lines = [];
+    var columns = null;
+    var headerText = null;
+    var rows = [];
     function processPage(pageNum) {
       if (pageNum > pdf.numPages) return Promise.resolve();
       onProgress("Reading page " + pageNum + " of " + pdf.numPages + "…");
@@ -4262,19 +4326,27 @@ function appMain() {
              instead of several MB matters even though only Michelle uses
              this today. */
           pages.push({ id: uid("rpg"), image: canvas.toDataURL("image/jpeg", 0.55) });
-          onProgress("Scanning names on page " + pageNum + " of " + pdf.numPages + "…");
-          return worker.recognize(canvas);
+          onProgress("Scanning page " + pageNum + " of " + pdf.numPages + "…");
+          return worker.recognize(canvas, {}, { blocks: true });
         }).then(function (result) {
-          (result.data.text || "").split("\n").forEach(function (line) {
-            var trimmed = line.trim();
-            if (trimmed) lines.push(trimmed);
+          var lines = (result.data.lines || []).filter(function (l) { return (l.text || "").trim(); });
+          lines.forEach(function (line) {
+            var normalized = line.text.trim().toLowerCase();
+            if (!columns) {
+              columns = rosterColumnsFromHeaderLine(line);
+              headerText = normalized;
+              return;
+            }
+            if (normalized === headerText) return; // repeated header on a later page
+            var cells = rosterLineToCells(line, columns);
+            if (cells.some(function (c) { return c; })) rows.push({ id: uid("rrow"), cells: cells });
           });
           return processPage(pageNum + 1);
         });
       });
     }
     return processPage(1).then(function () {
-      return { pages: pages, rows: lines.map(function (name) { return { id: uid("rrow"), name: name }; }) };
+      return { pages: pages, headers: (columns || [{ label: "Name" }]).map(function (c) { return c.label; }), rows: rows };
     });
   }
   function processRosterPdf(file, onProgress) {
@@ -4313,7 +4385,7 @@ function appMain() {
         : "<button class=\"link-btn\" data-action=\"open-class-roster\" data-id=\"" + r.id + "\">" + esc(r.name) + "</button>";
       return "<tr><td>" + nameCell +
         " <button class=\"link-btn\" data-action=\"" + (renaming ? "done-rename-class-roster" : "start-rename-class-roster") + "\" data-id=\"" + r.id + "\" title=\"" + (renaming ? "Done" : "Rename") + "\">" + (renaming ? "Done" : "✏️") + "</button></td>" +
-        "<td>" + (r.rows || []).length + " names</td>" +
+        "<td>" + (r.rows || []).length + " rows, " + (r.headers || []).length + " columns</td>" +
         "<td>" + esc(r.uploadedBy || "") + "</td>" +
         "<td>" + fmtDateTime(r.uploadedAt) + "</td>" +
         "<td><button class=\"icon-btn" + (pending ? " confirming" : "") + "\" data-action=\"remove-class-roster\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pending ? "Confirm?" : "✕") + "</button></td>" +
@@ -4331,24 +4403,33 @@ function appMain() {
           "<button class=\"btn\" type=\"submit\">Upload &amp; Read</button></form>") +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr><th>Roster</th><th>Names found</th><th>Uploaded by</th><th>Uploaded</th><th></th></tr></thead><tbody>" +
+      "<table class=\"data-table\"><thead><tr><th>Roster</th><th>Rows / columns</th><th>Uploaded by</th><th>Uploaded</th><th></th></tr></thead><tbody>" +
       (rows || "<tr><td colspan=\"5\">" + emptyState("No rosters uploaded yet.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
   function classRosterViewHtml(roster) {
+    var headers = roster.headers && roster.headers.length ? roster.headers : ["Name"];
     var query = ui.rosterSearchQuery || "";
+    /* Searches every column, not just the first — useful when a column
+       turns out to be an ID or grade instead of (or as well as) a name. */
     var filteredRows = query
-      ? (roster.rows || []).filter(function (r) { return (r.name || "").toLowerCase().indexOf(query.toLowerCase()) !== -1; })
+      ? (roster.rows || []).filter(function (r) {
+          return (r.cells || []).some(function (c) { return (c || "").toLowerCase().indexOf(query.toLowerCase()) !== -1; });
+        })
       : (roster.rows || []);
     var showingOriginal = ui.viewingRosterPagesFor === roster.id;
 
+    var headerCells = headers.map(function (h) { return "<th>" + esc(h || "(untitled)") + "</th>"; }).join("");
     var bodyRows = filteredRows.map(function (r) {
-      var editing = ui.editingRosterRowId === r.id;
       var pendingRow = isPending("roster-row", r.id);
-      var nameCell = editing
-        ? "<input class=\"contact-cell-input\" data-action-change=\"set-roster-row-name\" data-roster=\"" + roster.id + "\" data-row=\"" + r.id + "\" value=\"" + esc(r.name) + "\" autofocus>"
-        : "<div class=\"contact-cell-view\" data-action=\"edit-roster-row\" data-id=\"" + r.id + "\" style=\"cursor:pointer;\">" + esc(r.name || "(blank)") + "</div>";
-      return "<tr><td>" + nameCell + "</td>" +
+      var cellsHtml = headers.map(function (h, c) {
+        var editing = ui.editingRosterCell === (r.id + ":" + c);
+        var value = (r.cells || [])[c] || "";
+        return editing
+          ? "<td><input class=\"contact-cell-input\" data-action-change=\"set-roster-cell\" data-roster=\"" + roster.id + "\" data-row=\"" + r.id + "\" data-col=\"" + c + "\" value=\"" + esc(value) + "\" autofocus></td>"
+          : "<td><div class=\"contact-cell-view\" data-action=\"edit-roster-cell\" data-row=\"" + r.id + "\" data-col=\"" + c + "\" style=\"cursor:pointer;\">" + esc(value || "—") + "</div></td>";
+      }).join("");
+      return "<tr>" + cellsHtml +
         "<td class=\"dist-col-center\"><button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-roster-row\" data-roster=\"" + roster.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button></td></tr>";
     }).join("");
 
@@ -4360,20 +4441,20 @@ function appMain() {
       : "";
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">" + esc(roster.name) + "</div>" +
-      "<div class=\"page-sub\">" + (roster.rows || []).length + " names</div></div>" +
+      "<div class=\"page-sub\">" + (roster.rows || []).length + " rows</div></div>" +
       "<div class=\"contact-highlight-toolbar\">" +
       "<button class=\"link-btn\" data-action=\"back-to-class-rosters\">← All rosters</button>" +
       (roster.pages && roster.pages.length
         ? "<button class=\"btn small ghost\" data-action=\"toggle-roster-pages\" data-id=\"" + roster.id + "\">" + (showingOriginal ? "Hide" : "View") + " original scan</button>"
         : "") +
-      "<button class=\"btn small ghost\" data-action=\"add-roster-row\" data-id=\"" + roster.id + "\">+ Add name</button>" +
+      "<button class=\"btn small ghost\" data-action=\"add-roster-row\" data-id=\"" + roster.id + "\">+ Add row</button>" +
       "</div>" +
-      "<input class=\"text-input\" data-role=\"roster-search\" value=\"" + esc(query) + "\" placeholder=\"Search for a name…\" style=\"margin:10px 0; max-width:320px;\">" +
+      "<input class=\"text-input\" data-role=\"roster-search\" value=\"" + esc(query) + "\" placeholder=\"Search…\" style=\"margin:10px 0; max-width:320px;\">" +
       "</div>" +
       pagesHtml +
       "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr><th>Name</th><th></th></tr></thead><tbody>" +
-      (bodyRows || "<tr><td colspan=\"2\">" + emptyState(query ? "No names match that search." : "No names yet.") + "</td></tr>") +
+      "<table class=\"data-table\"><thead><tr>" + headerCells + "<th></th></tr></thead><tbody>" +
+      (bodyRows || "<tr><td colspan=\"" + (headers.length + 1) + "\">" + emptyState(query ? "No rows match that search." : "No rows yet.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
 
@@ -4719,6 +4800,8 @@ function appMain() {
     if (ui.issueTypeEditorOpen) { ui.issueTypeEditorOpen = false; render(); return; }
     if (ui.issueFieldEditorOpen) { ui.issueFieldEditorOpen = false; render(); return; }
     if (ui.contactHighlightMode) { ui.contactHighlightMode = false; render(); return; }
+    if (ui.editingRosterCell) { ui.editingRosterCell = null; render(); return; }
+    if (ui.renamingClassRosterId) { ui.renamingClassRosterId = null; render(); return; }
   }
 
   /* ============ event handling ============ */
@@ -4955,10 +5038,12 @@ function appMain() {
       case "open-class-roster":
         ui.openClassRosterId = t.getAttribute("data-id");
         ui.rosterSearchQuery = "";
+        ui.editingRosterCell = null;
         render(); break;
       case "back-to-class-rosters":
         ui.openClassRosterId = null;
         ui.viewingRosterPagesFor = null;
+        ui.editingRosterCell = null;
         render(); break;
       case "remove-class-roster":
         requestDelete("class-roster", t.getAttribute("data-id"), function () {
@@ -4978,14 +5063,17 @@ function appMain() {
         (function () {
           var roster = (state.classRosters || []).find(function (r) { return r.id === t.getAttribute("data-id"); });
           if (!roster) return;
-          var row = { id: uid("rrow"), name: "" };
+          var headerCount = (roster.headers || ["Name"]).length;
+          var blank = [];
+          for (var i = 0; i < headerCount; i++) blank.push("");
+          var row = { id: uid("rrow"), cells: blank };
           roster.rows = roster.rows || [];
           roster.rows.push(row);
-          ui.editingRosterRowId = row.id;
+          ui.editingRosterCell = row.id + ":0";
           persist();
         })(); break;
-      case "edit-roster-row":
-        ui.editingRosterRowId = t.getAttribute("data-id");
+      case "edit-roster-cell":
+        ui.editingRosterCell = t.getAttribute("data-row") + ":" + t.getAttribute("data-col");
         render(); break;
       case "remove-roster-row":
         (function () {
@@ -5342,13 +5430,16 @@ function appMain() {
           if (roster && name) roster.name = name;
           persist();
         })(); break;
-      case "set-roster-row-name":
+      case "set-roster-cell":
         (function () {
           var roster = (state.classRosters || []).find(function (r) { return r.id === t.getAttribute("data-roster"); });
           if (!roster) return;
           var row = (roster.rows || []).find(function (r) { return r.id === t.getAttribute("data-row"); });
-          if (row) row.name = t.value;
-          ui.editingRosterRowId = null;
+          if (row) {
+            row.cells = row.cells || [];
+            row.cells[parseInt(t.getAttribute("data-col"), 10)] = t.value;
+          }
+          ui.editingRosterCell = null;
           persist();
         })(); break;
       case "set-contact-group-name":
@@ -6000,9 +6091,9 @@ function appMain() {
             render();
           }).then(function (result) {
             state.classRosters = state.classRosters || [];
-            state.classRosters.push(classRosterRecord(rosterName, getStoredIdentity(), result.pages, result.rows));
+            state.classRosters.push(classRosterRecord(rosterName, getStoredIdentity(), result.pages, result.headers, result.rows));
             ui.rosterProcessing = null;
-            showToast("Read " + result.rows.length + " name(s) from " + rosterName + " — check them over before relying on it.");
+            showToast("Read " + result.rows.length + " row(s), " + result.headers.length + " column(s) from " + rosterName + " — check them over before relying on it.");
             persist();
           }).catch(function (err) {
             ui.rosterProcessing = null;
