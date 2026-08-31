@@ -631,6 +631,14 @@
   .xfile-sort-icon { font-size: 0.85rem; opacity: 0.6; }
   .xfile-sort-btn:hover .xfile-sort-icon, .xfile-sort-btn.sorted .xfile-sort-icon { opacity: 1; }
   .xfile-filter-input { width: 100%; padding: 3px 5px; font-size: 0.76rem; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .xfile-col-header { cursor: grab; }
+  .xfile-col-header:active { cursor: grabbing; }
+  .xfile-drag-grip { color: var(--ink-faint); font-size: 0.9rem; cursor: grab; padding: 0 4px; user-select: none; }
+  .xfile-col-header .xfile-drag-grip { display: inline-block; margin-right: 2px; }
+  .xfile-row-handle-cell { text-align: center; width: 28px; cursor: grab; }
+  .xfile-row-handle-cell:active { cursor: grabbing; }
+  .xfile-drag-grip.disabled { cursor: not-allowed; opacity: 0.4; }
+  .xfile-table tbody tr[data-drag-type="row"] { transition: background-color 0.1s; }
   .xfile-cell { white-space: normal; min-width: 110px; vertical-align: top; }
   .xfile-cell-inner { display: flex; align-items: flex-start; gap: 4px; justify-content: space-between; }
   .xfile-cell-value { cursor: pointer; flex: 1; min-width: 0; word-break: break-word; padding: 2px 0; }
@@ -4240,6 +4248,38 @@ function appMain() {
     nextVisiting[key] = true;
     return exportedEvaluateFormula(file, raw.slice(1), nextVisiting);
   }
+  /* Drag-and-drop reordering for rows and columns. Highlights and
+     comments are keyed by "row,col" against the row/column's POSITION,
+     so moving one shifts everything between the old and new spot by
+     one — this rebuilds those maps to follow the actual cell, not the
+     position, exactly like a real spreadsheet's would. */
+  function exportedMoveArrayItem(arr, fromIdx, toIdx) {
+    var item = arr.splice(fromIdx, 1)[0];
+    arr.splice(toIdx, 0, item);
+    return arr;
+  }
+  function exportedComputeMoveMapping(length, fromIdx, toIdx) {
+    var indices = [];
+    for (var i = 0; i < length; i++) indices.push(i);
+    exportedMoveArrayItem(indices, fromIdx, toIdx);
+    var oldToNew = {};
+    indices.forEach(function (oldPos, newPos) { oldToNew[oldPos] = newPos; });
+    return oldToNew;
+  }
+  function exportedRemapKeyedMaps(file, axis, oldToNew) {
+    ["highlights", "comments"].forEach(function (mapName) {
+      var oldMap = file[mapName] || {};
+      var newMap = {};
+      Object.keys(oldMap).forEach(function (key) {
+        var parts = key.split(",");
+        var r = parseInt(parts[0], 10), c = parseInt(parts[1], 10);
+        if (axis === "row") r = oldToNew.hasOwnProperty(r) ? oldToNew[r] : r;
+        else c = oldToNew.hasOwnProperty(c) ? oldToNew[c] : c;
+        newMap[r + "," + c] = oldMap[key];
+      });
+      file[mapName] = newMap;
+    });
+  }
   function exportedFilesPageHtml() {
     var files = state.exportedFiles || [];
     var openFile = ui.openExportedFileId ? files.find(function (f) { return f.id === ui.openExportedFileId; }) : null;
@@ -4264,7 +4304,6 @@ function appMain() {
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Exported Files</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
-      "<p class=\"page-sub\" style=\"margin:0 0 10px;\">Upload an Excel file exported from your official software — it opens here like a spreadsheet: sortable columns, click any cell to edit it, highlight cells, leave comments, and use formulas like <span class=\"mono\">=SUM(A1:A10)</span>, <span class=\"mono\">=AVERAGE(A1:A10)</span>, <span class=\"mono\">=COUNT(...)</span>, <span class=\"mono\">=MIN(...)</span>/<span class=\"mono\">=MAX(...)</span>, or plain math like <span class=\"mono\">=A1+B1</span>.</p>" +
       "<form class=\"add-row-form\" data-action=\"upload-exported-file\">" +
       "<input type=\"file\" name=\"file\" accept=\".xlsx,.xls\" required>" +
       "<button class=\"btn\" type=\"submit\">+ Upload File</button>" +
@@ -4363,12 +4402,16 @@ function appMain() {
       });
     }
 
+    var rowDragDisabled = sortList.length > 0 || Object.keys(filters).some(function (k) { return filters[k]; });
+
     var headerCells = (file.headers || []).map(function (h, c) {
       var sortIdx = sortList.findIndex(function (s) { return s.col === c; });
       var isSorted = sortIdx !== -1;
       var icon = isSorted ? (sortList[sortIdx].dir === "desc" ? "▼" : "▲") : "⇅";
       var priorityBadge = (isSorted && sortList.length > 1) ? "<sup>" + (sortIdx + 1) + "</sup>" : "";
-      return "<th><button class=\"xfile-sort-btn" + (isSorted ? " sorted" : "") + "\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" title=\"Click to sort by " + esc(h || "this column") + " — Shift+click to add as a secondary sort\">" +
+      return "<th class=\"xfile-col-header\" draggable=\"true\" data-drag-type=\"col\" data-drag-file=\"" + file.id + "\" data-drag-index=\"" + c + "\" title=\"Drag to reorder this column\">" +
+        "<span class=\"xfile-drag-grip\">⠿</span>" +
+        "<button class=\"xfile-sort-btn" + (isSorted ? " sorted" : "") + "\" data-action=\"sort-exported-column\" data-file=\"" + file.id + "\" data-col=\"" + c + "\" title=\"Click to sort by " + esc(h || "this column") + " — Shift+click to add as a secondary sort\">" +
         "<span>" + esc(h || "(untitled)") + priorityBadge + "</span><span class=\"xfile-sort-icon\">" + icon + "</span></button></th>";
     }).join("") + "<th></th>";
     var filterCells = (file.headers || []).map(function (h, c) {
@@ -4400,7 +4443,10 @@ function appMain() {
         return "<td class=\"" + tdClass + " xfile-cell\"><div class=\"xfile-cell-inner\">" + cellContent + commentBtn + "</div>" +
           (commenting ? exportedCommentPanelHtml(file, r, c) : "") + "</td>";
       }).join("");
-      return "<tr>" + cells + "<td></td></tr>";
+      var rowHandleCell = rowDragDisabled
+        ? "<td class=\"xfile-row-handle-cell\"><span class=\"xfile-drag-grip disabled\" title=\"Clear sort/filters to drag rows\">⠿</span></td>"
+        : "<td class=\"xfile-row-handle-cell\" draggable=\"true\" data-drag-type=\"row\" data-drag-file=\"" + file.id + "\" data-drag-index=\"" + r + "\" title=\"Drag to reorder this row\"><span class=\"xfile-drag-grip\">⠿</span></td>";
+      return "<tr data-drag-type=\"row\" data-drag-file=\"" + file.id + "\" data-drag-index=\"" + r + "\">" + cells + rowHandleCell + "</tr>";
     }).join("");
 
     var addingColumn = ui.addingExportedColumnFor === file.id;
@@ -4418,6 +4464,7 @@ function appMain() {
       "<button class=\"btn small ghost\" data-action=\"add-exported-row\" data-file=\"" + file.id + "\">+ Add Row</button>" +
       "<button class=\"btn small ghost\" data-action=\"toggle-add-exported-column\" data-file=\"" + file.id + "\">+ Add Column</button>" +
       "</div>" +
+      (rowDragDisabled ? "<div class=\"page-sub\" style=\"margin-top:4px;\">Drag ⠿ on a column header to reorder columns anytime. Row drag-to-reorder is off while sorted/filtered — clear sort &amp; filters to drag rows.</div>" : "") +
       (sortPanelOpen ? exportedSortPanelHtml(file) : "") +
       (addingColumn
         ? "<form class=\"add-row-form\" data-action=\"add-exported-column\" data-file=\"" + file.id + "\" style=\"margin-top:8px;\">" +
@@ -4775,6 +4822,58 @@ function appMain() {
     if (ui.issueTypeEditorOpen) { ui.issueTypeEditorOpen = false; render(); return; }
     if (ui.issueFieldEditorOpen) { ui.issueFieldEditorOpen = false; render(); return; }
     if (ui.contactHighlightMode) { ui.contactHighlightMode = false; render(); return; }
+  }
+
+  /* ============ Exported Files: drag-and-drop reorder ============ */
+  var exportedDragSource = null;
+  function onExportedDragStart(e) {
+    var t = e.target.closest("[data-drag-type]");
+    if (!t) return;
+    exportedDragSource = {
+      type: t.getAttribute("data-drag-type"),
+      fileId: t.getAttribute("data-drag-file"),
+      index: parseInt(t.getAttribute("data-drag-index"), 10)
+    };
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", "drag"); } catch (err) {}
+    }
+  }
+  function onExportedDragOver(e) {
+    if (!exportedDragSource) return;
+    var t = e.target.closest("[data-drag-type]");
+    if (!t) return;
+    if (t.getAttribute("data-drag-type") !== exportedDragSource.type) return;
+    if (t.getAttribute("data-drag-file") !== exportedDragSource.fileId) return;
+    e.preventDefault();
+  }
+  function onExportedDrop(e) {
+    if (!exportedDragSource) return;
+    var t = e.target.closest("[data-drag-type]");
+    var source = exportedDragSource;
+    exportedDragSource = null;
+    if (!t) return;
+    if (t.getAttribute("data-drag-type") !== source.type || t.getAttribute("data-drag-file") !== source.fileId) return;
+    var targetIndex = parseInt(t.getAttribute("data-drag-index"), 10);
+    if (targetIndex === source.index) return;
+    e.preventDefault();
+    var file = (state.exportedFiles || []).find(function (f) { return f.id === source.fileId; });
+    if (!file) return;
+    if (source.type === "row") {
+      var rowMapping = exportedComputeMoveMapping(file.rows.length, source.index, targetIndex);
+      exportedMoveArrayItem(file.rows, source.index, targetIndex);
+      exportedRemapKeyedMaps(file, "row", rowMapping);
+    } else if (source.type === "col") {
+      var colMapping = exportedComputeMoveMapping(file.headers.length, source.index, targetIndex);
+      exportedMoveArrayItem(file.headers, source.index, targetIndex);
+      (file.rows || []).forEach(function (row) { exportedMoveArrayItem(row, source.index, targetIndex); });
+      exportedRemapKeyedMaps(file, "col", colMapping);
+      // Column positions shifted — stale sort/filter settings would now
+      // point at the wrong column, so clear them rather than risk that.
+      if (ui.exportedSort) ui.exportedSort[source.fileId] = [];
+      if (ui.exportedFilters) ui.exportedFilters[source.fileId] = {};
+    }
+    persist();
   }
 
   /* ============ event handling ============ */
@@ -6239,6 +6338,9 @@ function appMain() {
   document.addEventListener("change", onChange);
   document.addEventListener("keydown", handleCalcKeydown);
   document.addEventListener("keydown", handleGlobalEscape);
+  document.addEventListener("dragstart", onExportedDragStart);
+  document.addEventListener("dragover", onExportedDragOver);
+  document.addEventListener("drop", onExportedDrop);
   document.addEventListener("input", onInput);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("keydown", onNoteEditorKeydown);
