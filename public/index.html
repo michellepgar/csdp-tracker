@@ -496,12 +496,6 @@
   .dist-table { table-layout: fixed; min-width: 1300px; }
   .dist-table th, .dist-table td { white-space: normal; overflow-wrap: break-word; }
   .dist-row-pending { background: var(--danger-soft); }
-  .dist-group-row td {
-    background: var(--surface-2); font-weight: 700; font-size: 0.95rem;
-    padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; white-space: nowrap;
-  }
-  .dist-group-name { font-weight: 700; }
-  .dist-group-actions { display: flex; gap: 8px; align-items: center; font-weight: 400; }
   .dist-row-pending:hover { background: var(--danger-soft); }
   .dist-form { background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; margin-top: 4px; white-space: normal; }
   .dist-form-grid { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
@@ -3759,19 +3753,6 @@ function appMain() {
       "</tr>" +
       "</thead>";
   }
-  function distributionGroupLabelRowHtml(g) {
-    var pendingGroup = isPending("distribution-group", g.id);
-    var groupEditing = ui.editingDistributionGroupId === g.id;
-    var titleHtml = groupEditing
-      ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
-      : "<span class=\"dist-group-name\">" + esc(g.name) + "</span>";
-    return "<tr class=\"dist-group-row\"><td colspan=\"" + DIST_TOTAL_COLS + "\">" +
-      titleHtml +
-      "<span class=\"dist-group-actions\">" +
-      "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
-      "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
-      "</span></td></tr>";
-  }
   function distributionListPageHtml() {
     var groups = state.distributionGroups || [];
     var formTarget = ui.distributionFormFor;
@@ -3786,7 +3767,7 @@ function appMain() {
       ? "<div class=\"card\"><div class=\"card-body\">" + distributionFormHtml(distributionRow(""), false, "", groups) + "</div></div>"
       : "<button class=\"add-inline-btn\" data-action=\"open-add-distribution-row\">+ Add school</button>";
 
-    var bodyHtml = groups.map(function (g) {
+    var groupsHtml = groups.map(function (g) {
       var rowsHtml = sortRowsBySchoolName(g.rows).map(function (r) {
         if (editingRowId === r.id) {
           return "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + distributionFormHtml(r, true, g.id, groups) + "</td></tr>";
@@ -3822,15 +3803,27 @@ function appMain() {
           "<button class=\"icon-btn" + (pendingRow ? " confirming" : "") + "\" data-action=\"remove-distribution-row\" data-group=\"" + g.id + "\" data-id=\"" + r.id + "\" title=\"Remove\">" + (pendingRow ? "Confirm?" : "✕") + "</button>" +
           "</td></tr>";
       }).join("");
-      return distributionGroupLabelRowHtml(g) +
-        (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>");
+
+      var pendingGroup = isPending("distribution-group", g.id);
+      var groupEditing = ui.editingDistributionGroupId === g.id;
+      var titleHtml = groupEditing
+        ? "<input class=\"contact-group-title-input\" data-action-change=\"set-distribution-group-name\" data-group=\"" + g.id + "\" value=\"" + esc(g.name) + "\">"
+        : "<div class=\"card-title\">" + esc(g.name) + "</div>";
+
+      return "<div class=\"card\"><div class=\"card-head\">" +
+        titleHtml +
+        "<div class=\"card-actions\">" +
+        "<button class=\"link-btn\" data-action=\"" + (groupEditing ? "done-edit-distribution-group" : "edit-distribution-group") + "\" data-id=\"" + g.id + "\">" + (groupEditing ? "Done" : "Rename") + "</button>" +
+        "<button class=\"icon-btn" + (pendingGroup ? " confirming" : "") + "\" data-action=\"remove-distribution-group\" data-id=\"" + g.id + "\" title=\"Remove this whole group\">" + (pendingGroup ? "Confirm delete group?" : "Remove group") + "</button>" +
+        "</div></div><div class=\"card-body\">" +
+        "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml() +
+        "<tbody>" +
+        (rowsHtml || "<tr><td colspan=\"" + DIST_TOTAL_COLS + "\">" + emptyState("No schools in this group yet.") + "</td></tr>") +
+        "</tbody></table></div></div></div>";
     }).join("");
 
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Distribution List</div><div class=\"page-sub\">School Year " + esc(DISTRIBUTION_SCHOOL_YEAR) + "</div></div></div>" +
-      addSchoolHtml +
-      "<div class=\"card\"><div class=\"card-body\">" +
-      "<div class=\"table-scroll\"><table class=\"data-table dist-table\">" + colgroupHtml + distributionTableHeadHtml() +
-      "<tbody>" + bodyHtml + "</tbody></table></div></div></div>" +
+      addSchoolHtml + groupsHtml +
       "<form class=\"mini-form\" data-action=\"add-distribution-group\">" +
       "<input class=\"text-input\" name=\"name\" placeholder=\"New group name\" required>" +
       "<button class=\"btn small\" type=\"submit\">+ Add group</button></form>";
