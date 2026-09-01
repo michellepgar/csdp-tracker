@@ -2222,7 +2222,6 @@ function appMain() {
       (isSignup ? "" : "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:6px;\" data-action=\"auth-forgot-mode\">Forgot your password?</button>") +
       "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:14px;\" data-action=\"auth-toggle-mode\">" +
       (isSignup ? "Already have an account? Sign in" : "New here? Create an account") + "</button>" +
-      "<button class=\"btn ghost\" type=\"button\" style=\"width:100%; margin-bottom:14px;\" data-action=\"auth-sign-in-google\">Sign in with Google</button>" +
       "<button class=\"link-btn\" type=\"button\" data-action=\"enter-demo-mode\">Just want to look around? Try the demo</button>" +
       "</div>";
   }
@@ -5232,12 +5231,6 @@ function appMain() {
       case "auth-back-to-signin":
         showLoginScreen("signin", "");
         break;
-      case "auth-sign-in-google":
-        (function () {
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + window.location.pathname } });
-        })(); break;
       case "auth-sign-out":
         (function () {
           var client = getSupabaseClient();
