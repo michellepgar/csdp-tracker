@@ -931,10 +931,10 @@ function appMain() {
     s.schools.forEach(function (sc) { s.schoolData[sc.id] = { tasks: [], vaAssigned: [] }; });
 
     s.vas = [
-      { name: "Michelle" },
-      { name: "Dana (Demo VA)", admin: true },
-      { name: "Sam (Demo VA)" },
-      { name: "Taylor (Demo Owner)", role: "owner" }
+      { id: uid("va"), name: "Michelle" },
+      { id: uid("va"), name: "Dana (Demo VA)", admin: true },
+      { id: uid("va"), name: "Sam (Demo VA)" },
+      { id: uid("va"), name: "Taylor (Demo Owner)", role: "owner" }
     ];
 
     s.taskCategories = DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; });
@@ -1448,6 +1448,17 @@ function appMain() {
         parsed.softwareIssueCategories.push({ id: uid("swcat"), name: dc.name, subcategories: dc.subcategories.map(function (s) { return { id: uid("swsub"), name: s }; }) });
       }
     });
+    return true;
+  }
+  /* Every existing VA entry gets an empty `email` field — this is what the
+     new login system (see docs/superpowers/specs/2026-09-01-real-per-user-
+     login-design.md) checks against, once Deploy B ships. Adding the field
+     here, ahead of that, means Michelle can fill emails in on the Team page
+     using today's still-working login before the new system goes live. */
+  function migrateVaEmail(parsed) {
+    if (parsed._migratedVaEmail) return false;
+    parsed._migratedVaEmail = true;
+    (parsed.vas || []).forEach(function (v) { if (v.email === undefined) v.email = ""; });
     return true;
   }
   /* The team already removed "Record Needs Rechecking" once, before the
@@ -2354,6 +2365,7 @@ function appMain() {
       migrateIssueFixEntries(fresh);
       migrateSuggestionStatus(fresh);
       migrateSoftwareIssueCategories(fresh);
+      migrateVaEmail(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
@@ -2431,6 +2443,7 @@ function appMain() {
     var justMigratedIssueFixEntries = migrateIssueFixEntries(s);
     var justMigratedSuggestionStatus = migrateSuggestionStatus(s);
     var justMigratedSoftwareIssueCategories = migrateSoftwareIssueCategories(s);
+    var justMigratedVaEmail = migrateVaEmail(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
     var justMigratedTimestamps = migrateRecordTimestamps(s);
@@ -2452,7 +2465,7 @@ function appMain() {
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories || justMigratedVaEmail;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -4196,6 +4209,10 @@ function appMain() {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"color:" + vaSolidColor(v.name) + "; font-weight:600;\">" + esc(v.name) + "</div>" +
         "<input type=\"color\" class=\"va-color-input\" value=\"" + esc(v.color || "#888888") + "\" data-action-change=\"set-va-color\" data-id=\"" + v.id + "\" title=\"Pick " + esc(v.name) + "'s color\"></div>";
     }).join("");
+    var emailRows = sortedVas.map(function (v) {
+      return "<div class=\"row-item\"><div class=\"row-main\" style=\"font-weight:600;\">" + esc(v.name) + "</div>" +
+        "<input type=\"email\" class=\"text-input\" style=\"max-width:240px;\" placeholder=\"name@example.com\" value=\"" + esc(v.email || "") + "\" data-action-change=\"set-va-email\" data-id=\"" + v.id + "\"></div>";
+    }).join("");
     var promotableVas = sortedVas.filter(function (v) { return v.name !== SUPERADMIN_NAME && v.role !== "owner"; });
     var adminRows = promotableVas.map(function (v) {
       return "<div class=\"row-item\"><div class=\"row-main\" style=\"font-weight:600;\">" + esc(v.name) + "</div>" +
@@ -4221,6 +4238,11 @@ function appMain() {
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">VA Colors</div></div>" +
       "<div class=\"card-body\">" +
       "<div class=\"row-list\">" + (colorRows || emptyState("No VAs added yet.")) + "</div>" +
+      "</div></div>" +
+      "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Login Email</div></div>" +
+      "<div class=\"card-body\">" +
+      "<div class=\"checklist-note\">The email each person will use to sign in once the new login system is live. Someone can't get into the app without their email listed here first.</div>" +
+      "<div class=\"row-list\">" + (emailRows || emptyState("No VAs added yet.")) + "</div>" +
       "</div></div>" +
       "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">Admin</div></div>" +
       "<div class=\"card-body\">" +
@@ -5732,6 +5754,12 @@ function appMain() {
         (function () {
           var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
           if (va) va.color = t.value;
+          persist();
+        })(); break;
+      case "set-va-email":
+        (function () {
+          var va = state.vas.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (va) va.email = t.value.trim();
           persist();
         })(); break;
       case "set-communication-editor":
