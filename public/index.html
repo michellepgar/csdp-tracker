@@ -727,6 +727,35 @@
 </head>
 <body>
 <div id="app"></div>
+<!-- Independent safety net, deliberately kept tiny and self-contained.
+     If the main script below ever fails to parse or run at all (a stray
+     syntax error, a bad deploy), everything inside it — including its
+     own error handling — is disabled along with it, and the page would
+     otherwise just sit blank forever with no clue why. This script is
+     separate, so it survives that and still shows something. -->
+<script>
+(function () {
+  var shown = false;
+  function showFallback(detail) {
+    var app = document.getElementById("app");
+    if (shown || !app || app.innerHTML.trim()) return;
+    shown = true;
+    app.innerHTML =
+      "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
+      "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">CSDP Tracker didn't load</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem. Reloading usually fixes it — if it keeps happening, let Michelle know.</div>" +
+      "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
+      "</div>";
+    if (window.console && console.error) console.error("CSDP Tracker failed to load:", detail);
+  }
+  window.addEventListener("error", function (e) { showFallback(e.error || e.message); });
+  window.addEventListener("unhandledrejection", function (e) { showFallback(e.reason); });
+  /* Belt and suspenders: even with no error event at all (some failure
+     modes don't fire one), nothing having painted into #app within 8s of
+     page load means the app never actually started. */
+  setTimeout(function () { showFallback("app never initialized (timeout)"); }, 8000);
+})();
+</script>
 <script src="config.js"></script>
 
 <script>
@@ -2433,7 +2462,16 @@ function appMain() {
     }).catch(function (err) {
       if (err.code === "bad_password") { showPasswordPrompt("Incorrect password."); return; }
       if (err.code === "config_missing") { showPasswordPrompt("App isn't configured yet — config.js is missing or incomplete."); return; }
-      showPasswordPrompt("Couldn't connect — check your internet connection and try again.");
+      /* Anything without a recognized .code is a real bug (bad data
+         hitting an edge case, a thrown error during startup), not a
+         connectivity problem — telling someone to "check your internet"
+         for an actual bug sends them troubleshooting the wrong thing. */
+      if (err.code === "load_failed" || err.code === "rpc_failed") {
+        showPasswordPrompt("Couldn't connect — check your internet connection and try again.");
+        return;
+      }
+      if (window.console && console.error) console.error("App failed to start:", err);
+      showPasswordPrompt("Something went wrong loading the app (not a connection issue) — try again, and let Michelle know if it keeps happening.");
     });
   }
 
@@ -2593,11 +2631,34 @@ function appMain() {
     var oldSidebar = document.querySelector(".sidebar");
     var schoolListScroll = oldSchoolList ? oldSchoolList.scrollTop : 0;
     var sidebarScroll = oldSidebar ? oldSidebar.scrollTop : 0;
-    app.innerHTML = shellHtml();
+    /* shellHtml() builds the whole page as one string before anything is
+       written to the DOM — if any page-building function throws partway
+       through (bad data hitting an edge case a render function didn't
+       expect, etc.), app.innerHTML never gets reassigned and the screen
+       is left exactly as it was: blank on first load, frozen afterward,
+       either way with zero indication anything went wrong. Catching it
+       here means a real bug always surfaces as a visible, recoverable
+       message instead of a silent blank page. */
+    var html;
+    try {
+      html = shellHtml();
+    } catch (err) {
+      if (window.console && console.error) console.error("Render failed:", err);
+      app.innerHTML = renderErrorFallbackHtml(err);
+      return;
+    }
+    app.innerHTML = html;
     var newSchoolList = document.querySelector(".school-list");
     var newSidebar = document.querySelector(".sidebar");
     if (newSchoolList) newSchoolList.scrollTop = schoolListScroll;
     if (newSidebar) newSidebar.scrollTop = sidebarScroll;
+  }
+  function renderErrorFallbackHtml(err) {
+    return "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
+      "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">Something went wrong displaying this page</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem — nothing you did caused it. Reloading usually clears it; if it keeps happening on the same page, let Michelle know what you were doing.</div>" +
+      "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
+      "</div>";
   }
 
   function shellHtml() {
