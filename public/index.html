@@ -835,12 +835,36 @@ function appMain() {
     "Recheck", "Insurance", "Eligibility", "Billing"
   ];
 
+  /* Software Issue's category list — matches the real software's own
+     navigation, so a report can point at exactly which part of it broke.
+     Only Patients ships with subcategories seeded; every other category
+     starts empty and grows the same "+ Add" way Patients' list would have. */
+  var DEFAULT_SOFTWARE_ISSUE_CATEGORIES = [
+    { name: "Dashboard", subcategories: [] },
+    { name: "Calendar", subcategories: [] },
+    { name: "Patients", subcategories: ["Patient Records", "Medical History Tab", "Guardians Tab", "Insurance Tab", "Participations Tab", "Appointments Tab", "Teeth Chart", "Treatment History Tab", "Communications Tab", "Recheck Tab", "Documents Tab"] },
+    { name: "Charts", subcategories: [] },
+    { name: "Eligibility", subcategories: [] },
+    { name: "Communication", subcategories: [] },
+    { name: "Billing", subcategories: [] },
+    { name: "Reports", subcategories: [] },
+    { name: "School/Facilities", subcategories: [] },
+    { name: "Time Records", subcategories: [] },
+    { name: "Activity Logs", subcategories: [] },
+    { name: "Settings", subcategories: [] }
+  ];
+  function buildSoftwareIssueCategories() {
+    return DEFAULT_SOFTWARE_ISSUE_CATEGORIES.map(function (c) {
+      return { id: uid("swcat"), name: c.name, subcategories: c.subcategories.map(function (s) { return { id: uid("swsub"), name: s }; }) };
+    });
+  }
+
   var DEFAULT_STATE = {
     schools: [], vas: [], schoolData: {},
     taskCategories: DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; }),
     checklistTemplate: [], checklistProgress: {},
     issues: [], issueTypes: DEFAULT_ISSUE_TYPES, removedIssueTypeIds: [], issueFieldPool: DEFAULT_ISSUE_FIELD_POOL.map(function (f) { return { key: f.key, label: f.label, type: f.type }; }),
-    softwareIssueCategories: [],
+    softwareIssueCategories: buildSoftwareIssueCategories(),
     emailTemplates: [], generalNotes: [], suggestions: [], eodReports: [], privateNotes: [],
     contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: [],
     distributionYears: []
@@ -884,10 +908,13 @@ function appMain() {
     s.issueTypes = DEFAULT_ISSUE_TYPES.map(function (ty) { return JSON.parse(JSON.stringify(ty)); });
     var chartingType = { id: uid("itype"), name: "Charting Questions", statusOptions: NEW_ISSUE_TYPE_STATUS_OPTIONS.slice(), fieldPool: [] };
     s.issueTypes.push(chartingType);
-    s.softwareIssueCategories = [{ id: uid("swcat"), name: "Login Issue" }, { id: uid("swcat"), name: "Report Error" }];
+    s.softwareIssueCategories = buildSoftwareIssueCategories();
+    var patientsCategory = s.softwareIssueCategories.find(function (c) { return c.name === "Patients"; });
+    var patientsSubcat = patientsCategory && patientsCategory.subcategories.find(function (s2) { return s2.name === "Insurance Tab"; });
 
     s.issues = [
-      { id: uid("issue"), type: "software_issue", description: "Can't log into the reporting dashboard", category: "Login Issue", remarks: "Only happens in Chrome so far.", reportedBy: "Sam (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+      { id: uid("issue"), type: "software_issue", description: "Can't log into the reporting dashboard", category: "Dashboard", remarks: "Only happens in Chrome so far.", reportedBy: "Sam (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+      { id: uid("issue"), type: "software_issue", description: "Insurance tab won't save changes", category: "Patients", subcategory: patientsSubcat ? patientsSubcat.name : "", remarks: "", reportedBy: "Dana (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 3 * 86400000).toISOString() },
       { id: uid("issue"), type: "insurance_dob_correction", studentRecordLink: "https://example.com/students/1042", correctionKind: "Correction", needsDobCorrection: true, needsNameCorrection: false, needsInsuranceCorrection: false, needsOtherCorrection: false, correctInfo: "", reportedBy: "Dana (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 86400000).toISOString() },
       { id: uid("issue"), type: chartingType.id, studentRecordLink: "https://example.com/students/2011", description: "Which language form was distributed to this family?", reportedBy: "Michelle", status: "Pending", createdAt: new Date().toISOString() }
     ];
@@ -1364,6 +1391,27 @@ function appMain() {
     parsed._migratedSuggestionStatus = true;
     (parsed.suggestions || []).forEach(function (n) {
       if (!n.status) n.status = "Requested";
+    });
+    return true;
+  }
+  /* Software Issue's categories gained their own subcategory lists, and
+     the category list itself gained real, named-up-front categories
+     (Dashboard, Patients, Billing, etc.) instead of starting empty.
+     Upgrades any already-saved category missing a subcategories array,
+     then appends whichever of the real default categories aren't already
+     present by name — same "append what's missing, leave everything
+     else alone" merge used for issue types elsewhere in this app, so a
+     category the team already added or renamed is never touched. */
+  function migrateSoftwareIssueCategories(parsed) {
+    if (parsed._migratedSoftwareIssueCategories) return false;
+    parsed._migratedSoftwareIssueCategories = true;
+    parsed.softwareIssueCategories = parsed.softwareIssueCategories || [];
+    parsed.softwareIssueCategories.forEach(function (c) { if (!c.subcategories) c.subcategories = []; });
+    var existingNames = parsed.softwareIssueCategories.map(function (c) { return c.name; });
+    DEFAULT_SOFTWARE_ISSUE_CATEGORIES.forEach(function (dc) {
+      if (existingNames.indexOf(dc.name) === -1) {
+        parsed.softwareIssueCategories.push({ id: uid("swcat"), name: dc.name, subcategories: dc.subcategories.map(function (s) { return { id: uid("swsub"), name: s }; }) });
+      }
     });
     return true;
   }
@@ -2266,6 +2314,7 @@ function appMain() {
       migrateIssueTypeFieldPools(fresh);
       migrateIssueFixEntries(fresh);
       migrateSuggestionStatus(fresh);
+      migrateSoftwareIssueCategories(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
@@ -2342,6 +2391,7 @@ function appMain() {
     var justMigratedIssueTypeFieldPools = migrateIssueTypeFieldPools(s);
     var justMigratedIssueFixEntries = migrateIssueFixEntries(s);
     var justMigratedSuggestionStatus = migrateSuggestionStatus(s);
+    var justMigratedSoftwareIssueCategories = migrateSoftwareIssueCategories(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
     var justMigratedTimestamps = migrateRecordTimestamps(s);
@@ -2363,7 +2413,7 @@ function appMain() {
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -3705,18 +3755,33 @@ function appMain() {
      id) so an already-categorized issue keeps reading correctly even if
      that category is later renamed... actually removed here — same
      tradeoff Task Categories already accepts. */
+  /* Each category keeps its own separate subcategory list (e.g. Patients
+     has Patient Records / Medical History Tab / Guardians Tab / etc.) —
+     add/remove works the same way at both levels, just scoped one level
+     deeper for subcategories (data-category ties a subcategory action to
+     the category it belongs to). */
   function softwareIssueCategoryEditorHtml() {
     var cats = state.softwareIssueCategories || [];
     var rows = cats.map(function (c, idx) {
+      var subRows = (c.subcategories || []).map(function (s) {
+        var pendingId = c.id + "::" + s.id;
+        var pending = isPending("software-issue-subcategory", pendingId);
+        return "<div class=\"template-item-row\" style=\"margin-left:22px;\"><div class=\"row-main\">" + esc(s.name) + "</div>" +
+          "<button class=\"icon-btn" + (pending ? " confirming" : "") + "\" data-action=\"remove-software-issue-subcategory\" data-id=\"" + esc(pendingId) + "\" title=\"Remove\">" + (pending ? "Confirm?" : "✕") + "</button></div>";
+      }).join("");
       return "<div class=\"template-item-row\"><div class=\"row-main\">" + esc(c.name) + "</div>" +
         "<div class=\"stack-btns\">" +
         "<button" + (idx === 0 ? " disabled" : "") + " data-action=\"move-software-issue-category\" data-id=\"" + c.id + "\" data-dir=\"up\">▲</button>" +
         "<button" + (idx === cats.length - 1 ? " disabled" : "") + " data-action=\"move-software-issue-category\" data-id=\"" + c.id + "\" data-dir=\"down\">▼</button>" +
         "</div>" +
-        deleteBtn("software-issue-category", c.id, "remove-software-issue-category") + "</div>";
+        deleteBtn("software-issue-category", c.id, "remove-software-issue-category") + "</div>" +
+        subRows +
+        "<form class=\"add-row-form\" style=\"margin:6px 0 14px 22px;\" data-action=\"add-software-issue-subcategory\" data-category=\"" + c.id + "\">" +
+        "<input class=\"text-input\" name=\"name\" placeholder=\"New subcategory for " + esc(c.name) + "\" required>" +
+        "<button class=\"btn small\" type=\"submit\">Add</button></form>";
     }).join("");
     return "<div class=\"template-card\" style=\"margin-bottom:14px; padding:14px;\">" +
-      "<div class=\"checklist-note\">Existing issues keep their category name even if it's later removed here.</div>" +
+      "<div class=\"checklist-note\">Existing issues keep their category/subcategory name even if it's later removed here.</div>" +
       rows +
       "<form class=\"add-row-form\" style=\"margin-top:10px;\" data-action=\"add-software-issue-category\">" +
       "<input class=\"text-input\" name=\"name\" placeholder=\"New category\" required>" +
@@ -3727,7 +3792,14 @@ function appMain() {
     var opts = "<option value=\"\">—</option>" + cats.map(function (c) {
       return "<option value=\"" + esc(c.name) + "\"" + (c.name === it.category ? " selected" : "") + ">" + esc(c.name) + "</option>";
     }).join("");
-    return "<select class=\"text-input\" data-action-change=\"set-software-issue-category\" data-id=\"" + it.id + "\">" + opts + "</select>";
+    var currentCat = cats.find(function (c) { return c.name === it.category; });
+    var subcats = (currentCat && currentCat.subcategories) || [];
+    var categorySelect = "<select class=\"text-input\" data-action-change=\"set-software-issue-category\" data-id=\"" + it.id + "\">" + opts + "</select>";
+    if (!subcats.length) return categorySelect;
+    var subOpts = "<option value=\"\">—</option>" + subcats.map(function (s) {
+      return "<option value=\"" + esc(s.name) + "\"" + (s.name === it.subcategory ? " selected" : "") + ">" + esc(s.name) + "</option>";
+    }).join("");
+    return categorySelect + "<select class=\"text-input\" style=\"margin-top:4px;\" data-action-change=\"set-software-issue-subcategory\" data-id=\"" + it.id + "\">" + subOpts + "</select>";
   }
   /* Software Issue's own simple table — a category, the issue, a note,
      who reported it (with the date, since that mattered more here than
@@ -5188,6 +5260,16 @@ function appMain() {
         requestDelete("software-issue-category", t.getAttribute("data-id"), function () {
           state.softwareIssueCategories = (state.softwareIssueCategories || []).filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
+      case "remove-software-issue-subcategory":
+        (function () {
+          var pendingId = t.getAttribute("data-id");
+          requestDelete("software-issue-subcategory", pendingId, function () {
+            var parts = pendingId.split("::");
+            var catId = parts[0], subId = parts[1];
+            var cat = (state.softwareIssueCategories || []).find(function (c) { return c.id === catId; });
+            if (cat) cat.subcategories = (cat.subcategories || []).filter(function (s) { return s.id !== subId; });
+          });
+        })(); break;
       case "start-issue-fix":
         ui.editingIssueFixId = t.getAttribute("data-id") + "::" + t.getAttribute("data-entry");
         render(); break;
@@ -5631,7 +5713,19 @@ function appMain() {
       case "set-software-issue-category":
         (function () {
           var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
-          if (issue) issue.category = t.value;
+          if (issue) {
+            issue.category = t.value;
+            /* The old subcategory almost certainly doesn't belong to
+               whatever category was just picked — clearing it rather
+               than leaving a stale value silently attached. */
+            issue.subcategory = "";
+          }
+          persist();
+        })(); break;
+      case "set-software-issue-subcategory":
+        (function () {
+          var issue = state.issues.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (issue) issue.subcategory = t.value;
           persist();
         })(); break;
       case "save-issue-fix":
@@ -5788,7 +5882,17 @@ function appMain() {
           var name = (fd.get("name") || "").toString().trim();
           if (!name) return;
           state.softwareIssueCategories = state.softwareIssueCategories || [];
-          state.softwareIssueCategories.push({ id: uid("swcat"), name: name });
+          state.softwareIssueCategories.push({ id: uid("swcat"), name: name, subcategories: [] });
+          persist();
+        })(); break;
+      case "add-software-issue-subcategory":
+        (function () {
+          var name = (fd.get("name") || "").toString().trim();
+          var catId = form.getAttribute("data-category");
+          var cat = (state.softwareIssueCategories || []).find(function (c) { return c.id === catId; });
+          if (!name || !cat) return;
+          cat.subcategories = cat.subcategories || [];
+          cat.subcategories.push({ id: uid("swsub"), name: name });
           persist();
         })(); break;
       case "add-contact-row":
