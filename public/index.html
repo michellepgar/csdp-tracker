@@ -749,7 +749,7 @@
     app.innerHTML =
       "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
       "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">CSDP Tracker didn't load</div>" +
-      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem. Reloading usually fixes it — if it keeps happening, let Michelle know.</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This can happen if the app was being updated right when you loaded it. Reloading usually fixes it — if it keeps happening, let the Admin know.</div>" +
       "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
       "</div>";
     if (window.console && console.error) console.error("CSDP Tracker failed to load:", detail);
@@ -2533,7 +2533,7 @@ function appMain() {
           return;
         }
         if (window.console && console.error) console.error("App failed to start:", err);
-        showLoginScreen("Something went wrong loading the app (not a connection issue) — try again, and let Michelle know if it keeps happening.");
+        showLoginScreen("Something went wrong loading the app — this can happen if it was being updated right now. Try reloading in a moment, and let the Admin know if it keeps happening.");
       });
     }).catch(function () {
       showLoginScreen("Couldn't connect — check your internet connection and try again.");
@@ -2721,7 +2721,7 @@ function appMain() {
   function renderErrorFallbackHtml(err) {
     return "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
       "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">Something went wrong displaying this page</div>" +
-      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem — nothing you did caused it. Reloading usually clears it; if it keeps happening on the same page, let Michelle know what you were doing.</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This can happen if the app was being updated right when you loaded it — nothing you did caused it. Reloading usually clears it; if it keeps happening on the same page, let the Admin know what you were doing.</div>" +
       "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
       "</div>";
   }
