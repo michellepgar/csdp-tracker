@@ -1461,6 +1461,24 @@ function appMain() {
     (parsed.vas || []).forEach(function (v) { if (v.email === undefined) v.email = ""; });
     return true;
   }
+  /* ensureSchoolData() only fills in a *whole* default record for a school
+     that has none at all — it never backfills one missing field on an
+     existing record from before that field existed. A school missing
+     emailTracker entirely (not just empty) crashes the whole page the
+     moment its Email Tracker card tries to render, since nothing else in
+     the app expects that field to be absent rather than just empty. */
+  function migrateSchoolDataShape(parsed) {
+    if (parsed._migratedSchoolDataShape) return false;
+    parsed._migratedSchoolDataShape = true;
+    Object.keys(parsed.schoolData || {}).forEach(function (id) {
+      var sd = parsed.schoolData[id];
+      if (sd.vaAssigned === undefined) sd.vaAssigned = "";
+      if (!sd.tasks) sd.tasks = [];
+      if (!sd.emailTracker) sd.emailTracker = [];
+      if (!sd.notes) sd.notes = [];
+    });
+    return true;
+  }
   /* The team already removed "Record Needs Rechecking" once, before the
      tombstone mechanism above existed to make that removal stick — replay
      it now, one time, so it doesn't keep reappearing every reload. */
@@ -2366,6 +2384,7 @@ function appMain() {
       migrateSuggestionStatus(fresh);
       migrateSoftwareIssueCategories(fresh);
       migrateVaEmail(fresh);
+      migrateSchoolDataShape(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
@@ -2444,6 +2463,7 @@ function appMain() {
     var justMigratedSuggestionStatus = migrateSuggestionStatus(s);
     var justMigratedSoftwareIssueCategories = migrateSoftwareIssueCategories(s);
     var justMigratedVaEmail = migrateVaEmail(s);
+    var justMigratedSchoolDataShape = migrateSchoolDataShape(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
     var justMigratedTimestamps = migrateRecordTimestamps(s);
@@ -2465,7 +2485,7 @@ function appMain() {
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories || justMigratedVaEmail;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories || justMigratedVaEmail || justMigratedSchoolDataShape;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -3531,11 +3551,14 @@ function appMain() {
   }
 
   function emailTrackerCardHtml(schoolId, sd) {
-    var open = countNotDone(sd.emailTracker);
+    /* Belt-and-suspenders alongside migrateSchoolDataShape — never trust
+       that a migration already ran on whatever's currently in memory. */
+    var emailTracker = sd.emailTracker || [];
+    var open = countNotDone(emailTracker);
     /* Only the VA assigned to this school (plus Owner/Admin/Superadmin)
        can change a status here — everyone else sees it, just disabled. */
     var canChangeStatus = isSuperAdmin() || (!!sd.vaAssigned && sd.vaAssigned === getStoredIdentity());
-    var sorted = sortRecords(sd.emailTracker.slice().reverse(), ui.emailSort, function (e) { return e.description; });
+    var sorted = sortRecords(emailTracker.slice().reverse(), ui.emailSort, function (e) { return e.description; });
     var rows = sorted.map(function (e) {
       /* Only worth calling out when someone other than the assigned VA
          stepped in — an Admin/Owner acting on their behalf, not the
