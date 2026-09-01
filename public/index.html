@@ -147,7 +147,9 @@
   @media (max-width: 900px) { .sidebar-toggle { display: none; } }
   .brand { padding: 20px 18px 14px; border-bottom: 1px solid var(--border); }
   .brand-name { display: inline-block; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.02em; padding: 6px 12px; border-radius: var(--radius); border: 1.5px solid var(--accent); color: var(--accent); }
-  .brand-tag { font-size: 1.05rem; margin-top: 8px; font-weight: 700; }
+  .brand-tag { font-size: 1.05rem; font-weight: 700; }
+  .brand-identity-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 8px; }
+  .brand-identity-row .link-btn { font-size: 0.78rem; white-space: nowrap; }
   .sidebar-section { padding: 14px 14px 6px; }
   .sidebar-label {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em;
@@ -2589,7 +2591,9 @@ function appMain() {
     }).join("");
 
     return (
-      "<div class=\"brand\"><div class=\"brand-name display\">CSDP Tracker</div><div class=\"brand-tag\" style=\"color:" + vaSolidColor(getStoredIdentity()) + ";\">" + esc(getStoredIdentity()) + "</div></div>" +
+      "<div class=\"brand\"><div class=\"brand-name display\">CSDP Tracker</div>" +
+      "<div class=\"brand-identity-row\"><div class=\"brand-tag\" style=\"color:" + vaSolidColor(getStoredIdentity()) + ";\">" + esc(getStoredIdentity()) + "</div>" +
+      "<button class=\"link-btn\" data-action=\"sign-out\" title=\"Switch to a different name\">Sign out</button></div></div>" +
       "<div class=\"sidebar-section\">" +
       navItem("home", "Overview", 0, function (v) { return v.type === "home"; }, "overview-nav-item") +
       "</div>" +
@@ -4905,6 +4909,14 @@ function appMain() {
         handleIdentityPick(t.getAttribute("data-name"));
         break;
       case "back-to-identity-picker":
+        showIdentityPicker();
+        break;
+      case "sign-out":
+        /* Clears the chosen name, not the team password — this is "switch
+           who's using this device," not a full logout. Picking a name
+           that has its own PIN set still requires that PIN again, so this
+           is a real handoff point, not just cosmetic. */
+        setStoredIdentity("");
         showIdentityPicker();
         break;
       case "close-sidebar": ui.sidebarOpen = false; render(); break;
