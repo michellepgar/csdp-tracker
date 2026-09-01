@@ -2293,7 +2293,7 @@ function appMain() {
       sharingNoteId: null,
       requestingAccessFor: null,
       pendingDelete: null,
-      issueFilters: { school: "", type: "", status: "", va: "" },
+      issueFilters: { type: "", status: "", va: "" },
       eodFilterAuthor: "",
       eodFilterMonth: "",
       eodShowArchive: false,
@@ -3734,14 +3734,11 @@ function appMain() {
   function issuesPageHtml() {
     var f = ui.issueFilters;
     var list = state.issues.slice().reverse().filter(function (it) {
-      if (f.school && it.schoolId !== f.school) return false;
       if (f.type && it.type !== f.type) return false;
       if (f.status && it.status !== f.status) return false;
       if (f.va && it.reportedBy !== f.va) return false;
       return true;
     });
-    var schoolOpts = state.schools.slice().sort(function (a, b) { return a.name.localeCompare(b.name); })
-      .map(function (s) { return "<option value=\"" + s.id + "\"" + (f.school === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
     var vaFilterOpts = state.vas.filter(function (v) { return v.role !== "owner"; }).sort(function (a, b) { return a.name.localeCompare(b.name); })
       .map(function (v) { return "<option value=\"" + esc(v.name) + "\"" + (f.va === v.name ? " selected" : "") + ">" + esc(v.name) + "</option>"; }).join("");
     var typeFilterOpts = state.issueTypes.map(function (ty) {
@@ -3780,7 +3777,7 @@ function appMain() {
        asked for," so it's left out entirely instead. With nothing
        filtered, every type still shows (even empty) so it's obvious the
        type exists at all and can be added to. */
-    var filtersActive = !!(f.school || f.type || f.status || f.va);
+    var filtersActive = !!(f.type || f.status || f.va);
     var typeSections = state.issueTypes.map(function (ty) {
       var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description || it.studentRecordLink || it.studentName || ""; });
       if (filtersActive && !typeList.length) return "";
@@ -3836,7 +3833,6 @@ function appMain() {
         (state.vas.length === 0 ? "<div class=\"page-sub\" style=\"margin-top:8px;\">No VAs on the Team page yet — add your team there first.</div>" : "") +
         "</div></div>" +
       "<div class=\"filters-row\">" +
-      "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"school\"><option value=\"\">All schools</option>" + schoolOpts + "</select>" +
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"type\">" +
       "<option value=\"\">All types</option>" + typeFilterOpts + "</select>" +
       "<select class=\"text-input\" data-action-change=\"filter-issues\" data-field=\"va\">" +
