@@ -3322,10 +3322,19 @@ function appMain() {
       return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
         "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
     }).join("");
-    var authorFieldHtml =
-      "<div class=\"field-row\" style=\"margin-top:8px;\">" +
-      "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
-      "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
+    /* Suggestions always go in under whoever's actually signed in — no
+       editable name box, so there's no way to mistype a name (which,
+       through the shared name box below, used to silently register a
+       brand-new "VA" the moment a typo didn't match anyone). School and
+       General Notes keep the editable box, since a note is sometimes
+       logged for/with someone else. */
+    var authorFieldHtml = scope === "suggestion"
+      ? "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+        "<span class=\"field-mini-label\">Suggested by " + esc(getStoredIdentity() || "—") + "</span>" +
+        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>"
+      : "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
+        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + title + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
@@ -5697,7 +5706,9 @@ function appMain() {
           var scope = form.getAttribute("data-scope");
           var text = (fd.get("text") || "").toString().trim();
           if (!text) return;
-          var author = (fd.get("author") || "").toString().trim();
+          /* Suggestions has no author box at all (see notesCardHtml) —
+             falls straight back to whoever's actually signed in. */
+          var author = (fd.get("author") || "").toString().trim() || getStoredIdentity();
           addVaIfNew(author);
           var entry = { id: uid("note"), text: text, author: author, createdAt: new Date().toISOString() };
           var draftName;
