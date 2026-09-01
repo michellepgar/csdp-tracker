@@ -2178,13 +2178,17 @@ function appMain() {
     if (!names.length) {
       return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
         "<h2 class=\"display\" style=\"margin:0 0 12px;\">Who's using this device?</h2>" +
-        "<p style=\"color:var(--ink-soft);\">No team members yet — ask someone to add the team on the Team page first.</p></div>";
+        "<p style=\"color:var(--ink-soft);\">No team members yet — ask someone to add the team on the Team page first.</p>" +
+        "<button class=\"link-btn\" type=\"button\" style=\"margin-top:6px;\" data-action=\"back-to-password-prompt\">Wrong password? Go back</button>" +
+        "</div>";
     }
     return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
       "<h2 class=\"display\" style=\"margin:0 0 12px;\">Who's using this device?</h2>" +
       "<div class=\"nav-list\">" + names.map(function (n) {
         return "<button class=\"nav-item\" data-action=\"pick-identity\" data-name=\"" + esc(n) + "\">" + esc(n) + "</button>";
-      }).join("") + "</div></div>";
+      }).join("") + "</div>" +
+      "<button class=\"link-btn\" type=\"button\" style=\"margin-top:14px;\" data-action=\"back-to-password-prompt\">Wrong password? Go back</button>" +
+      "</div>";
   }
   function showIdentityPicker() {
     document.getElementById("app").innerHTML = identityPickerHtml();
@@ -5115,6 +5119,14 @@ function appMain() {
         break;
       case "back-to-identity-picker":
         showIdentityPicker();
+        break;
+      case "back-to-password-prompt":
+        /* Clears the stored password so a plain reload doesn't just bounce
+           straight back here — the whole point is to let someone type a
+           different (or corrected) password from scratch. */
+        setStoredPassword("");
+        isDemoMode = false;
+        showPasswordPrompt();
         break;
       case "sign-out":
         /* Clears the chosen name, not the team password — this is "switch
