@@ -196,6 +196,14 @@
     background: var(--progress-soft); color: var(--progress); font-size: 0.82rem;
     padding: 8px 20px; border-bottom: 1px solid var(--border); font-weight: 600;
   }
+  /* Same treatment as .readonly-banner, just its own distinct color so
+     "you're in the demo" can never be mistaken for "you're read-only" or
+     any other banner this app might show. */
+  .demo-mode-banner {
+    background: var(--attn-soft); color: var(--attn); font-size: 0.82rem;
+    padding: 8px 20px; border-bottom: 1px solid var(--border); font-weight: 700;
+    text-align: center;
+  }
   .content { padding: 28px 32px 60px; max-width: 1440px; width: 100%; margin: 0 auto; transition: max-width 0.15s ease; }
   .sidebar.collapsed ~ .main .content { max-width: 1800px; }
   /* Issues & Concerns has many dynamic columns — give it the full width so
@@ -835,6 +843,71 @@ function appMain() {
     contactGroups: [], nurseLeader: { name: "", email: "" }, communicationEditor: "Therese", accessRequests: [],
     distributionYears: []
   };
+
+  /* ---------- Demo mode ---------- */
+  /* A separate, fully isolated way into the app for previewing changes
+     before they reach the real team — entering this password instead of
+     the real team password skips Supabase entirely: no read, no write,
+     ever, in either direction. Everything runs on made-up sample data
+     that only ever lives in this one browser tab's memory. Reloading
+     starts over from the same seed; nothing here can touch or be
+     confused with the real Distribution List, Contact Info, etc. All the
+     sample names/schools/emails below are invented, not the real
+     district's people, on purpose — a demo dataset is exactly the kind
+     of thing that ends up screenshotted or poked at by whoever's
+     verifying it works, so it should never contain anything real. */
+  var DEMO_PASSWORD = "csdp-demo";
+  var isDemoMode = false;
+  function buildDemoState() {
+    var s = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    var year = DEFAULT_DISTRIBUTION_SCHOOL_YEAR;
+
+    s.schools = [
+      { id: "sch_demo1", name: "Riverside Elementary (Demo)" },
+      { id: "sch_demo2", name: "Hillcrest Middle School (Demo)" }
+    ];
+    s.schoolData = {};
+    s.schools.forEach(function (sc) { s.schoolData[sc.id] = { tasks: [], vaAssigned: [] }; });
+
+    s.vas = [
+      { name: "Michelle" },
+      { name: "Dana (Demo VA)", admin: true },
+      { name: "Sam (Demo VA)" },
+      { name: "Taylor (Demo Owner)", role: "owner" }
+    ];
+
+    s.taskCategories = DEFAULT_TASK_CATEGORIES.map(function (name) { return { id: "cat_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "_"), name: name }; });
+    s.checklistTemplate = DEFAULT_CHECKLIST_ITEMS.map(function (d) { return { id: uid("chk"), description: d }; });
+
+    s.issueTypes = DEFAULT_ISSUE_TYPES.map(function (ty) { return JSON.parse(JSON.stringify(ty)); });
+    var chartingType = { id: uid("itype"), name: "Charting Questions", statusOptions: NEW_ISSUE_TYPE_STATUS_OPTIONS.slice(), fieldPool: [] };
+    s.issueTypes.push(chartingType);
+    s.softwareIssueCategories = [{ id: uid("swcat"), name: "Login Issue" }, { id: uid("swcat"), name: "Report Error" }];
+
+    s.issues = [
+      { id: uid("issue"), type: "software_issue", description: "Can't log into the reporting dashboard", category: "Login Issue", remarks: "Only happens in Chrome so far.", reportedBy: "Sam (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+      { id: uid("issue"), type: "insurance_dob_correction", studentRecordLink: "https://example.com/students/1042", correctionKind: "Correction", needsDobCorrection: true, needsNameCorrection: false, needsInsuranceCorrection: false, needsOtherCorrection: false, correctInfo: "", reportedBy: "Dana (Demo VA)", status: "Pending", createdAt: new Date(Date.now() - 86400000).toISOString() },
+      { id: uid("issue"), type: chartingType.id, studentRecordLink: "https://example.com/students/2011", description: "Which language form was distributed to this family?", reportedBy: "Michelle", status: "Pending", createdAt: new Date().toISOString() }
+    ];
+
+    var demoRow = distributionRow("Riverside Elementary (Demo)", year);
+    demoRow.enrolled = "420";
+    demoRow.distributed = true;
+    demoRow.classrooms = { regular: "12", launch: "2", crr: "1" };
+    demoRow.breakdown.regular.engSpn = { packets: "14", packetSize: "25", loose: "6", extraPackets: "", extraLoose: "" };
+    demoRow.contactPerson = "Sam (Demo VA)";
+    s.distributionYears = [{ id: uid("dyear"), year: year, groups: [{ id: uid("dgrp"), name: "Elementary School", rows: [demoRow] }] }];
+
+    s.contactGroups = [{
+      id: uid("cgrp"), name: "Elementary School",
+      rows: [contactRow("Riverside Elementary (Demo)", "Jordan Lee", "jordanlee@example.com", "Casey Reyes", "caseyreyes@example.com", "Morgan Blake", "morganblake@example.com", "Alex Chen", "alexchen@example.com", "Front desk covers 8am–4pm.")]
+    }];
+
+    s.generalNotes = [{ id: uid("note"), text: "Welcome to the demo preview — this is sample data only; nothing here saves to the real system.", author: "Michelle", createdAt: new Date().toISOString() }];
+    s.suggestions = [{ id: uid("note"), text: "Add a dark mode toggle to the sidebar", author: "Sam (Demo VA)", createdAt: new Date().toISOString() }];
+
+    return s;
+  }
 
   /* ============ helpers ============ */
   function uid(p) { return p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -2031,6 +2104,10 @@ function appMain() {
 
   var identityFlowToken = 0;
   function handleIdentityPick(name) {
+    /* Demo identities skip PINs entirely — there's no real person to
+       protect and no persistence for a PIN to even mean anything across
+       reloads, so asking for one would just be friction. */
+    if (isDemoMode) { setStoredIdentity(name); startApp(); return; }
     var token = ++identityFlowToken;
     callRpc("pin_status", { p_name: name }).then(function (hasPin) {
       if (token !== identityFlowToken) return;
@@ -2079,6 +2156,9 @@ function appMain() {
   }
 
   function loadStateFromServer() {
+    /* Demo mode never touches Supabase in either direction — "reloading"
+       just hands back whatever's already sitting in memory for this tab. */
+    if (isDemoMode) return Promise.resolve(JSON.parse(JSON.stringify(state)));
     if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
     var url = window.SUPABASE_CONFIG.url + "/rest/v1/app_state?select=data,updated_at&id=eq.1";
     return fetch(url, { headers: supabaseHeaders() }).then(function (res) {
@@ -2097,6 +2177,12 @@ function appMain() {
   }
 
   function callRpc(fnName, args) {
+    /* Belt-and-suspenders alongside the demo-mode check already in
+       handleIdentityPick — anything that ever calls an RPC directly in
+       demo mode should fail loudly in testing, not quietly hit the real
+       Supabase project with a password that was never real to begin
+       with. */
+    if (isDemoMode) return Promise.reject(Object.assign(new Error("no RPCs in demo mode"), { code: "demo_mode" }));
     if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
     var url = window.SUPABASE_CONFIG.url + "/rest/v1/rpc/" + fnName;
     return fetch(url, {
@@ -2118,6 +2204,7 @@ function appMain() {
   }
 
   function saveStateToServer(newState) {
+    if (isDemoMode) return Promise.resolve({});
     if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
     /* No optimistic-concurrency check here on purpose — the team works on
        different schools/tasks at the same time, so the last save simply
@@ -2259,6 +2346,8 @@ function appMain() {
   function boot() {
     var pw = getStoredPassword();
     if (!pw) { showPasswordPrompt(); return; }
+    isDemoMode = pw === DEMO_PASSWORD;
+    if (isDemoMode) { state = buildDemoState(); }
     loadStateFromServer().then(function (data) {
       state = data;
       var anyMigrated = runAllMigrations(state);
@@ -2447,6 +2536,7 @@ function appMain() {
       "<button class=\"sidebar-toggle\" data-action=\"toggle-sidebar-collapse\" style=\"left:" + (ui.sidebarCollapsed ? "12px" : "260px") + ";\" title=\"" + (ui.sidebarCollapsed ? "Show sidebar" : "Hide sidebar") + "\">" + (ui.sidebarCollapsed ? "▶" : "◀") + "</button>" +
       "<button class=\"theme-toggle\" data-action=\"toggle-theme\" title=\"Switch to " + (currentEffectiveTheme() === "dark" ? "light" : "dark") + " mode\">" + (currentEffectiveTheme() === "dark" ? "☀" : "🌙") + "</button>" +
       "<div class=\"main\">" +
+      (isDemoMode ? "<div class=\"demo-mode-banner\">🧪 DEMO MODE — sample data only. Nothing here saves to the real system.</div>" : "") +
       "<div class=\"topbar\"><button class=\"menu-btn\" data-action=\"toggle-sidebar\">☰ Menu</button><strong class=\"display\">CSDP Tracker</strong></div>" +
       "<div class=\"content" + ((ui.view.type === "issues" || ui.view.type === "contacts" || ui.view.type === "distribution-list") ? " content-wide" : "") + "\">" + pageHtml() + "</div>" +
       "</div></div>"
