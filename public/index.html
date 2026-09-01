@@ -213,11 +213,17 @@
   .content.content-wide { max-width: 98vw; }
   .sidebar.collapsed ~ .main .content.content-wide { max-width: 98vw; }
 
-  .page-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 22px; }
-  /* Keeps the school's name pinned at the top while its Tasks/Checklist/
-     Email Tracker scroll underneath, so it's always clear which school
-     you're on. Solid background so scrolled content doesn't show through. */
-  .school-page-header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  /* Pinned to the top of the scroll while everything below it scrolls
+     underneath — so whichever page you're on stays visible even scrolled
+     deep into a long table, and even with the sidebar collapsed (where
+     the nav highlight that would otherwise show it is hidden). Solid
+     background so scrolled content doesn't show through — every page
+     header gets the treatment the school page already had for its name. */
+  .page-header {
+    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px;
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
   .page-title { font-size: 1.9rem; font-weight: 600; }
   .overview-nav-item { font-size: 1rem; font-weight: 700; color: var(--accent); }
   .overview-nav-item.active { color: var(--accent-soft-ink); }
@@ -3156,7 +3162,7 @@ function appMain() {
     if (!school) { ui.view = { type: "home" }; return homePageHtml(); }
     var sd = ensureSchoolData(schoolId);
 
-    var header = "<div class=\"page-header school-page-header\">" +
+    var header = "<div class=\"page-header\">" +
       "<div><div class=\"page-title display\"" + schoolNameColorStyle(schoolId) + ">" + esc(school.name) + "</div>" +
       "<div class=\"field-row\" style=\"margin-top:8px;\">" +
       "<span class=\"field-label\">VA assigned</span>" +
