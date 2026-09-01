@@ -6,6 +6,14 @@
 drop policy "password gate select" on app_state;
 drop policy "password gate update" on app_state;
 
+-- RLS only restricts *rows* — it doesn't grant table-level access on its
+-- own, and that's a separate grant per Postgres role. schema.sql already
+-- granted this to "anon" (every request before this feature existed ran
+-- as anon), but a real login's requests run as "authenticated" instead,
+-- which had no grant at all — every one would fail with a flat "permission
+-- denied for table app_state" regardless of what the policies below allow.
+grant select, update on app_state to authenticated;
+
 -- Same REPLACE_WITH_YOUR_TEAM_PASSWORD value you set when you ran
 -- schema.sql — keep it identical here, it's the same shared password,
 -- just now one of two ways in instead of the only way.
