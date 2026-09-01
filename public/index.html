@@ -3618,7 +3618,7 @@ function appMain() {
      locked behind the row's own Edit button, same reasoning as everywhere
      else this session: unlocking one row never risks another. */
   function simpleIssueSectionHtml(ty, typeList) {
-    var headerCells = "<th>Category</th><th>Issue</th><th>Note</th><th>Reported by</th><th>Status</th><th></th>";
+    var headerCells = "<th>Category</th><th>Issue</th><th>Reference</th><th>Reported by</th><th>Status</th><th></th>";
     var rowsHtml = typeList.map(function (it) {
       var editing = ui.editingSimpleIssueId === it.id;
       var descCell = editing
