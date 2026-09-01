@@ -1,5 +1,5 @@
 {
-  "name": "csdp-tracker",
+  "name": "csdpadmin",
   "compatibility_date": "2025-09-09",
   "assets": {
     "directory": "./public"
