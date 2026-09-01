@@ -749,7 +749,7 @@
     app.innerHTML =
       "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
       "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">CSDP Tracker didn't load</div>" +
-      "<div style=\"color:#666;margin-bottom:18px;\">This can happen if the app was being updated right when you loaded it. Reloading usually fixes it — if it keeps happening, let the Admin know.</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem. Reloading usually fixes it — if it keeps happening, let Michelle know.</div>" +
       "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
       "</div>";
     if (window.console && console.error) console.error("CSDP Tracker failed to load:", detail);
@@ -763,7 +763,6 @@
 })();
 </script>
 <script src="config.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
 <script>
 function appMain() {
@@ -918,29 +917,8 @@ function appMain() {
      district's people, on purpose — a demo dataset is exactly the kind
      of thing that ends up screenshotted or poked at by whoever's
      verifying it works, so it should never contain anything real. */
+  var DEMO_PASSWORD = "csdp-demo";
   var isDemoMode = false;
-  /* Demo Mode used to survive a page reload only as a side effect of the
-     magic-password trick (the password itself was what got saved to
-     localStorage). Now that real login has replaced that entirely, this
-     flag is what makes a reload mid-demo keep working the same way it
-     always did, instead of silently dropping back to the login screen. */
-  var DEMO_MODE_KEY = "csdp_demo_mode";
-  function getStoredDemoMode() {
-    try { return localStorage.getItem(DEMO_MODE_KEY) === "1"; } catch (e) { return false; }
-  }
-  function setStoredDemoMode(v) {
-    try { if (v) localStorage.setItem(DEMO_MODE_KEY, "1"); else localStorage.removeItem(DEMO_MODE_KEY); } catch (e) {}
-  }
-  /* The login screen's "Try the demo" link — Demo Mode never touches
-     Supabase Auth (or Supabase at all) in either direction, so there's
-     nothing to sign in to; this goes straight to the identity picker,
-     same as it always has for previewing different demo personas. */
-  function enterDemoMode() {
-    isDemoMode = true;
-    setStoredDemoMode(true);
-    state = buildDemoState();
-    showIdentityPicker();
-  }
   function buildDemoState() {
     var s = JSON.parse(JSON.stringify(DEFAULT_STATE));
     var year = DEFAULT_DISTRIBUTION_SCHOOL_YEAR;
@@ -2097,6 +2075,13 @@ function appMain() {
       }
     });
   }
+  var PASSWORD_KEY = "csdp_app_password";
+  function getStoredPassword() {
+    try { return localStorage.getItem(PASSWORD_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setStoredPassword(pw) {
+    try { localStorage.setItem(PASSWORD_KEY, pw); } catch (e) {}
+  }
 
   /* ---------- Per-viewer preferences (not synced — local to this browser) ---------- */
   var SIDEBAR_COLLAPSED_KEY = "csdp_sidebar_collapsed";
@@ -2179,68 +2164,24 @@ function appMain() {
   }
   applyTheme();
 
-  var AUTH_MODE_KEY = "csdp_auth_mode"; // "signin" or "signup", just remembers the last toggle state per device
-  function loginScreenHtml(mode, message) {
-    var isSignup = mode === "signup";
-    if (mode === "forgot") {
-      return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
-        "<h2 class=\"display\" style=\"margin:0 0 12px;\">Reset your password</h2>" +
-        (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
-        "<form data-action=\"auth-forgot-password\">" +
-        "<input class=\"text-input\" type=\"email\" name=\"email\" placeholder=\"Email\" autocomplete=\"email\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
-        "<button type=\"submit\" class=\"btn\" style=\"width:100%; margin-bottom:8px;\">Send reset link</button>" +
-        "</form>" +
-        "<button class=\"link-btn\" type=\"button\" data-action=\"auth-back-to-signin\">Back to sign in</button>" +
-        "</div>";
-    }
-    return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
+  function passwordPromptHtml(message) {
+    return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px; color:var(--ink);\">" +
       "<h2 class=\"display\" style=\"margin:0 0 12px;\">CSDP Tracker</h2>" +
       (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
-      "<form data-action=\"" + (isSignup ? "auth-sign-up" : "auth-sign-in") + "\">" +
-      "<input class=\"text-input\" type=\"email\" name=\"email\" placeholder=\"Email\" autocomplete=\"email\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
-      "<input class=\"text-input\" type=\"password\" name=\"password\" placeholder=\"Password\" autocomplete=\"" + (isSignup ? "new-password" : "current-password") + "\" minlength=\"6\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
-      "<button type=\"submit\" class=\"btn\" style=\"width:100%; margin-bottom:8px;\">" + (isSignup ? "Create account" : "Sign in") + "</button>" +
-      "</form>" +
-      (isSignup ? "" : "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:6px;\" data-action=\"auth-forgot-mode\">Forgot your password?</button>") +
-      "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:14px;\" data-action=\"auth-toggle-mode\">" +
-      (isSignup ? "Already have an account? Sign in" : "New here? Create an account") + "</button>" +
-      "<button class=\"btn ghost\" type=\"button\" style=\"width:100%; margin-bottom:14px;\" data-action=\"auth-sign-in-google\">Sign in with Google</button>" +
-      "<button class=\"link-btn\" type=\"button\" data-action=\"enter-demo-mode\">Just want to look around? Try the demo</button>" +
-      "</div>";
-  }
-  function showLoginScreen(modeOrMessage, maybeMessage) {
-    var mode, message;
-    if (maybeMessage !== undefined) { mode = modeOrMessage; message = maybeMessage; if (mode !== "forgot") setStoredAuthMode(mode); }
-    else { mode = getStoredAuthMode() || "signin"; message = modeOrMessage; }
-    document.getElementById("app").innerHTML = loginScreenHtml(mode, message);
-  }
-  function getStoredAuthMode() {
-    try { return localStorage.getItem(AUTH_MODE_KEY) || ""; } catch (e) { return ""; }
-  }
-  function setStoredAuthMode(mode) {
-    try { localStorage.setItem(AUTH_MODE_KEY, mode); } catch (e) {}
-  }
-  function setNewPasswordScreenHtml(message) {
-    return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
-      "<h2 class=\"display\" style=\"margin:0 0 12px;\">Set a new password</h2>" +
-      (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
-      "<form data-action=\"auth-set-new-password\">" +
-      "<input class=\"text-input\" type=\"password\" name=\"password\" placeholder=\"New password\" autocomplete=\"new-password\" minlength=\"6\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
-      "<button type=\"submit\" class=\"btn\" style=\"width:100%;\">Save new password</button>" +
+      "<form id=\"password-form\">" +
+      "<input id=\"password-input\" class=\"text-input\" type=\"password\" placeholder=\"Team password\" autofocus style=\"width:100%; margin-bottom:10px;\">" +
+      "<button type=\"submit\" class=\"btn\" style=\"width:100%;\">Enter</button>" +
       "</form></div>";
   }
-  function showSetNewPasswordScreen(message) {
-    document.getElementById("app").innerHTML = setNewPasswordScreenHtml(message);
-  }
-  function notOnTeamScreenHtml(email) {
-    return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
-      "<h2 class=\"display\" style=\"margin:0 0 12px;\">You're signed in, but...</h2>" +
-      "<p style=\"color:var(--ink-soft); margin:0 0 16px;\">" + esc(email) + " isn't on the team list yet. Ask Michelle to add this email on the Team page, then try again.</p>" +
-      "<button class=\"btn\" type=\"button\" data-action=\"auth-sign-out\">Sign out</button>" +
-      "</div>";
-  }
-  function showNotOnTeamScreen(email) {
-    document.getElementById("app").innerHTML = notOnTeamScreenHtml(email);
+
+  function showPasswordPrompt(message) {
+    document.getElementById("app").innerHTML = passwordPromptHtml(message);
+    document.getElementById("password-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var pw = document.getElementById("password-input").value;
+      setStoredPassword(pw.trim());
+      boot();
+    });
   }
 
   function identityPickerHtml() {
@@ -2264,6 +2205,37 @@ function appMain() {
     document.getElementById("app").innerHTML = identityPickerHtml();
   }
 
+  function pinFormHtml(name, isNew, message) {
+    return "<div class=\"card\" style=\"max-width:360px; margin:80px auto; padding:24px;\">" +
+      "<h2 class=\"display\" style=\"margin:0 0 12px;\">" + (isNew ? "Create a PIN for " : "Enter your PIN for ") + esc(name) + "</h2>" +
+      (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
+      "<form data-action=\"" + (isNew ? "create-pin" : "verify-pin") + "\" data-name=\"" + esc(name) + "\">" +
+      "<input class=\"text-input\" style=\"margin-bottom:10px; width:100%; box-sizing:border-box;\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]*\" maxlength=\"4\" name=\"pin\" placeholder=\"4-digit PIN\" autofocus required>" +
+      (isNew ? "<input class=\"text-input\" style=\"margin-bottom:10px; width:100%; box-sizing:border-box;\" type=\"password\" inputmode=\"numeric\" pattern=\"[0-9]*\" maxlength=\"4\" name=\"pin2\" placeholder=\"Confirm PIN\" required>" : "") +
+      "<button class=\"btn\" type=\"submit\" style=\"width:100%; margin-bottom:8px;\">" + (isNew ? "Create PIN" : "Enter") + "</button>" +
+      "<button class=\"link-btn\" type=\"button\" data-action=\"back-to-identity-picker\">Not you? Pick a different name</button>" +
+      "</form></div>";
+  }
+  function showPinForm(name, isNew, message) {
+    document.getElementById("app").innerHTML = pinFormHtml(name, isNew, message);
+  }
+
+  var identityFlowToken = 0;
+  function handleIdentityPick(name) {
+    /* Demo identities skip PINs entirely — there's no real person to
+       protect and no persistence for a PIN to even mean anything across
+       reloads, so asking for one would just be friction. */
+    if (isDemoMode) { setStoredIdentity(name); startApp(); return; }
+    var token = ++identityFlowToken;
+    callRpc("pin_status", { p_name: name }).then(function (hasPin) {
+      if (token !== identityFlowToken) return;
+      showPinForm(name, !hasPin, null);
+    }).catch(function (err) {
+      if (token !== identityFlowToken) return;
+      if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+      showPinForm(name, false, "Couldn't connect — check your internet connection and try again.");
+    });
+  }
 
   var VIEW_STORAGE_KEY = "caseload_current_view";
   function loadStoredView() {
@@ -2285,19 +2257,6 @@ function appMain() {
     return !!(c && c.url && c.anonKey);
   }
 
-  var sbClient = null;
-  function getSupabaseClient() {
-    if (!sbClient && hasSupabaseConfig() && window.supabase) {
-      sbClient = window.supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
-    }
-    return sbClient;
-  }
-  /* The access token for whoever's currently logged in — null before
-     login/in demo mode. supabaseHeaders() below falls back to the plain
-     anon key when this is null, same as every request already worked
-     before this feature existed. */
-  var currentAccessToken = null;
-
   function configMissingError() {
     var e = new Error("config missing");
     e.code = "config_missing";
@@ -2307,7 +2266,8 @@ function appMain() {
   function supabaseHeaders(extra) {
     var h = {
       apikey: window.SUPABASE_CONFIG.anonKey,
-      Authorization: "Bearer " + (currentAccessToken || window.SUPABASE_CONFIG.anonKey)
+      Authorization: "Bearer " + window.SUPABASE_CONFIG.anonKey,
+      "x-app-password": getStoredPassword()
     };
     if (extra) for (var k in extra) h[k] = extra[k];
     return h;
@@ -2331,6 +2291,33 @@ function appMain() {
       if (!rows || !rows.length) { var e3 = new Error("no data row"); e3.code = "bad_password"; throw e3; }
       lastKnownUpdatedAt = rows[0].updated_at;
       return rows[0].data;
+    });
+  }
+
+  function callRpc(fnName, args) {
+    /* Belt-and-suspenders alongside the demo-mode check already in
+       handleIdentityPick — anything that ever calls an RPC directly in
+       demo mode should fail loudly in testing, not quietly hit the real
+       Supabase project with a password that was never real to begin
+       with. */
+    if (isDemoMode) return Promise.reject(Object.assign(new Error("no RPCs in demo mode"), { code: "demo_mode" }));
+    if (!hasSupabaseConfig()) return Promise.reject(configMissingError());
+    var url = window.SUPABASE_CONFIG.url + "/rest/v1/rpc/" + fnName;
+    return fetch(url, {
+      method: "POST",
+      headers: supabaseHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(args)
+    }).then(function (res) {
+      if (res.status === 401 || res.status === 403) { var e = new Error("bad password"); e.code = "bad_password"; throw e; }
+      if (res.ok) { return res.json(); }
+      /* A wrong x-app-password raises a plain SQL exception inside these
+         functions, which PostgREST surfaces as a 400 (not 401/403 like the
+         RLS-based table checks elsewhere) — so it has to be told apart by
+         the error body's message instead of the status code. */
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (body && body.message === "forbidden") { var e2 = new Error("bad password"); e2.code = "bad_password"; throw e2; }
+        var e3 = new Error("rpc failed: " + res.status); e3.code = "rpc_failed"; throw e3;
+      });
     });
   }
 
@@ -2481,62 +2468,33 @@ function appMain() {
     return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus || justMigratedSoftwareIssueCategories || justMigratedVaEmail;
   }
   function boot() {
-    if (getStoredDemoMode()) {
-      isDemoMode = true;
-      state = buildDemoState();
-      runAllMigrations(state);
+    var pw = getStoredPassword();
+    if (!pw) { showPasswordPrompt(); return; }
+    isDemoMode = pw === DEMO_PASSWORD;
+    if (isDemoMode) { state = buildDemoState(); }
+    loadStateFromServer().then(function (data) {
+      state = data;
+      var anyMigrated = runAllMigrations(state);
       var identity = getStoredIdentity();
       var validIdentity = identity && state.vas.some(function (v) { return v.name === identity; });
       if (!validIdentity) { setStoredIdentity(""); showIdentityPicker(); return; }
       startApp();
-      return;
-    }
-    if (!hasSupabaseConfig()) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-    var client = getSupabaseClient();
-    if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-    /* A password-reset email link lands back here with "type=recovery" in
-       the URL fragment — checked directly rather than waiting on a
-       session/event, since by the time a session exists it looks exactly
-       like a normal login and would otherwise race straight into the app
-       before this ever gets a chance to show the "set new password" form. */
-    if (window.location.hash.indexOf("type=recovery") !== -1) { showSetNewPasswordScreen(); return; }
-    /* A Google OAuth redirect lands back here with a session already
-       parseable straight from the URL — supabase-js does that parsing on
-       client creation automatically. A plain reload, or a sign-in/sign-up
-       that already set currentAccessToken itself before calling boot(),
-       both fall through to getSession() the same way, returning whatever
-       session is already stored. */
-    client.auth.getSession().then(function (res) {
-      var session = res.data && res.data.session;
-      if (!session) { showLoginScreen(); return; }
-      currentAccessToken = session.access_token;
-      var myEmail = (session.user && session.user.email || "").toLowerCase();
-      loadStateFromServer().then(function (data) {
-        state = data;
-        var anyMigrated = runAllMigrations(state);
-        var myVa = state.vas.find(function (v) { return (v.email || "").toLowerCase() === myEmail; });
-        if (!myVa) { showNotOnTeamScreen(myEmail); return; }
-        setStoredIdentity(myVa.name);
-        startApp();
-        if (anyMigrated) {
-          saveStateToServer(state).catch(function () {});
-        }
-      }).catch(function (err) {
-        if (err.code === "bad_password") { currentAccessToken = null; showLoginScreen("Your session expired — please sign in again."); return; }
-        if (err.code === "config_missing") { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-        /* Anything without a recognized .code is a real bug (bad data
-           hitting an edge case, a thrown error during startup), not a
-           connectivity problem — telling someone to "check your internet"
-           for an actual bug sends them troubleshooting the wrong thing. */
-        if (err.code === "load_failed") {
-          showLoginScreen("Couldn't connect — check your internet connection and try again.");
-          return;
-        }
-        if (window.console && console.error) console.error("App failed to start:", err);
-        showLoginScreen("Something went wrong loading the app — this can happen if it was being updated right now. Try reloading in a moment, and let the Admin know if it keeps happening.");
-      });
-    }).catch(function () {
-      showLoginScreen("Couldn't connect — check your internet connection and try again.");
+      if (anyMigrated) {
+        saveStateToServer(state).catch(function () {});
+      }
+    }).catch(function (err) {
+      if (err.code === "bad_password") { showPasswordPrompt("Incorrect password."); return; }
+      if (err.code === "config_missing") { showPasswordPrompt("App isn't configured yet — config.js is missing or incomplete."); return; }
+      /* Anything without a recognized .code is a real bug (bad data
+         hitting an edge case, a thrown error during startup), not a
+         connectivity problem — telling someone to "check your internet"
+         for an actual bug sends them troubleshooting the wrong thing. */
+      if (err.code === "load_failed" || err.code === "rpc_failed") {
+        showPasswordPrompt("Couldn't connect — check your internet connection and try again.");
+        return;
+      }
+      if (window.console && console.error) console.error("App failed to start:", err);
+      showPasswordPrompt("Something went wrong loading the app (not a connection issue) — try again, and let Michelle know if it keeps happening.");
     });
   }
 
@@ -2648,7 +2606,7 @@ function appMain() {
     render();
     saveStoredView();
     saveStateToServer(state).catch(function (err) {
-      if (err.code === "bad_password") { currentAccessToken = null; showLoginScreen("Your session expired — please sign in again."); return; }
+      if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
       if (err.code === "config_missing") { showToast("App isn't configured yet — config.js is missing or incomplete."); return; }
       showToast("Couldn't save that change" + (err && err.message ? ": " + err.message : "") + ". Please try again.");
     });
@@ -2721,7 +2679,7 @@ function appMain() {
   function renderErrorFallbackHtml(err) {
     return "<div style=\"max-width:440px;margin:15vh auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;\">" +
       "<div style=\"font-size:1.15rem;font-weight:700;margin-bottom:8px;\">Something went wrong displaying this page</div>" +
-      "<div style=\"color:#666;margin-bottom:18px;\">This can happen if the app was being updated right when you loaded it — nothing you did caused it. Reloading usually clears it; if it keeps happening on the same page, let the Admin know what you were doing.</div>" +
+      "<div style=\"color:#666;margin-bottom:18px;\">This is a bug, not a network problem — nothing you did caused it. Reloading usually clears it; if it keeps happening on the same page, let Michelle know what you were doing.</div>" +
       "<button onclick=\"location.reload()\" style=\"padding:10px 20px;font-size:1rem;cursor:pointer;\">Reload</button>" +
       "</div>";
   }
@@ -2789,7 +2747,7 @@ function appMain() {
     return (
       "<div class=\"brand\"><div class=\"brand-name display\">CSDP Tracker</div>" +
       "<div class=\"brand-identity-row\"><div class=\"brand-tag\" style=\"color:" + vaSolidColor(getStoredIdentity()) + ";\">" + esc(getStoredIdentity()) + "</div>" +
-      "<button class=\"link-btn\" data-action=\"" + (isDemoMode ? "sign-out" : "auth-sign-out") + "\" title=\"" + (isDemoMode ? "Switch to a different name" : "Sign out of your account") + "\">Sign out</button></div></div>" +
+      "<button class=\"link-btn\" data-action=\"sign-out\" title=\"Switch to a different name\">Sign out</button></div></div>" +
       "<div class=\"sidebar-section\">" +
       navItem("home", "Overview", 0, function (v) { return v.type === "home"; }, "overview-nav-item") +
       "</div>" +
@@ -5179,49 +5137,19 @@ function appMain() {
         applyTheme();
         render(); break;
       case "pick-identity":
-        /* Demo Mode only now — a real login IS picking your identity (see
-           boot()), there's nothing left to separately pick. */
-        setStoredIdentity(t.getAttribute("data-name"));
-        startApp();
+        handleIdentityPick(t.getAttribute("data-name"));
         break;
       case "back-to-identity-picker":
         showIdentityPicker();
         break;
       case "back-to-password-prompt":
-        /* Only reachable from Demo Mode's identity picker now (the "Go
-           back" link) — exits the demo and returns to the real login. */
+        /* Clears the stored password so a plain reload doesn't just bounce
+           straight back here — the whole point is to let someone type a
+           different (or corrected) password from scratch. */
+        setStoredPassword("");
         isDemoMode = false;
-        setStoredDemoMode(false);
-        showLoginScreen();
+        showPasswordPrompt();
         break;
-      case "enter-demo-mode":
-        enterDemoMode();
-        break;
-      case "auth-toggle-mode":
-        (function () {
-          var next = getStoredAuthMode() === "signup" ? "signin" : "signup";
-          setStoredAuthMode(next);
-          showLoginScreen();
-        })(); break;
-      case "auth-forgot-mode":
-        showLoginScreen("forgot", "");
-        break;
-      case "auth-back-to-signin":
-        showLoginScreen("signin", "");
-        break;
-      case "auth-sign-in-google":
-        (function () {
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + window.location.pathname } });
-        })(); break;
-      case "auth-sign-out":
-        (function () {
-          var client = getSupabaseClient();
-          currentAccessToken = null;
-          if (client) { client.auth.signOut().then(function () { showLoginScreen(); }); }
-          else { showLoginScreen(); }
-        })(); break;
       case "sign-out":
         /* Clears the chosen name, not the team password — this is "switch
            who's using this device," not a full logout. Picking a name
@@ -6053,62 +5981,6 @@ function appMain() {
     var action = form.getAttribute("data-action");
     var fd = new FormData(form);
     switch (action) {
-      case "auth-sign-in":
-        (function () {
-          var email = (fd.get("email") || "").toString().trim();
-          var password = (fd.get("password") || "").toString();
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.signInWithPassword({ email: email, password: password }).then(function (res) {
-            if (res.error) { showLoginScreen(res.error.message); return; }
-            currentAccessToken = res.data.session.access_token;
-            boot();
-          }).catch(function () { showLoginScreen("Couldn't connect — check your internet connection and try again."); });
-        })(); break;
-      case "auth-sign-up":
-        (function () {
-          var email = (fd.get("email") || "").toString().trim();
-          var password = (fd.get("password") || "").toString();
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.signUp({ email: email, password: password }).then(function (res) {
-            if (res.error) { showLoginScreen("signup", res.error.message); return; }
-            /* If email confirmation is required (Supabase's default), there's
-               no session yet — signUp only returns one immediately when
-               confirmation is off. Either way, tell them plainly what to do
-               next instead of silently doing nothing. */
-            if (!res.data.session) {
-              showLoginScreen("signin", "Account created — check your email to confirm it, then sign in here.");
-              return;
-            }
-            currentAccessToken = res.data.session.access_token;
-            boot();
-          }).catch(function () { showLoginScreen("Couldn't connect — check your internet connection and try again."); });
-        })(); break;
-      case "auth-forgot-password":
-        (function () {
-          var email = (fd.get("email") || "").toString().trim();
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname }).then(function (res) {
-            if (res.error) { showLoginScreen("forgot", res.error.message); return; }
-            showLoginScreen("signin", "Check your email for a password reset link.");
-          }).catch(function () { showLoginScreen("forgot", "Couldn't connect — check your internet connection and try again."); });
-        })(); break;
-      case "auth-set-new-password":
-        (function () {
-          var password = (fd.get("password") || "").toString();
-          var client = getSupabaseClient();
-          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
-          client.auth.updateUser({ password: password }).then(function (res) {
-            if (res.error) { showSetNewPasswordScreen(res.error.message); return; }
-            /* Clears the recovery marker from the URL so a later reload
-               doesn't land back on this screen again — the password is
-               already set, this was a one-time landing. */
-            history.replaceState(null, "", window.location.pathname + window.location.search);
-            boot();
-          }).catch(function () { showSetNewPasswordScreen("Couldn't connect — check your internet connection and try again."); });
-        })(); break;
       case "add-school":
         (function () {
           var name = toTitleCase((fd.get("name") || "").toString().trim());
@@ -6482,6 +6354,41 @@ function appMain() {
           ui.editingIssueId = null;
           ui.editingIssueType = null;
           persist();
+        })(); break;
+      case "create-pin":
+        (function () {
+          var name = form.getAttribute("data-name");
+          var pin = (fd.get("pin") || "").toString();
+          var pin2 = (fd.get("pin2") || "").toString();
+          if (!/^[0-9]{4}$/.test(pin)) { showPinForm(name, true, "PIN must be exactly 4 digits."); return; }
+          if (pin !== pin2) { showPinForm(name, true, "PINs don't match — try again."); return; }
+          var token = ++identityFlowToken;
+          callRpc("set_pin", { p_name: name, p_pin: pin }).then(function (ok) {
+            if (token !== identityFlowToken) return;
+            if (!ok) { showPinForm(name, false, "That name already has a PIN set — enter it instead."); return; }
+            setStoredIdentity(name);
+            startApp();
+          }).catch(function (err) {
+            if (token !== identityFlowToken) return;
+            if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+            showPinForm(name, true, "Couldn't connect — check your internet connection and try again.");
+          });
+        })(); break;
+      case "verify-pin":
+        (function () {
+          var name = form.getAttribute("data-name");
+          var pin = (fd.get("pin") || "").toString();
+          var token = ++identityFlowToken;
+          callRpc("verify_pin", { p_name: name, p_pin: pin }).then(function (ok) {
+            if (token !== identityFlowToken) return;
+            if (!ok) { showPinForm(name, false, "Incorrect PIN — try again."); return; }
+            setStoredIdentity(name);
+            startApp();
+          }).catch(function (err) {
+            if (token !== identityFlowToken) return;
+            if (err.code === "bad_password") { showPasswordPrompt("That password isn't working anymore — please re-enter it."); return; }
+            showPinForm(name, false, "Couldn't connect — check your internet connection and try again.");
+          });
         })(); break;
       case "add-issue-type":
         (function () {
