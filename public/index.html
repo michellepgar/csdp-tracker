@@ -3774,8 +3774,16 @@ function appMain() {
     }
 
     var knownTypeIds = state.issueTypes.map(function (ty) { return ty.id; });
+    /* Once a filter or sort has actually narrowed things down, a type with
+       zero matching records shouldn't still show its whole empty card and
+       table — that's not "no entries yet," it's "not part of what you
+       asked for," so it's left out entirely instead. With nothing
+       filtered, every type still shows (even empty) so it's obvious the
+       type exists at all and can be added to. */
+    var filtersActive = !!(f.school || f.type || f.status || f.va);
     var typeSections = state.issueTypes.map(function (ty) {
       var typeList = sortRecords(list.filter(function (it) { return it.type === ty.id; }), ui.issuesSort, function (it) { return it.description || it.studentRecordLink || it.studentName || ""; });
+      if (filtersActive && !typeList.length) return "";
       if (ty.customCorrection) return correctionTypeSectionHtml(ty, typeList);
       if (ty.simpleIssueTable) return simpleIssueSectionHtml(ty, typeList);
       if (isChartingQuestionsType(ty)) return chartingSectionHtml(ty, typeList);
@@ -3835,7 +3843,7 @@ function appMain() {
       "<option value=\"\">All VAs</option>" + vaFilterOpts + "</select>" +
       sortControlHtml(ui.issuesSort, "set-issues-sort") +
       "</div>" +
-      typeSections + orphanedHtml;
+      (typeSections || orphanedHtml ? typeSections + orphanedHtml : "<div class=\"card\"><div class=\"card-body\">" + emptyState("No issues match these filters.") + "</div></div>");
   }
 
   /* ---------- Email Templates ---------- */
