@@ -4128,7 +4128,7 @@ function appMain() {
     var rows = list.map(function (n) {
       return "<tr><td class=\"wrap\">" + esc(n.text) + "</td>" +
         "<td>" + esc(n.author || "Unnamed") + "</td>" +
-        "<td>" + fmtDateTime(n.createdAt) + "</td></tr>";
+        "<td>" + fmtDate(n.createdAt) + "</td></tr>";
     }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
