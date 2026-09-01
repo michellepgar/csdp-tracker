@@ -12,9 +12,14 @@ create table app_state (
 
 alter table app_state enable row level security;
 
--- Supabase's anon role has no table access by default — RLS only restricts
--- *rows*, it doesn't grant table-level access on its own.
+-- RLS only restricts *rows* — it doesn't grant table-level access on its
+-- own, and that's a separate grant per Postgres role. A request before
+-- login runs as "anon"; a request from a signed-in user runs as
+-- "authenticated" — both need the grant, or the authenticated one gets a
+-- flat "permission denied for table app_state" regardless of what the RLS
+-- policies below would otherwise allow.
 grant select, update on app_state to anon;
+grant select, update on app_state to authenticated;
 
 create policy "app access select"
 on app_state for select
