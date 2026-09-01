@@ -4408,16 +4408,21 @@ function appMain() {
   }
   function suggestionGroupHtml(status, list) {
     var rows = list.map(function (n) {
+      /* Same rule as every other note-like list: whoever suggested it can
+         remove it, and once they've left the team anyone else can clean
+         it up — same as canDeleteNote's "general" scope. */
+      var canDelete = canDeleteNote(n, "general");
       return "<tr><td class=\"wrap\">" + esc(n.text) + "</td>" +
         "<td>" + esc(n.author || "Unnamed") + "</td>" +
         "<td>" + fmtDate(n.createdAt) + "</td>" +
-        suggestionStatusCellHtml(n) + "</tr>";
+        suggestionStatusCellHtml(n) +
+        "<td>" + (canDelete ? deleteBtn("suggestion", n.id, "remove-suggestion") : "") + "</td></tr>";
     }).join("");
-    var cols = 3 + (isMichelleHerself() ? 1 : 0);
+    var cols = 4 + (isMichelleHerself() ? 1 : 0);
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(status) +
       (list.length ? " <span class=\"count-chip\">" + list.length + "</span>" : "") + "</div></div>" +
       "<div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr><th>Suggestion</th><th>Suggested by</th><th>Date</th>" + (isMichelleHerself() ? "<th>Status</th>" : "") + "</tr></thead><tbody>" +
+      "<table class=\"data-table\"><thead><tr><th>Suggestion</th><th>Suggested by</th><th>Date</th>" + (isMichelleHerself() ? "<th>Status</th>" : "") + "<th></th></tr></thead><tbody>" +
       (rows || "<tr><td colspan=\"" + cols + "\">" + emptyState("Nothing here yet.") + "</td></tr>") +
       "</tbody></table></div></div></div>";
   }
@@ -5575,6 +5580,17 @@ function appMain() {
         requestDelete("issue", t.getAttribute("data-id"), function () {
           state.issues = state.issues.filter(function (x) { return x.id !== t.getAttribute("data-id"); });
         }); break;
+      case "remove-suggestion":
+        (function () {
+          var id = t.getAttribute("data-id");
+          var suggestion = state.suggestions.find(function (x) { return x.id === id; });
+          /* Re-checked here, not just hidden in the UI — never trust that
+             the button not rendering was enough on its own. */
+          if (!canDeleteNote(suggestion, "general")) return;
+          requestDelete("suggestion", id, function () {
+            state.suggestions = state.suggestions.filter(function (x) { return x.id !== id; });
+          });
+        })(); break;
       case "remove-template-item":
         requestDelete("template-item", t.getAttribute("data-id"), function () {
           var tmplId = t.getAttribute("data-id");
