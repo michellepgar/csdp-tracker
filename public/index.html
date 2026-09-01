@@ -2182,6 +2182,17 @@ function appMain() {
   var AUTH_MODE_KEY = "csdp_auth_mode"; // "signin" or "signup", just remembers the last toggle state per device
   function loginScreenHtml(mode, message) {
     var isSignup = mode === "signup";
+    if (mode === "forgot") {
+      return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
+        "<h2 class=\"display\" style=\"margin:0 0 12px;\">Reset your password</h2>" +
+        (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
+        "<form data-action=\"auth-forgot-password\">" +
+        "<input class=\"text-input\" type=\"email\" name=\"email\" placeholder=\"Email\" autocomplete=\"email\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
+        "<button type=\"submit\" class=\"btn\" style=\"width:100%; margin-bottom:8px;\">Send reset link</button>" +
+        "</form>" +
+        "<button class=\"link-btn\" type=\"button\" data-action=\"auth-back-to-signin\">Back to sign in</button>" +
+        "</div>";
+    }
     return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
       "<h2 class=\"display\" style=\"margin:0 0 12px;\">CSDP Tracker</h2>" +
       (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
@@ -2190,6 +2201,7 @@ function appMain() {
       "<input class=\"text-input\" type=\"password\" name=\"password\" placeholder=\"Password\" autocomplete=\"" + (isSignup ? "new-password" : "current-password") + "\" minlength=\"6\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
       "<button type=\"submit\" class=\"btn\" style=\"width:100%; margin-bottom:8px;\">" + (isSignup ? "Create account" : "Sign in") + "</button>" +
       "</form>" +
+      (isSignup ? "" : "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:6px;\" data-action=\"auth-forgot-mode\">Forgot your password?</button>") +
       "<button class=\"link-btn\" type=\"button\" style=\"display:block; margin-bottom:14px;\" data-action=\"auth-toggle-mode\">" +
       (isSignup ? "Already have an account? Sign in" : "New here? Create an account") + "</button>" +
       "<button class=\"btn ghost\" type=\"button\" style=\"width:100%; margin-bottom:14px;\" data-action=\"auth-sign-in-google\">Sign in with Google</button>" +
@@ -2198,7 +2210,7 @@ function appMain() {
   }
   function showLoginScreen(modeOrMessage, maybeMessage) {
     var mode, message;
-    if (maybeMessage !== undefined) { mode = modeOrMessage; message = maybeMessage; setStoredAuthMode(mode); }
+    if (maybeMessage !== undefined) { mode = modeOrMessage; message = maybeMessage; if (mode !== "forgot") setStoredAuthMode(mode); }
     else { mode = getStoredAuthMode() || "signin"; message = modeOrMessage; }
     document.getElementById("app").innerHTML = loginScreenHtml(mode, message);
   }
@@ -2207,6 +2219,18 @@ function appMain() {
   }
   function setStoredAuthMode(mode) {
     try { localStorage.setItem(AUTH_MODE_KEY, mode); } catch (e) {}
+  }
+  function setNewPasswordScreenHtml(message) {
+    return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
+      "<h2 class=\"display\" style=\"margin:0 0 12px;\">Set a new password</h2>" +
+      (message ? "<p style=\"color:var(--danger); margin:0 0 12px;\">" + esc(message) + "</p>" : "") +
+      "<form data-action=\"auth-set-new-password\">" +
+      "<input class=\"text-input\" type=\"password\" name=\"password\" placeholder=\"New password\" autocomplete=\"new-password\" minlength=\"6\" required style=\"width:100%; margin-bottom:10px; box-sizing:border-box;\">" +
+      "<button type=\"submit\" class=\"btn\" style=\"width:100%;\">Save new password</button>" +
+      "</form></div>";
+  }
+  function showSetNewPasswordScreen(message) {
+    document.getElementById("app").innerHTML = setNewPasswordScreenHtml(message);
   }
   function notOnTeamScreenHtml(email) {
     return "<div class=\"card\" style=\"max-width:380px; margin:80px auto; padding:24px; color:var(--ink);\">" +
@@ -2470,6 +2494,12 @@ function appMain() {
     if (!hasSupabaseConfig()) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
     var client = getSupabaseClient();
     if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
+    /* A password-reset email link lands back here with "type=recovery" in
+       the URL fragment — checked directly rather than waiting on a
+       session/event, since by the time a session exists it looks exactly
+       like a normal login and would otherwise race straight into the app
+       before this ever gets a chance to show the "set new password" form. */
+    if (window.location.hash.indexOf("type=recovery") !== -1) { showSetNewPasswordScreen(); return; }
     /* A Google OAuth redirect lands back here with a session already
        parseable straight from the URL — supabase-js does that parsing on
        client creation automatically. A plain reload, or a sign-in/sign-up
@@ -5173,6 +5203,12 @@ function appMain() {
           setStoredAuthMode(next);
           showLoginScreen();
         })(); break;
+      case "auth-forgot-mode":
+        showLoginScreen("forgot", "");
+        break;
+      case "auth-back-to-signin":
+        showLoginScreen("signin", "");
+        break;
       case "auth-sign-in-google":
         (function () {
           var client = getSupabaseClient();
@@ -6048,6 +6084,30 @@ function appMain() {
             currentAccessToken = res.data.session.access_token;
             boot();
           }).catch(function () { showLoginScreen("Couldn't connect — check your internet connection and try again."); });
+        })(); break;
+      case "auth-forgot-password":
+        (function () {
+          var email = (fd.get("email") || "").toString().trim();
+          var client = getSupabaseClient();
+          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
+          client.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname }).then(function (res) {
+            if (res.error) { showLoginScreen("forgot", res.error.message); return; }
+            showLoginScreen("signin", "Check your email for a password reset link.");
+          }).catch(function () { showLoginScreen("forgot", "Couldn't connect — check your internet connection and try again."); });
+        })(); break;
+      case "auth-set-new-password":
+        (function () {
+          var password = (fd.get("password") || "").toString();
+          var client = getSupabaseClient();
+          if (!client) { showLoginScreen("App isn't configured yet — config.js is missing or incomplete."); return; }
+          client.auth.updateUser({ password: password }).then(function (res) {
+            if (res.error) { showSetNewPasswordScreen(res.error.message); return; }
+            /* Clears the recovery marker from the URL so a later reload
+               doesn't land back on this screen again — the password is
+               already set, this was a one-time landing. */
+            history.replaceState(null, "", window.location.pathname + window.location.search);
+            boot();
+          }).catch(function () { showSetNewPasswordScreen("Couldn't connect — check your internet connection and try again."); });
         })(); break;
       case "add-school":
         (function () {
