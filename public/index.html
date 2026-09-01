@@ -3792,14 +3792,20 @@ function appMain() {
     var opts = "<option value=\"\">—</option>" + cats.map(function (c) {
       return "<option value=\"" + esc(c.name) + "\"" + (c.name === it.category ? " selected" : "") + ">" + esc(c.name) + "</option>";
     }).join("");
+    return "<select class=\"text-input\" data-action-change=\"set-software-issue-category\" data-id=\"" + it.id + "\">" + opts + "</select>";
+  }
+  /* Its own column right next to Category, rather than stacked inside the
+     same cell, so both are visible/scannable at a glance in the table —
+     empty (—) when the current category has no subcategories at all. */
+  function softwareIssueSubcategoryCellHtml(it) {
+    var cats = state.softwareIssueCategories || [];
     var currentCat = cats.find(function (c) { return c.name === it.category; });
     var subcats = (currentCat && currentCat.subcategories) || [];
-    var categorySelect = "<select class=\"text-input\" data-action-change=\"set-software-issue-category\" data-id=\"" + it.id + "\">" + opts + "</select>";
-    if (!subcats.length) return categorySelect;
+    if (!subcats.length) return "<div class=\"contact-cell-view\" style=\"color:var(--ink-faint);\">—</div>";
     var subOpts = "<option value=\"\">—</option>" + subcats.map(function (s) {
       return "<option value=\"" + esc(s.name) + "\"" + (s.name === it.subcategory ? " selected" : "") + ">" + esc(s.name) + "</option>";
     }).join("");
-    return categorySelect + "<select class=\"text-input\" style=\"margin-top:4px;\" data-action-change=\"set-software-issue-subcategory\" data-id=\"" + it.id + "\">" + subOpts + "</select>";
+    return "<select class=\"text-input\" data-action-change=\"set-software-issue-subcategory\" data-id=\"" + it.id + "\">" + subOpts + "</select>";
   }
   /* Software Issue's own simple table — a category, the issue, a note,
      who reported it (with the date, since that mattered more here than
@@ -3808,7 +3814,7 @@ function appMain() {
      locked behind the row's own Edit button, same reasoning as everywhere
      else this session: unlocking one row never risks another. */
   function simpleIssueSectionHtml(ty, typeList) {
-    var headerCells = "<th>Category</th><th>Issue</th><th>Reference</th><th>Reported by</th><th>Status</th><th></th>";
+    var headerCells = "<th>Category</th><th>Subcategory</th><th>Issue</th><th>Reference</th><th>Reported by</th><th>Status</th><th></th>";
     var rowsHtml = typeList.map(function (it) {
       var editing = ui.editingSimpleIssueId === it.id;
       var descCell = editing
@@ -3820,6 +3826,7 @@ function appMain() {
       var editBtn = "<button class=\"link-btn\" data-action=\"" + (editing ? "done-edit-simple-issue" : "edit-simple-issue") + "\" data-id=\"" + it.id + "\">" + (editing ? "Done" : "Edit") + "</button>";
       return "<tr>" +
         "<td>" + softwareIssueCategoryCellHtml(it) + "</td>" +
+        "<td>" + softwareIssueSubcategoryCellHtml(it) + "</td>" +
         "<td>" + descCell + "</td>" +
         "<td>" + noteCell + "</td>" +
         "<td>" + esc(it.reportedBy || "") + (it.createdAt ? " · " + fmtDate(it.createdAt) : "") + "</td>" +
@@ -3833,7 +3840,7 @@ function appMain() {
       "</div>" +
       "<div class=\"card-body\">" + (ui.softwareIssueCategoryEditorOpen ? softwareIssueCategoryEditorHtml() : "") + "<div class=\"table-scroll\">" +
       "<table class=\"data-table\"><thead><tr>" + headerCells + "</tr></thead><tbody>" +
-      (rowsHtml || "<tr><td colspan=\"6\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
+      (rowsHtml || "<tr><td colspan=\"7\">" + emptyState("No " + ty.name + " entries match these filters.") + "</td></tr>") +
       "</tbody></table></div>" +
       "</div></div>";
   }
@@ -4008,9 +4015,20 @@ function appMain() {
             }).join("") +
             "</span>"
           : newType && newType.simpleIssueTable
-            ? "<span style=\"width:100%; margin-top:8px;\"><select class=\"text-input\" name=\"category\" style=\"width:auto;\"><option value=\"\">No category</option>" +
-              (state.softwareIssueCategories || []).map(function (c) { return "<option value=\"" + esc(c.name) + "\">" + esc(c.name) + "</option>"; }).join("") +
-              "</select></span>"
+            ? (function () {
+                var swCats = state.softwareIssueCategories || [];
+                var selectedCat = swCats.find(function (c) { return c.name === ui.newIssueCategory; });
+                var subcats = (selectedCat && selectedCat.subcategories) || [];
+                var catSelect = "<select class=\"text-input\" data-action-change=\"select-new-issue-category\" name=\"category\" style=\"width:auto;\"><option value=\"\">No category</option>" +
+                  swCats.map(function (c) { return "<option value=\"" + esc(c.name) + "\"" + (c.name === ui.newIssueCategory ? " selected" : "") + ">" + esc(c.name) + "</option>"; }).join("") +
+                  "</select>";
+                var subSelect = subcats.length
+                  ? "<select class=\"text-input\" name=\"subcategory\" style=\"width:auto;\"><option value=\"\">No subcategory</option>" +
+                    subcats.map(function (s) { return "<option value=\"" + esc(s.name) + "\">" + esc(s.name) + "</option>"; }).join("") +
+                    "</select>"
+                  : "";
+                return "<span style=\"width:100%; margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;\">" + catSelect + subSelect + "</span>";
+              })()
             : isChartingQuestionsType(newType)
               ? "<span style=\"width:100%; margin-top:8px;\"><input class=\"text-input\" name=\"studentRecordLink\" placeholder=\"Link to student record\" required></span>"
               /* No fields pre-added — click a +Field button for whatever this
@@ -5800,6 +5818,10 @@ function appMain() {
         render(); break;
       case "select-new-issue-type":
         ui.newIssueType = t.value;
+        ui.newIssueCategory = null;
+        render(); break;
+      case "select-new-issue-category":
+        ui.newIssueCategory = t.value;
         render(); break;
       case "select-edit-issue-type":
         ui.editingIssueType = t.value;
@@ -6133,12 +6155,14 @@ function appMain() {
               type: typeId,
               description: simpleDescription,
               category: (fd.get("category") || "").toString(),
+              subcategory: (fd.get("subcategory") || "").toString(),
               remarks: "",
               reportedBy: getStoredIdentity(),
               status: statusOpts[0] || "Pending",
               createdAt: new Date().toISOString()
             });
             ui.newIssueType = null;
+            ui.newIssueCategory = null;
             persist();
             return;
           }
