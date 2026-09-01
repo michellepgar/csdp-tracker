@@ -1356,6 +1356,17 @@ function appMain() {
     });
     return true;
   }
+  /* Suggestions gained a Requested/Working On It/Added status — anything
+     saved before that defaults to Requested, since that's what every
+     suggestion effectively was before this existed. */
+  function migrateSuggestionStatus(parsed) {
+    if (parsed._migratedSuggestionStatus) return false;
+    parsed._migratedSuggestionStatus = true;
+    (parsed.suggestions || []).forEach(function (n) {
+      if (!n.status) n.status = "Requested";
+    });
+    return true;
+  }
   /* The team already removed "Record Needs Rechecking" once, before the
      tombstone mechanism above existed to make that removal stick — replay
      it now, one time, so it doesn't keep reappearing every reload. */
@@ -2014,6 +2025,13 @@ function appMain() {
     var va = state.vas.find(function (v) { return v.name === name; });
     return !!(va && (va.admin || va.role === "owner"));
   }
+  /* Stricter than isSuperAdmin() above — Michelle herself only, no
+     exception for other admins or the Owner. Used where she's explicitly
+     asked for something to be hers alone to control (e.g. moving a
+     suggestion between Requested/Working On It/Added). */
+  function isMichelleHerself() {
+    return getStoredIdentity() === SUPERADMIN_NAME;
+  }
   function isOwner(name) {
     var va = state.vas.find(function (v) { return v.name === name; });
     return !!(va && va.role === "owner");
@@ -2247,6 +2265,7 @@ function appMain() {
       migrateIssueTypes(fresh);
       migrateIssueTypeFieldPools(fresh);
       migrateIssueFixEntries(fresh);
+      migrateSuggestionStatus(fresh);
       migrateChecklistTemplate(fresh);
       migrateTaskCategoryOrder(fresh);
       migrateRecordTimestamps(fresh);
@@ -2322,6 +2341,7 @@ function appMain() {
     migrateIssueTypes(s);
     var justMigratedIssueTypeFieldPools = migrateIssueTypeFieldPools(s);
     var justMigratedIssueFixEntries = migrateIssueFixEntries(s);
+    var justMigratedSuggestionStatus = migrateSuggestionStatus(s);
     migrateChecklistTemplate(s);
     var justMigratedCategoryOrder = migrateTaskCategoryOrder(s);
     var justMigratedTimestamps = migrateRecordTimestamps(s);
@@ -2343,7 +2363,7 @@ function appMain() {
     var justMigratedDistributionBreakdownLanguages = migrateDistributionBreakdownLanguages(s);
     migrateNotesToHtml(s.generalNotes);
     migrateNotesToHtml(s.privateNotes);
-    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries;
+    return justMigratedCategoryOrder || justMigratedTimestamps || justMigratedSchools || justMigratedDavis || justMigratedRenames || justMigratedVaColors || justMigratedVaColors2 || justMigratedVaAdminField || justMigratedFaithOwner || justMigratedIssueStatusUniform || justMigratedContacts || justMigratedContactGroupRename || justMigratedContactMultiLine || justMigratedDistributionSchoolYear || justMigratedDistributionGroups || justMigratedDistributionSeedSchools || justMigratedDistributionYears || justMigratedDistributionBreakdownLanguages || justMigratedRecheckRemoval || justMigratedCorrectionFields || justMigratedCorrectionSimplify || justMigratedCorrectionKind || justMigratedCorrectionStudentLink || justMigratedIssueTypeFieldPools || justMigratedIssueFixEntries || justMigratedSuggestionStatus;
   }
   function boot() {
     var pw = getStoredPassword();
@@ -4216,13 +4236,39 @@ function appMain() {
      via the same shared date/alpha sort control used elsewhere, with the
      "alpha" side wired to the suggester's name instead of the suggestion
      text itself. */
-  function suggestionsPageHtml() {
-    var sort = ui.suggestionsSort || { field: "date", dir: "desc" };
-    var list = sortRecords(state.suggestions, sort, function (n) { return n.author || ""; });
+  var SUGGESTION_STATUSES = ["Requested", "Working On It", "Added"];
+  /* Only Michelle can move a suggestion between these — everyone else
+     just sees which section it's sitting in, which already tells them
+     the status without needing a separate read-only column repeating it.
+     Not even other Admins/Owner get this — she asked for it to be hers
+     alone to set. */
+  function suggestionStatusCellHtml(n) {
+    if (!isMichelleHerself()) return "";
+    var opts = SUGGESTION_STATUSES.map(function (st) {
+      return "<option value=\"" + esc(st) + "\"" + (st === (n.status || "Requested") ? " selected" : "") + ">" + esc(st) + "</option>";
+    }).join("");
+    return "<td><select class=\"text-input\" data-action-change=\"set-suggestion-status\" data-id=\"" + n.id + "\">" + opts + "</select></td>";
+  }
+  function suggestionGroupHtml(status, list) {
     var rows = list.map(function (n) {
       return "<tr><td class=\"wrap\">" + esc(n.text) + "</td>" +
         "<td>" + esc(n.author || "Unnamed") + "</td>" +
-        "<td>" + fmtDate(n.createdAt) + "</td></tr>";
+        "<td>" + fmtDate(n.createdAt) + "</td>" +
+        suggestionStatusCellHtml(n) + "</tr>";
+    }).join("");
+    var cols = 3 + (isMichelleHerself() ? 1 : 0);
+    return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + esc(status) +
+      (list.length ? " <span class=\"count-chip\">" + list.length + "</span>" : "") + "</div></div>" +
+      "<div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr><th>Suggestion</th><th>Suggested by</th><th>Date</th>" + (isMichelleHerself() ? "<th>Status</th>" : "") + "</tr></thead><tbody>" +
+      (rows || "<tr><td colspan=\"" + cols + "\">" + emptyState("Nothing here yet.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
+  }
+  function suggestionsPageHtml() {
+    var sort = ui.suggestionsSort || { field: "date", dir: "desc" };
+    var list = sortRecords(state.suggestions, sort, function (n) { return n.author || ""; });
+    var groupsHtml = SUGGESTION_STATUSES.map(function (st) {
+      return suggestionGroupHtml(st, list.filter(function (n) { return (n.status || "Requested") === st; }));
     }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
       "<div class=\"card\"><div class=\"card-body\">" +
@@ -4233,10 +4279,7 @@ function appMain() {
       "<button class=\"btn\" type=\"submit\">Add suggestion</button></div>" +
       "</form></div></div>" +
       "<div class=\"filters-row\">" + sortControlHtml(sort, "set-suggestions-sort") + "</div>" +
-      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
-      "<table class=\"data-table\"><thead><tr><th>Suggestion</th><th>Suggested by</th><th>Date</th></tr></thead><tbody>" +
-      (rows || "<tr><td colspan=\"3\">" + emptyState("No suggestions yet.") + "</td></tr>") +
-      "</tbody></table></div></div></div>";
+      groupsHtml;
   }
 
   /* ---------- Distribution List ---------- */
@@ -5644,6 +5687,17 @@ function appMain() {
       case "set-suggestions-sort":
         ui.suggestionsSort = parseSortValue(t.value);
         render(); break;
+      case "set-suggestion-status":
+        (function () {
+          /* Re-checked here, not just kept off the UI for anyone else —
+             the control itself is never rendered for a non-Michelle
+             viewer, but this is the actual place that would matter if a
+             request somehow reached this handler anyway. */
+          if (!isMichelleHerself()) return;
+          var suggestion = state.suggestions.find(function (x) { return x.id === t.getAttribute("data-id"); });
+          if (suggestion && SUGGESTION_STATUSES.indexOf(t.value) !== -1) suggestion.status = t.value;
+          persist();
+        })(); break;
       case "filter-eod":
         ui.eodFilterAuthor = t.value;
         render(); break;
@@ -5840,6 +5894,7 @@ function appMain() {
             ensureSchoolData(sid).notes.push(entry);
             draftName = "note-" + sid;
           } else if (scope === "suggestion") {
+            entry.status = "Requested";
             state.suggestions.push(entry);
             draftName = "note-suggestion";
           } else {
