@@ -2302,6 +2302,7 @@ function appMain() {
       taskSort: { field: "date", dir: "desc" },
       emailSort: { field: "date", dir: "desc" },
       issuesSort: { field: "date", dir: "desc" },
+      suggestionsSort: { field: "date", dir: "desc" },
       schoolVaFilter: "",
       addingVaForTask: null,
       lastTaskCategory: {}
@@ -3312,29 +3313,23 @@ function appMain() {
       "</div></div>";
   }
 
+  /* Suggestions has its own dedicated table renderer (suggestionsPageHtml)
+     now, not this shared one — this stays scoped to School and General
+     Notes only. */
   function notesCardHtml(scope, schoolId, notes) {
-    var draftName = scope === "school" ? "note-" + schoolId : (scope === "suggestion" ? "note-suggestion" : "note-general");
-    var title = scope === "school" ? "Notes" : (scope === "suggestion" ? "Suggestions" : "General Notes");
-    var placeholder = scope === "suggestion" ? "Suggest something to add or change…" : "Add a note…";
-    var buttonLabel = scope === "suggestion" ? "Add suggestion" : "Add note";
-    var emptyText = scope === "suggestion" ? "No suggestions yet." : "No notes yet.";
+    var draftName = scope === "school" ? "note-" + schoolId : "note-general";
+    var title = scope === "school" ? "Notes" : "General Notes";
+    var placeholder = "Add a note…";
+    var buttonLabel = "Add note";
+    var emptyText = "No notes yet.";
     var list = notes.slice().reverse().map(function (n) {
       return "<div class=\"note-entry\"><div class=\"note-text\">" + esc(n.text) + "</div>" +
         "<div class=\"note-meta\">" + esc(n.author || "Unnamed") + " · " + fmtDateTime(n.createdAt) + "</div></div>";
     }).join("");
-    /* Suggestions always go in under whoever's actually signed in — no
-       editable name box, so there's no way to mistype a name (which,
-       through the shared name box below, used to silently register a
-       brand-new "VA" the moment a typo didn't match anyone). School and
-       General Notes keep the editable box, since a note is sometimes
-       logged for/with someone else. */
-    var authorFieldHtml = scope === "suggestion"
-      ? "<div class=\"field-row\" style=\"margin-top:8px;\">" +
-        "<span class=\"field-mini-label\">Suggested by " + esc(getStoredIdentity() || "—") + "</span>" +
-        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>"
-      : "<div class=\"field-row\" style=\"margin-top:8px;\">" +
-        "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
-        "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
+    var authorFieldHtml =
+      "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+      "<input class=\"text-input\" style=\"width:180px;\" list=\"va-list\" name=\"author\" placeholder=\"Your name\" value=\"" + esc(getStoredIdentity()) + "\">" +
+      "<button class=\"btn\" type=\"submit\">" + buttonLabel + "</button></div>";
     return "<div class=\"card\"><div class=\"card-head\"><div class=\"card-title\">" + title + "</div></div>" +
       "<div class=\"card-body\">" +
       "<form data-action=\"add-note\" data-scope=\"" + scope + "\" " + (schoolId ? "data-school=\"" + schoolId + "\"" : "") + ">" +
@@ -4122,9 +4117,32 @@ function appMain() {
   }
 
   /* ---------- Suggestions ---------- */
+  /* Its own table (not the shared notesCardHtml list used by School/
+     General Notes) so it can be sorted — by date or by who suggested it,
+     via the same shared date/alpha sort control used elsewhere, with the
+     "alpha" side wired to the suggester's name instead of the suggestion
+     text itself. */
   function suggestionsPageHtml() {
+    var sort = ui.suggestionsSort || { field: "date", dir: "desc" };
+    var list = sortRecords(state.suggestions, sort, function (n) { return n.author || ""; });
+    var rows = list.map(function (n) {
+      return "<tr><td class=\"wrap\">" + esc(n.text) + "</td>" +
+        "<td>" + esc(n.author || "Unnamed") + "</td>" +
+        "<td>" + fmtDateTime(n.createdAt) + "</td></tr>";
+    }).join("");
     return "<div class=\"page-header\"><div><div class=\"page-title display\">Suggestions</div></div></div>" +
-      notesCardHtml("suggestion", null, state.suggestions);
+      "<div class=\"card\"><div class=\"card-body\">" +
+      "<form data-action=\"add-note\" data-scope=\"suggestion\">" +
+      "<textarea class=\"text-input\" name=\"text\" placeholder=\"Suggest something to add or change…\" data-draft-key=\"note-suggestion\">" + esc(loadDraft("note-suggestion")) + "</textarea>" +
+      "<div class=\"field-row\" style=\"margin-top:8px;\">" +
+      "<span class=\"field-mini-label\">Suggested by " + esc(getStoredIdentity() || "—") + "</span>" +
+      "<button class=\"btn\" type=\"submit\">Add suggestion</button></div>" +
+      "</form></div></div>" +
+      "<div class=\"filters-row\">" + sortControlHtml(sort, "set-suggestions-sort") + "</div>" +
+      "<div class=\"card\"><div class=\"card-body\"><div class=\"table-scroll\">" +
+      "<table class=\"data-table\"><thead><tr><th>Suggestion</th><th>Suggested by</th><th>Date</th></tr></thead><tbody>" +
+      (rows || "<tr><td colspan=\"3\">" + emptyState("No suggestions yet.") + "</td></tr>") +
+      "</tbody></table></div></div></div>";
   }
 
   /* ---------- Distribution List ---------- */
@@ -5520,6 +5538,9 @@ function appMain() {
         render(); break;
       case "set-issues-sort":
         ui.issuesSort = parseSortValue(t.value);
+        render(); break;
+      case "set-suggestions-sort":
+        ui.suggestionsSort = parseSortValue(t.value);
         render(); break;
       case "filter-eod":
         ui.eodFilterAuthor = t.value;
